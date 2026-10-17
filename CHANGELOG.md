@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.3.0
+
+For Allay 5.5; older plugins keep working.
+
+- ✨ **Marks over blocks.** `show_marks` (plugin 5.5) draws glowing boxes, ghost blocks, and labels that only the asker sees. The prompt reaches for it whenever seeing beats coordinates: the chests `find_item` and `scan_nearby_containers` found, labeled with what's inside, ghost torches on the dark spots of `get_light_spawn_check`, a note or a death point close by. It marks only coordinates a tool returned, and what the plugin refuses (someone's claim, ores, spawners) it says briefly instead of retrying.
+
 ## 5.2.0
 
 For Allay 5.4; older plugins keep working.

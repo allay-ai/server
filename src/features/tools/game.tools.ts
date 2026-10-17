@@ -188,6 +188,27 @@ const definitions = {
         .describe("The trail's particles: the one the player asks for, or one that fits the place (flame or soul in the Nether, magic in the End, cherry for a cherry grove, hearts for a friend's base); sparkle by default"),
     }),
   },
+  show_marks: {
+    description:
+      "Draws marks over blocks that only the asking player sees, glowing through walls: a box around a block that is there (a chest, a furnace, a bed), or with block, a ghost of that block where it should go (a torch on a dark spot), each with an optional label. Use it to show where things are (the chests find_item or scan_nearby_containers found, with what's inside as the label), where to put torches (the dark spots of get_light_spawn_check, block torch), or a spot from the notebook. Coordinates come from tools, never guessed. Ores, spawners, and vaults never glow, and a container only when the player could open it; those come back in refused. A new call replaces the marks; a ghost goes out once the player places a block there; clear: true removes them. Returns shown, seconds, and refused.",
+    input: z.object({
+      marks: z
+        .array(
+          z.object({
+            x: z.number().int(),
+            y: z.number().int(),
+            z: z.number().int(),
+            block: z.string().max(64).optional().describe("A ghost of this block to place there, like torch; leave it out to box what stands there"),
+            label: z.string().max(48).optional().describe("A few words over the mark in the player's language: what's inside, a step number"),
+            color: z.enum(["yellow", "green", "red", "blue", "aqua", "purple", "orange", "white"]).optional().describe("Yellow for boxes and aqua for ghosts by default; one color per kind of thing"),
+          }),
+        )
+        .max(64)
+        .optional(),
+      seconds: z.number().int().min(1).max(3600).optional().describe("How long they stay: the player's number, otherwise leave it out (the server picks about two minutes, caps at ten)"),
+      clear: z.boolean().optional().describe("Remove the player's marks instead"),
+    }),
+  },
   ping_me: {
     description: "A sound and particles over the asking player that everyone nearby sees and hears, so others or the player can spot them in a crowd or a cave. Only when asked.",
     input: z.object({}),
@@ -367,7 +388,7 @@ const isOperatorTool = (name: string) => name in operatorDefinitions;
 
 /** Tools that do something for the player rather than read the game; askx only writes commands, so it gets none of them. */
 const ACTION_TOOLS: ReadonlySet<string> = new Set([
-  "point_to", "ping_me", "sort_inventory", "reminders", "goals", "add_note", "delete_note", "add_buttons", "write_book", "set_timezone",
+  "point_to", "show_marks", "ping_me", "sort_inventory", "reminders", "goals", "add_note", "delete_note", "add_buttons", "write_book", "set_timezone",
   "allay_settings",
 ]);
 

@@ -16,7 +16,7 @@ describe("offered game tools", () => {
   });
 
   test("askx gets only tools that read the game", () => {
-    const names = ["get_inventory", "look_at", "find_item", "point_to", "reminders", "goals", "add_buttons", "give_item"];
+    const names = ["get_inventory", "look_at", "find_item", "point_to", "show_marks", "reminders", "goals", "add_buttons", "give_item"];
     expect(offeredTools(names, true, "askx")).toEqual(["get_inventory", "look_at", "find_item"]);
   });
 
@@ -51,7 +51,7 @@ describe("offered game tools", () => {
         "get_player_status", "get_inventory", "get_surroundings", "look_at", "get_world", "get_statistics", "get_advancements", "get_recipes",
         "locate_structure", "locate_biome", "get_server", "get_locations", "get_nearby_players", "get_death_info", "find_villagers", "scan_nearby_containers", "find_item",
         "inspect_item", "get_item_durability", "get_xp_info", "get_food_options", "get_anvil_plan", "get_light_spawn_check", "get_brewing_items", "get_brewing_recipe",
-        "scan_farm", "point_to", "ping_me", "sort_inventory", "reminders", "goals", "add_note", "find_notes", "delete_note", "add_buttons",
+        "scan_farm", "point_to", "show_marks", "ping_me", "sort_inventory", "reminders", "goals", "add_note", "find_notes", "delete_note", "add_buttons",
         "write_book", "get_allay_guide", "allay_settings", "set_timezone",
       ].sort(),
     );
@@ -120,6 +120,23 @@ describe("button arguments", () => {
   test("up to six buttons, such as the way to each player around", () => {
     expect(valid({ buttons: ["a", "b", "c", "d", "e", "f"].map(way) })).toBe(true);
     expect(valid({ buttons: ["a", "b", "c", "d", "e", "f", "g"].map(way) })).toBe(false);
+  });
+});
+
+describe("mark arguments", () => {
+  const tools = gameTools(["show_marks"], "run", {} as ToolBridge);
+  const valid = (input: unknown) => {
+    const result = tools.show_marks.inputSchema!["~standard"].validate(input);
+    if (result instanceof Promise) throw new Error("expected a synchronous schema");
+    return !result.issues;
+  };
+
+  test("boxes, ghosts, and labels, or clearing them", () => {
+    expect(valid({ marks: [{ x: 1, y: 64, z: 2, label: "редстоун ×64" }] })).toBe(true);
+    expect(valid({ marks: [{ x: 1, y: 64, z: 2, block: "torch", color: "aqua" }], seconds: 300 })).toBe(true);
+    expect(valid({ clear: true })).toBe(true);
+    expect(valid({ marks: [{ x: 1, z: 2 }] })).toBe(false);
+    expect(valid({ marks: [{ x: 1, y: 64, z: 2, color: "pink" }] })).toBe(false);
   });
 });
 
