@@ -62,6 +62,11 @@ const definitions = {
       "This server: software, Minecraft version, online player count, max players, the Allay plugin version, and plugins: every enabled plugin with name, version, and a short description. Call it when a question may touch something a plugin changes (graves, land claims, AFK, maps, chat, join messages, a command you don't know) and answer for that plugin and version, searching its docs if you're unsure. Difficulty is in get_world.",
     input: z.object({}),
   },
+  get_nearby_players: {
+    description:
+      "Other players on the asking player's locator bar, the game's dots above the experience bar, and only them: name, distance, direction, and height (above or below) when far up or down, nearest first. The bar shows players in the asker's dimension who aren't hiding (crouching, a carved pumpkin or a mob head on the head, invisibility); locator_bar false means the game rule turned it off. others_online names the players online who aren't on the bar, without where they are. Call it when the player asks who is around or wants the way to someone, to match the name they say to a real one.",
+    input: z.object({}),
+  },
   get_locations: {
     description:
       "Places that matter to the asking player: their respawn point (bed or anchor; null when they have none), the world spawn, and where they last died, each with x, y, z, dimension, and distance and direction when in the player's dimension. For what dropped at the death, get_death_info.",
@@ -162,11 +167,12 @@ const definitions = {
   },
   point_to: {
     description:
-      "Points the asking player's compass at a spot in their dimension and draws a particle trail toward it that only they see; it ends early once they arrive, and a new trail replaces the old one. Use it when they want to find a place: their base, a death point, a structure. Leave dimension out for a spot in the dimension they stand in; pass it only when the coordinates belong to another one, and that is refused instead of pointing the wrong way. Returns distance, direction, seconds, and style.",
+      "Points the asking player's compass at a spot in their dimension and draws a particle trail toward it that only they see; it ends early once they arrive, and a new trail replaces the old one. Use it when they want to find a place: their base, a death point, a structure. Leave dimension out for a spot in the dimension they stand in; pass it only when the coordinates belong to another one, and that is refused instead of pointing the wrong way. Or pass player instead of x and z: the trail follows that player as they move, while they stay on the asker's locator bar, and ends when the asker reaches them. Returns distance, direction, seconds, and style.",
     input: z.object({
-      x: z.number().int(),
+      x: z.number().int().optional().describe("With z, the spot; leave both out when passing player"),
       y: z.number().int().optional().describe("Leave it out when unknown, as for structures"),
-      z: z.number().int(),
+      z: z.number().int().optional(),
+      player: z.string().min(1).max(32).optional().describe("The exact name of a player from get_nearby_players to lead to, instead of x and z"),
       dimension: z.enum(["overworld", "the_nether", "the_end"]).optional(),
       label: z.string().max(32).optional().describe("A short name for the spot, like base"),
       seconds: z
@@ -175,7 +181,7 @@ const definitions = {
         .min(1)
         .max(3600)
         .optional()
-        .describe("How long the trail shows. The player's number when they name one; otherwise judge by distance: about 30 s close by, a few minutes for a long walk. The server caps it (600 s by default) and errors above"),
+        .describe("How long the trail shows. The player's number when they name one; otherwise judge by distance: about 30 s close by, a few minutes for a long walk. Leave it out for a player: the server picks a longer default, since they move. The server caps it (600 s by default) and errors above"),
       style: z
         .enum(["sparkle", "flame", "soul", "glow", "magic", "spark", "cherry", "notes", "hearts", "snow", "totem", "happy"])
         .optional()
@@ -256,7 +262,7 @@ const definitions = {
   },
   add_buttons: {
     description:
-      "Clickable buttons under your answer, at most 5. ask: the player clicks and asks question (label is one word in their language, like Да or Хочу). point: shows the way to x, y, z in dimension. note: saves text with x, y, z in their notebook. copy: puts text, such as coordinates «-20 95 120», into the player's clipboard. recipe: opens the recipe window for item, crafting or smelting. brewing: opens the brewing steps for potion in form. anvil: opens the anvil plan for the item in hand with what the player has (or only slots). enchants: opens the enchanting window for the item in hand, to plan books they don't have yet. villagers: opens the window of villagers around, optionally only trades with item.",
+      "Clickable buttons under your answer, at most 6. ask: the player clicks and asks question (label is one word in their language, like Да or Хочу). point: shows the way to x, y, z in dimension, or with player, a trail that follows that player (label: their name). note: saves text with x, y, z in their notebook. copy: puts text, such as coordinates «-20 95 120», into the player's clipboard. recipe: opens the recipe window for item, crafting or smelting. brewing: opens the brewing steps for potion in form. anvil: opens the anvil plan for the item in hand with what the player has (or only slots). enchants: opens the enchanting window for the item in hand, to plan books they don't have yet. villagers: opens the window of villagers around, optionally only trades with item.",
     input: z.object({
       buttons: z
         .array(
@@ -268,6 +274,7 @@ const definitions = {
             y: z.number().int().optional(),
             z: z.number().int().optional(),
             dimension: z.enum(["overworld", "the_nether", "the_end"]).optional(),
+            player: z.string().min(1).max(32).optional().describe("point: the exact name of a player on the locator bar, instead of x and z"),
             text: z.string().max(200).optional().describe("note: what to write; copy: what to copy"),
             item: z.string().max(64).optional().describe("recipe or villagers: item id"),
             potion: z.string().max(64).optional().describe("brewing: the potion's id"),
@@ -276,7 +283,7 @@ const definitions = {
           }),
         )
         .min(1)
-        .max(5),
+        .max(6),
     }),
   },
   write_book: {
@@ -364,8 +371,11 @@ const ACTION_TOOLS: ReadonlySet<string> = new Set([
   "allay_settings",
 ]);
 
-/** Tools whose result only the asker could see; a question everyone sees goes without them. */
-const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book"]);
+/**
+ * Tools whose result only the asker could see; a question everyone sees goes without them.
+ * The locator bar is the asker's own: read out in public, it would tell everyone where others are.
+ */
+const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players"]);
 
 /**
  * The client tools this run really gets: the ones the plugin offered and the backend knows,

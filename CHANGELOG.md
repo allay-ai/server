@@ -2,6 +2,15 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.2.0
+
+For Allay 5.4; older plugins keep working.
+
+- 📍 **The way to another player.** `get_nearby_players` (plugin 5.4) lists who is on the asker's locator bar: names, distances, and directions, by the game's rules, plus the names of players online elsewhere without where they are. `point_to` takes `player` instead of `x` and `z`, and the plugin's trail follows that player. The prompt matches what the player says to a real name: a nickname they asked the agent to remember («shipilove — это Серёга»), a misspelling, a transliteration, a player named earlier in the conversation. When nobody fits or several do, it asks, with a way button for each.
+- 🧠 **Nicknames are the one thing about other players the agent remembers**, and only when the player tells it.
+- 🔘 **`add_buttons` takes up to six buttons**, and `point` takes `player`.
+- 🔒 A public question goes without `get_nearby_players`: read out to everyone, the asker's locator bar would tell where others are.
+
 ## 5.1.0
 
 For Allay 5.3; older plugins keep working.

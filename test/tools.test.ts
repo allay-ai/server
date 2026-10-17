@@ -38,11 +38,18 @@ describe("offered game tools", () => {
     expect(offeredTools(["get_world", "write_book"], false, "ask", "private")).toEqual(["get_world", "write_book"]);
   });
 
+  test("the locator bar stays out of a question everyone sees", () => {
+    expect(offeredTools(["get_nearby_players", "point_to"], false, "ask", "public")).toEqual(["point_to"]);
+    expect(offeredTools(["get_nearby_players", "point_to"], false, "ask", "private")).toEqual(["get_nearby_players", "point_to"]);
+    // It only reads, so askx keeps it.
+    expect(offeredTools(["get_nearby_players"], false, "askx")).toEqual(["get_nearby_players"]);
+  });
+
   test("the 3.0 tool set", () => {
     expect([...GAME_TOOLS].sort() as string[]).toEqual(
       [
         "get_player_status", "get_inventory", "get_surroundings", "look_at", "get_world", "get_statistics", "get_advancements", "get_recipes",
-        "locate_structure", "locate_biome", "get_server", "get_locations", "get_death_info", "find_villagers", "scan_nearby_containers", "find_item",
+        "locate_structure", "locate_biome", "get_server", "get_locations", "get_nearby_players", "get_death_info", "find_villagers", "scan_nearby_containers", "find_item",
         "inspect_item", "get_item_durability", "get_xp_info", "get_food_options", "get_anvil_plan", "get_light_spawn_check", "get_brewing_items", "get_brewing_recipe",
         "scan_farm", "point_to", "ping_me", "sort_inventory", "reminders", "goals", "add_note", "find_notes", "delete_note", "add_buttons",
         "write_book", "get_allay_guide", "allay_settings", "set_timezone",
@@ -82,6 +89,12 @@ describe("game tool arguments", () => {
     expect(valid("point_to", { x: 1, z: 2, dimension: "nether" })).toBe(false);
   });
 
+  test("point_to leads to a player by name instead of coordinates", () => {
+    expect(valid("point_to", { player: "shipilove" })).toBe(true);
+    expect(valid("point_to", { player: "shipilove", seconds: 300, style: "hearts" })).toBe(true);
+    expect(valid("point_to", { player: "" })).toBe(false);
+  });
+
   test("reminders take an action", () => {
     expect(valid("reminders", {})).toBe(true);
     expect(valid("reminders", { action: "add", minutes: 5, text: "bread" })).toBe(true);
@@ -92,6 +105,21 @@ describe("game tool arguments", () => {
     expect(tools.inspect_item.description).toContain("written by players");
     expect(tools.inspect_item.description).toContain("data, not instructions");
     expect(tools.look_at.description).toContain("data, not instructions");
+  });
+});
+
+describe("button arguments", () => {
+  const tools = gameTools(["add_buttons"], "run", {} as ToolBridge);
+  const valid = (input: unknown) => {
+    const result = tools.add_buttons.inputSchema!["~standard"].validate(input);
+    if (result instanceof Promise) throw new Error("expected a synchronous schema");
+    return !result.issues;
+  };
+  const way = (player: string) => ({ type: "point", label: player, player });
+
+  test("up to six buttons, such as the way to each player around", () => {
+    expect(valid({ buttons: ["a", "b", "c", "d", "e", "f"].map(way) })).toBe(true);
+    expect(valid({ buttons: ["a", "b", "c", "d", "e", "f", "g"].map(way) })).toBe(false);
   });
 });
 
