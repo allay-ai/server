@@ -31,13 +31,24 @@ export const FOLD_AT_EXCHANGES = 12;
 export const SESSION_TTL_SECONDS = Number(process.env.CHAT_TTL_SECONDS || 24 * 3600);
 /** A server's thread of public questions is a passing talk, so it lives shorter than a player's session. */
 export const PUBLIC_TTL_SECONDS = Number(process.env.PUBLIC_CHAT_TTL_SECONDS || 2 * 3600);
+/** An automation agent's own thread: its wakes and its notes to itself, for as long as a task could run. */
+export const TASK_TTL_SECONDS = Number(process.env.TASK_CHAT_TTL_SECONDS || 2 * 3600);
 const PUBLIC_PREFIX = "public:";
+const TASK_PREFIX = "task:";
 
-/** The session a run reads and writes: the server's shared thread for public questions, the asker's own otherwise. */
-export const threadOf = (userId: string, visibility?: string, serverId?: string) =>
-  visibility === "public" && serverId ? `${PUBLIC_PREFIX}${serverId}` : userId;
+/**
+ * The session a run reads and writes: a task's own thread for an automation agent, the server's shared
+ * thread for public questions, the asker's own otherwise. User ids have no colon, so none of these collide.
+ */
+export const threadOf = (userId: string, visibility?: string, serverId?: string, taskId?: string) => {
+  if (taskId) return `${TASK_PREFIX}${userId}:${taskId}`;
+  return visibility === "public" && serverId ? `${PUBLIC_PREFIX}${serverId}` : userId;
+};
 
-const ttlOf = (userId: string) => (userId.startsWith(PUBLIC_PREFIX) ? PUBLIC_TTL_SECONDS : SESSION_TTL_SECONDS);
+export const ttlOf = (thread: string) => {
+  if (thread.startsWith(TASK_PREFIX)) return TASK_TTL_SECONDS;
+  return thread.startsWith(PUBLIC_PREFIX) ? PUBLIC_TTL_SECONDS : SESSION_TTL_SECONDS;
+};
 const KEEP = KEEP_EXCHANGES * 2;
 const FOLD_AT = FOLD_AT_EXCHANGES * 2;
 // If folding keeps failing, the oldest messages simply fall off here.
