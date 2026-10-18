@@ -6,6 +6,35 @@ import { forModel } from "./schema";
 
 const dimension = z.enum(["overworld", "the_nether", "the_end"]);
 const potionForm = z.enum(["potion", "splash_potion", "lingering_potion"]);
+// What a sort is told, the same for the inventory and chests (plugin 5.8+). Selectors are ids, groups, materials, or categories.
+const selectors = z
+  .array(z.string().min(1).max(64))
+  .max(16)
+  .describe(
+    "Each an item id; a group (sword, pickaxe, axe, bow, bucket, torch, arrow, block, food…); a material, every form of the resource: iron, gold, copper, diamond, emerald, netherite, coal, redstone, lapis, quartz, amethyst (raw, ingot, nugget, block, ore; not tools); a chest category (building, wood, stone, ores, redstone, food, farming, mob_drops, tools, potions, other); enchanted, named, damaged; or potion:healing",
+  );
+const layout = z
+  .object({
+    order: selectors.optional().describe("What comes first, in this order, every stack of each: «сначала железо, потом золото» is [iron, gold]"),
+    zones: z
+      .array(
+        z.object({
+          items: selectors,
+          where: z
+            .string()
+            .regex(/^(row:([1-6]|last)|column:([1-9]|last)|slots:\d{1,2}(-\d{1,2})?|start|end)$/)
+            .describe("row:1–3 (6 in a double chest) or row:last; column:1–9 or column:last; slots:1-5, counted row by row from the top left; start or end of the layout"),
+        }),
+      )
+      .max(8)
+      .optional()
+      .describe("Places for items: «еда в последний ряд», «мешки в правый столбец», «три мешка в начало» (start, no counting). A zone's empty cells fill last; what doesn't fit flows on"),
+    by: z.enum(["name", "category", "count"]).optional().describe("How the rest is ordered: by id (the inventory's default), by category (chests' default), or the biggest pile first"),
+    rows: z.boolean().optional().describe("Each category starts a new row while there's room: «каждый вид с новой строки»"),
+    keep: selectors.optional().describe("What stays in its slot: «не трогай книги»"),
+    merge_only: z.boolean().optional().describe("Only merge stacks, nothing else moves: «просто собери стаки»"),
+  })
+  .describe("How to lay it out; leave it out for a plain sort");
 
 /** Client tools: the plugin runs them in the game and posts the result back. */
 const definitions = {
@@ -230,9 +259,10 @@ const definitions = {
   },
   sort_inventory: {
     description:
-      "Merges stacks and sorts the asking player's main inventory at once. The hotbar and offhand stay unless the player asks to sort them too («и хотбар тоже»); pins work without that and leave the rest of the hotbar alone. pins put items in slots first, the best candidate winning (material, enchantments, durability; food by what it fills; the fullest stack of equals): “sword first, golden carrot last” is [{slot: 1, item: \"sword\"}, {slot: 9, item: \"golden_carrot\"}]; “three bundles at the start of the inventory” is inventory:1–3 with item bundle (plugin 5.8+). With hotbar and pins, the hotbar holds just the pins: every other item goes into the main inventory, and a hotbar slot fills only when that's full, so slots between pins stay empty. With hotbar and no pins, the hotbar keeps the weapons, tools, food, torches, buckets, and pearls it had, weapons first. The result's hotbar (slots 1–9) and offhand say what's really there: tell the player from them. Armor never moves. Only when asked.",
+      "Merges stacks and sorts the asking player's main inventory at once. The hotbar and offhand stay unless the player asks to sort them too («и хотбар тоже»); pins work without that and leave the rest of the hotbar alone. pins put items in slots first, the best candidate winning (material, enchantments, durability; food by what it fills; the fullest stack of equals): “sword first, golden carrot last” is [{slot: 1, item: \"sword\"}, {slot: 9, item: \"golden_carrot\"}]; “three bundles at the start of the inventory” is inventory:1–3 with item bundle (plugin 5.8+). With hotbar and pins, the hotbar holds just the pins: every other item goes into the main inventory, and a hotbar slot fills only when that's full, so slots between pins stay empty. layout shapes the main inventory beyond a plain sort by id: an order, zones (rows, columns, start, end), by category or count, rows per category, keep, or merge_only; pins stay for single best items in fixed slots. With hotbar and no pins, the hotbar keeps the weapons, tools, food, torches, buckets, and pearls it had, weapons first. The result's hotbar (slots 1–9), offhand, and rows (the main inventory's three rows) say what's really there: tell the player from them. Armor never moves. Only when asked.",
     input: z.object({
       hotbar: z.boolean().optional().describe("Also sort the hotbar slots no pin takes, moving what isn't held in hand into the main inventory"),
+      layout: layout.optional(),
       offhand: z.boolean().optional(),
       pins: z
         .array(
@@ -505,7 +535,7 @@ const automationDefinitions = {
   },
   chests: {
     description:
-      "Works with chests the player may open, by coordinates from pick_blocks or an earlier result. action read: each chest's contents, the text of the signs on it, the items in frames on it, and what's wrong with it (a hopper, someone has it open, no access). plan: what would go where, as a preview; nothing moves. mode sort sorts each chest on its own; group pools the chests and lays them out by category, so one resource doesn't end up in several chests (assign pins chests to a category or items, from signs, frames, or what the player said; the rest by the plugin's categories); move takes items or categories to the chests in to. apply: does the plan, but only if nothing changed since; returns each chest with its coordinates, category, and main contents. undo: puts everything back as it was before the last apply, within 5 minutes and if nobody touched it.",
+      "Works with chests the player may open, by coordinates from pick_blocks or an earlier result. action read: each chest's contents, the text of the signs on it, the items in frames on it, and what's wrong with it (a hopper, someone has it open, no access). plan: what would go where, as a preview; nothing moves. mode sort sorts each chest on its own (layout shapes it: «в каждом сундуке руды в верхний ряд»); group pools the chests and lays them out by category, so one resource doesn't end up in several chests (assign pins chests to a category or items, from signs, frames, or what the player said; the rest by the plugin's categories); move takes items or categories to the chests in to. apply: does the plan, but only if nothing changed since; returns each chest with its coordinates, category, and main contents. undo: puts everything back as it was before the last apply, within 5 minutes and if nobody touched it.",
     input: z.object({
       action: z.enum(["read", "plan", "apply", "undo"]),
       mode: z.enum(["sort", "group", "move"]).optional(),
@@ -522,6 +552,7 @@ const automationDefinitions = {
       items: z.array(itemId).max(64).optional().describe("move: item ids to take"),
       categories: z.array(z.enum(CATEGORIES)).max(11).optional().describe("move: categories to take"),
       to: z.array(spot).max(64).optional().describe("move: the chests to put them in"),
+      layout: layout.optional().describe("sort and group: how each chest is laid out inside; in group, order also decides which categories get the nearest chests"),
     }),
   },
   smelt: {

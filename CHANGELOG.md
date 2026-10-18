@@ -4,7 +4,11 @@ The “Release” workflow takes the notes for a version from its section here, 
 
 ## 5.6.0
 
-- 📌 **Pins in the main inventory.** A `sort_inventory` pin takes `inventory:1`–`inventory:27` besides the hotbar's 1–9 and `offhand` (plugin 5.8), so “three bundles at the start of the inventory” works instead of a refusal.
+For Allay 5.8; older plugins ignore `layout` and refuse main inventory pins.
+
+- 🗂️ **Layouts.** `sort_inventory` and `chests` (sort and group) take `layout`: `order`, `zones` (`row:N`, `column:N`, `slots:A-B`, `start`, `end`), `by` (name, category, count), `rows`, `keep`, and `merge_only`, with items named by id, group, material, category, or `enchanted`, `named`, `damaged`. The chat and the chests agent learn to turn «сначала железо», «еда в последний ряд», and «не трогай книги» into it, and signs that say where things lie into zones.
+- 📌 **Pins in the main inventory.** A `sort_inventory` pin takes `inventory:1`–`inventory:27` besides the hotbar's 1–9 and `offhand`, so “three bundles at the start of the inventory” works instead of a refusal.
+- 🙅 **No opposite offers.** When a tool can't do what the player asked, the chat says so plainly instead of offering the opposite.
 
 ## 5.5.1
 
