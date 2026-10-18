@@ -28,7 +28,10 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.68",
     "@ai-sdk/provider": "^4.0.26",
-    "@mastra/core": "^1.75.0",
+    "@mastra/core": "1.78.0",
+    "@mastra/mongodb": "1.23.1",
+    "@mastra/observability": "1.20.1",
+    "@mastra/perplexity": "0.2.1",
     "@openrouter/ai-sdk-provider": "^3.1.0",
     "ai": "^7.0.137",
     "amqplib": "^0.10.9",
