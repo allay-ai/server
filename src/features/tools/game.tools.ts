@@ -557,11 +557,11 @@ const automationDefinitions = {
   },
   smelt: {
     description:
-      "Smelting in furnaces, blast furnaces, and smokers near the player, each by what it can cook. action scan: the free and busy ones around, what the player has to smelt (to_smelt_at_hand) and to burn; no need to search the inventory yourself. start: smelts count of item, or several items at once with items (“the iron and the gold”: one call, never one after the other), over furnaces (or the free ones around); each furnace takes one item, and the split weighs speed (a blast furnace cooks ores twice as fast) so all finish about together. Items the player has none of are skipped and listed in not_at_hand. Exactly the fuel it needs; coal blocks are split into coal, and leftovers go back where they came from. status: how far it is. collect: takes the output to to. You wake when the smelting ends.",
+      "Smelting in furnaces, blast furnaces, and smokers near the player, each by what it can cook. action scan: the free and busy ones around, what the player has to smelt (to_smelt_at_hand) and to burn; no need to search the inventory yourself. start: smelts count of item, or several items at once with items (“the iron and the gold”: one call, never one after the other), over furnaces (or the free ones around); each furnace takes one item, and the split weighs speed (a blast furnace cooks ores twice as fast) so all finish about together. Items the player has none of are skipped and listed in not_at_hand. Exactly the fuel it needs; coal blocks are split into coal, and leftovers go back where they came from. fuel: only puts fuel into the fuel slots, nothing to cook (“put the coal in the furnaces”); how much with exactly one of count (in all, spread evenly), each (added to every furnace), up_to (the level every fuel slot should reach, 64 is full), or need (just what each furnace needs for what it's cooking now); into furnaces, or every usable one around of types; the fuel asked, else what the furnaces already burn, else the cheapest at hand; coal blocks split into coal when coal runs short. status: how far it is. collect: takes the output to to. You wake when the smelting ends.",
     input: z.object({
-      action: z.enum(["scan", "start", "status", "collect"]),
+      action: z.enum(["scan", "start", "fuel", "status", "collect"]),
       item: itemId.optional().describe("start: what to smelt, like raw_gold"),
-      count: z.number().int().min(1).max(4096).optional().describe("start: how many; leave it out for all the player has"),
+      count: z.number().int().min(1).max(4096).optional().describe("start: how many to smelt, left out for all the player has; fuel: how much fuel in all, spread evenly"),
       items: z
         .array(z.object({ item: itemId, count: z.number().int().min(1).max(4096).optional().describe("Leave it out for all the player has") }))
         .min(1)
@@ -569,7 +569,11 @@ const automationDefinitions = {
         .optional()
         .describe("start: several items at once instead of item and count"),
       furnaces: z.array(spot).max(16).optional(),
-      fuel: itemId.optional().describe("start: the fuel to use, like coal; leave it out to pick the cheapest at hand"),
+      each: z.number().int().min(1).max(64).optional().describe("fuel: added to every furnace («по 8 угля в каждую»)"),
+      up_to: z.number().int().min(1).max(64).optional().describe("fuel: the level every fuel slot should reach («заполни до 32», full is 64)"),
+      need: z.boolean().optional().describe("fuel: true for just what each furnace needs to finish what it's cooking now"),
+      types: z.array(z.enum(["furnace", "blast_furnace", "smoker"])).min(1).max(3).optional().describe("fuel: only these kinds («только в плавильные печи»)"),
+      fuel: itemId.optional().describe("start: the fuel to use, like coal; leave it out to pick the cheapest at hand. fuel: what to put in, coal when left out"),
       to: output,
     }),
   },
@@ -587,8 +591,19 @@ const automationDefinitions = {
   },
   craft: {
     description:
-      "Crafts item from this server's recipes, at a crafting table near the player for 3×3 recipes (2×2 ones like planks, sticks, or a crafting table need none), with ingredients from the inventory, bundles, the ender chest when one is near, and chests the player may open; never from inside shulker boxes. The output goes to the inventory, or at the feet when it's full. dry_run: true only says what it would take and what's missing.",
+      "Crafts item from this server's recipes: 2×2 ones (planks, sticks, a crafting table) by hand, 3×3 ones at a crafting table near the player, what a stonecutter cuts on one when it's near (stairs one per block), and netherite gear on a smithing table near the player: the diamond piece, worn ones too, keeps its enchantments, name, and wear, and the template and the ingot come from the player (an ingot is crafted from scrap and gold); with ingredients from the inventory, bundles, the ender chest when one is near, and chests the player may open; never from inside shulker boxes. The output goes to the inventory, or at the feet when it's full. dry_run: true only says what it would take and what's missing.",
     input: z.object({ item: itemId, count: z.number().int().min(1).max(64).optional(), dry_run: z.boolean().optional() }),
+  },
+  anvil: {
+    description:
+      "Works an item on an anvil near the player, as the game does. plan (default): which enchanted books and items of its kind it would put on, found in the inventory, bundles, the ender chest when one is near, and chests the player may open, in the cheapest order; the enchantments it ends with, the levels it costs, and the player's levels. apply: does it, for the player's levels; the anvil may wear down, as in the game. item: hand (default) or an item id, worn pieces too. enchantments: only books with these; merge: true for everything that fits; rename: a new name. Nothing costing 40 levels or more in survival.",
+    input: z.object({
+      action: z.enum(["plan", "apply"]).optional(),
+      item: itemId.optional().describe("hand, or an item id like diamond_sword"),
+      enchantments: z.array(z.string().min(1).max(40)).max(12).optional().describe("Enchantment ids to add, like mending"),
+      merge: z.boolean().optional().describe("true: everything at hand that fits"),
+      rename: z.string().min(1).max(50).optional(),
+    }),
   },
 } as const;
 
@@ -669,7 +684,7 @@ const ACTION_TOOLS: ReadonlySet<string> = new Set([
 const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players", "start_task", "message_task", "cancel_task"]);
 
 /** What only an automation agent gets: it talks to the player, waits, and does the work the chat hands it. */
-const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "pick_blocks", "chests", "smelt", "brew", "craft"]);
+const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil"]);
 
 /** What an automation agent never gets: it talks through say, and only the chat steers other tasks. */
 const NOT_IN_TASKS: ReadonlySet<string> = new Set(["add_buttons", "write_book", "get_nearby_players", "message_task", "cancel_task"]);

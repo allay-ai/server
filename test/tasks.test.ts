@@ -98,7 +98,7 @@ describe("task tools", () => {
   });
 
   test("an agent gets the automation tools, and start_task only above the depth limit", () => {
-    const work = ["say", "wait", "finish", "pick_blocks", "chests", "smelt", "brew", "craft"] as const;
+    const work = ["say", "wait", "finish", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil"] as const;
     expect(offeredTools(every, true, "task", "private", 1)).toEqual(["inventory", "look_at", "show_marks", "start_task", ...work]);
     expect(offeredTools(every, true, "task", "private", 2)).toEqual(["inventory", "look_at", "show_marks", ...work]);
   });
@@ -144,6 +144,10 @@ describe("task tools", () => {
     expect(valid("chests", { action: "sort" })).toBe(false);
     expect(valid("smelt", { action: "start", item: "raw_gold", count: 64, fuel: "coal", to: "inventory" })).toBe(true);
     expect(valid("smelt", { action: "collect", to: [{ x: 1, y: 64, z: 2 }] })).toBe(true);
+    expect(valid("smelt", { action: "fuel", fuel: "coal", count: 18 })).toBe(true);
+    expect(valid("smelt", { action: "fuel", need: true, types: ["blast_furnace"] })).toBe(true);
+    expect(valid("smelt", { action: "fuel", each: 65 })).toBe(false);
+    expect(valid("anvil", { action: "plan", item: "diamond_sword", enchantments: ["mending"], rename: "Excalibur" })).toBe(true);
     expect(valid("smelt", { action: "collect", to: "chest" })).toBe(false);
     expect(valid("brew", { action: "start", potion: "night_vision", form: "splash_potion", bottles: 3 })).toBe(true);
     expect(valid("brew", { action: "start", bottles: 4 })).toBe(false);
@@ -189,8 +193,8 @@ describe("task prompts", () => {
 describe("task runs", () => {
   test("a wake that ends with wait and no words is done, and its thread keeps the note for the next wake", async () => {
     const { model, prompts, offered } = scripted([
+      // wait ends the wake right away: no step after it, not even a note.
       [toolCall("say", { text: "Сортировать или группировать?" }, "c1"), toolCall("wait", {}, "c2"), finish("tool-calls")],
-      [finish()],
       [...text("Grouping 4 chests; waiting for the picking mode."), finish()],
     ]);
     const deps = testDeps(model);
@@ -203,7 +207,8 @@ describe("task runs", () => {
     expect(JSON.stringify(prompts[0])).toContain("Automation agent: Сортировка сундуков");
 
     await readSse(await chat(url, { mode: "task", task, message: "[button] group", tools }), answerAll(url));
-    const second = JSON.stringify(prompts[2]);
+    expect(prompts).toHaveLength(2);
+    const second = JSON.stringify(prompts[1]);
     expect(second).toContain("Sort my chests. Russian.");
     expect(second).toContain("(waiting)");
     expect(second).toContain("[button] group");
@@ -211,6 +216,25 @@ describe("task runs", () => {
     expect(thread.messages.at(-1)!.content).toBe("Grouping 4 chests; waiting for the picking mode.");
     // The player's own chat stays untouched.
     expect((await deps.history.load("player-1")).messages).toEqual([]);
+  });
+
+  test("the chat hears how a task finished with the player's next question, once", async () => {
+    const { model, prompts } = scripted([
+      [toolCall("finish", { summary: "Не скрафтил: рядом нет верстака." }, "c1"), finish("tool-calls")],
+      [...text("Запустил заново."), finish()],
+      [...text("Пожалуйста."), finish()],
+    ]);
+    const deps = testDeps(model);
+    const url = start(deps);
+    await readSse(await chat(url, { mode: "task", task, message: "Craft 2 anvils. Russian.", tools: ["finish", "craft"] }), answerAll(url));
+    await readSse(await chat(url, { message: "сделай мне две наковальни", tools: ["start_task"] }));
+    const asked = JSON.stringify(prompts[1]);
+    expect(asked).toContain("[Automation «Сортировка сундуков» (k3f9) finished");
+    expect(asked).toContain("Не скрафтил: рядом нет верстака.]");
+    expect(asked).toContain("сделай мне две наковальни");
+    // It stays in the session with that question, and isn't handed out again.
+    await readSse(await chat(url, { message: "спасибо", tools: ["start_task"] }));
+    expect(JSON.stringify(prompts[2]).match(/«Сортировка сундуков» \(k3f9\) finished/g)).toHaveLength(1);
   });
 
   test("a wake gets more steps than a question", async () => {

@@ -23,6 +23,10 @@ export interface HistoryStore {
   /** Once the session outgrows foldAt tokens (CHAT_FOLD_TOKENS by default) or MAX_EXCHANGES, folds all but about CHAT_KEEP_TOKENS of it into the summary. True when it folded. */
   compact(userId: string, summarize: Summarize, foldAt?: number): Promise<boolean>;
   clear(userId: string): Promise<void>;
+  /** Keeps how one of the player's automations ended, until their next question carries it to the chat. */
+  noteOutcome(userId: string, outcome: string): Promise<void>;
+  /** The outcomes kept since the player's last question, oldest first; each is handed out once. */
+  takeOutcomes(userId: string): Promise<string[]>;
 }
 
 /**
@@ -70,6 +74,9 @@ export const estimateTokens = (messages: HistoryMessage[]) => Math.ceil(JSON.str
 
 const key = (userId: string) => `chat_history:${userId}`;
 const summaryKey = (userId: string) => `chat_summary:${userId}`;
+const outcomesKey = (userId: string) => `task_outcomes:${userId}`;
+/** A player who starts task after task and never asks keeps only the latest outcomes. */
+const MAX_OUTCOMES = 10;
 
 const isMessage = (value: unknown): value is HistoryMessage => {
   const message = value as { role?: unknown; content?: unknown };
@@ -149,13 +156,32 @@ export const redisHistory: HistoryStore = {
     return true;
   },
   async clear(userId) {
-    await redis.del(key(userId), summaryKey(userId));
+    await redis.del(key(userId), summaryKey(userId), outcomesKey(userId));
+  },
+  async noteOutcome(userId, outcome) {
+    try {
+      await redis.send("RPUSH", [outcomesKey(userId), outcome]);
+      await redis.send("LTRIM", [outcomesKey(userId), String(-MAX_OUTCOMES), "-1"]);
+      await redis.expire(outcomesKey(userId), sessionTtl());
+    } catch (error) {
+      logger.warn(`Couldn't keep a task outcome for ${userId}: ${String(error)}`);
+    }
+  },
+  async takeOutcomes(userId) {
+    try {
+      // One LPOP takes them all at once, so two questions at the same time can't both get them.
+      return ((await redis.send("LPOP", [outcomesKey(userId), String(MAX_OUTCOMES)])) as string[] | null) ?? [];
+    } catch (error) {
+      logger.warn(`Task outcomes unavailable for ${userId}: ${String(error)}`);
+      return [];
+    }
   },
 };
 
 /** For tests and local runs without Redis; same windows, no expiry. */
 export const memoryHistory = (): HistoryStore => {
   const store = new Map<string, { summary?: string; exchanges: HistoryMessage[][] }>();
+  const outcomes = new Map<string, string[]>();
   const of = (userId: string) => store.get(userId) ?? { exchanges: [] };
   return {
     async load(userId) {
@@ -180,6 +206,15 @@ export const memoryHistory = (): HistoryStore => {
     },
     async clear(userId) {
       store.delete(userId);
+      outcomes.delete(userId);
+    },
+    async noteOutcome(userId, outcome) {
+      outcomes.set(userId, [...(outcomes.get(userId) ?? []), outcome].slice(-MAX_OUTCOMES));
+    },
+    async takeOutcomes(userId) {
+      const taken = outcomes.get(userId) ?? [];
+      outcomes.delete(userId);
+      return taken;
     },
   };
 };

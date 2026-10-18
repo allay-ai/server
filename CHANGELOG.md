@@ -2,6 +2,17 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.8.0
+
+For Allay 5.10, which adds the fuel action, the anvil, and new crafting stations; older plugins keep working.
+
+- ⚒️ **`anvil`** for the crafting agent: books and items of a kind onto an item in the cheapest order, from the inventory and chests near, and a new name, for the player's levels after their yes. The chat hands “put mending on my sword” or “rename my pickaxe” to a crafting agent.
+- 🛠️ **`craft` knows its stations:** 2×2 by hand, 3×3 at a table, a stonecutter when it's near, and netherite gear on a smithing table, enchantments kept.
+
+- 📬 **The chat knows how its tasks ended.** When an automation agent finishes, the chat reads its summary in front of the player's next message (“[Automation «Крафт наковален» (umu8) finished …: no crafting table near]”), and its instructions say a task missing from the running list has ended. Before, the chat saw only “the agent took it” in its history, so “make me two anvils” again got “I already started that”.
+- ⏹️ **A wake ends at `wait` or `finish`.** The agent kept calling `wait` a dozen times in one wake, each a paid step; now the wake stops right there.
+- 🪨 **`smelt` action `fuel`** puts fuel alone into the furnaces: `count` spread evenly, `each` per furnace, `up_to` a level in every slot, or `need` for just what's cooking, into the kinds in `types`. The agent's instructions map the player's words to them and ask when no amount was said.
+
 ## 5.7.1
 
 - 🛠️ **The crafting agent knows 2×2 recipes need no crafting table.** `craft` and the agent's instructions say so, to match Allay 5.9.1, which crafts planks, sticks, and a crafting table without one.

@@ -106,13 +106,29 @@ export const classify = (error: unknown, signal?: AbortSignal, provider?: ByokPr
   return new ApiFailure(apierror(API_ERRORS.AI_REQUEST_FAILED, text));
 };
 
-/** The question as the model reads it: Minecraft questions start with the player's real date and time. */
-const question = (context: RunContext): string => {
+/**
+ * The question as the model reads it: Minecraft questions start with the player's real date and time, and a private
+ * one with how the player's automations ended since the last question, so the chat never thinks a finished task runs.
+ */
+const question = (context: RunContext, outcomes: string[] = []): string => {
   if (context.platform !== "minecraft" || context.mode !== "ask") return context.message;
   // Several players share a public thread, so each question there carries the asker's name.
   const name = context.visibility === "public" && context.player ? `[${context.player.name}] ` : "";
-  return `${name}${localStamp(context.timezone)} ${context.message}`;
+  return [...outcomes, `${name}${localStamp(context.timezone)} ${context.message}`].join("\n");
 };
+
+/** Outcomes go only to the player's own chat: that's where tasks start, and a public thread mustn't hear them. */
+const hearsOutcomes = (context: RunContext) => context.platform === "minecraft" && context.mode === "ask" && context.visibility !== "public";
+
+/** How a task ended, as its chat reads it before the next question. */
+const outcomeOf = (context: RunContext, summary: string) =>
+  `[Automation «${context.task!.name}» (${context.task!.id}) finished ${localStamp(context.timezone)}: ${summary.trim().slice(0, 500)}]`;
+
+type Steps = { steps: Array<{ toolCalls?: Array<{ toolName?: string; payload?: { toolName?: string } }> }> };
+
+/** Stop conditions as Mastra calls them; giving any replaces its maxSteps, so the step limit comes along. */
+const stepsReach = (max: number) => ({ steps }: Steps) => steps.length >= max;
+const endsWake = ({ steps }: Steps) => (steps.at(-1)?.toolCalls ?? []).some((call) => ["wait", "finish"].includes(call.toolName ?? call.payload?.toolName ?? ""));
 
 const thread = (context: RunContext) => threadOf(context.userId, context.visibility, context.server?.id, context.task?.id);
 
@@ -182,6 +198,9 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
   let modelId = context.model ?? "unknown";
   let steps = 0;
   const called = new Map<string, { name: string; ok: boolean }>();
+  // Taken before the run and put back if it fails, so a failed question doesn't lose them.
+  let outcomes: string[] = [];
+  const finishing = new Map<string, string>();
   const sofar: Usage = { input_tokens: 0, output_tokens: 0, reasoning_tokens: 0, cost: 0 };
   const spend = (usd: number) => {
     if (usd <= 0) return;
@@ -203,7 +222,8 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     const instructions = systemPrompt({ ...context, tools: offered }, { memories, summary: session.summary });
     const agent = new Agent({ id: "allay", name: "Allay", instructions, model });
     if (deps.mastra) agent.__registerMastra(deps.mastra);
-    const asked = question(context);
+    if (hearsOutcomes(context)) outcomes = await deps.history.takeOutcomes(context.userId);
+    const asked = question(context, outcomes);
     const messages: ModelMessage[] = [...session.messages, { role: "user", content: asked }];
 
     emit({ event: "start", data: { run_id: runId, model: model.modelId } });
@@ -213,6 +233,8 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       abortSignal: signal,
       // An automation agent's wake reads, plans, and acts in one go, so it gets more steps than a question.
       maxSteps: context.mode === "task" ? settings.get("MAX_TASK_STEPS") : settings.get("MAX_AGENT_STEPS"),
+      // wait and finish end a wake. Left to itself the model kept calling wait, a paid step each, a dozen times a wake.
+      ...(context.mode === "task" ? { stopWhen: [stepsReach(settings.get("MAX_TASK_STEPS")), endsWake] } : {}),
       modelSettings: { maxRetries: 2 },
       toolsets: {
         game: gameTools(offered, runId, deps.bridge, { offered: context.tools, readOnly: context.mode === "askx" }),
@@ -252,6 +274,10 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
         case "tool-call":
           exchange.call(payload);
           called.set(String(payload.toolCallId), { name: String(payload.toolName), ok: true });
+          if (context.mode === "task" && context.task && payload.toolName === "finish") {
+            const summary = (payload.args as { summary?: unknown } | undefined)?.summary;
+            if (typeof summary === "string" && summary.trim()) finishing.set(String(payload.toolCallId), summary);
+          }
           break;
         case "tool-result": {
           exchange.result(payload);
@@ -259,6 +285,9 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
           const result = payload.result as { error?: unknown } | null | undefined;
           const call = called.get(String(payload.toolCallId));
           if (call && result && typeof result === "object" && "error" in result) call.ok = false;
+          // The plugin ended the task: its chat hears how with the player's next question.
+          const summary = finishing.get(String(payload.toolCallId));
+          if (summary && call?.ok) await deps.history.noteOutcome(context.userId, outcomeOf(context, summary));
           break;
         }
         case "tool-error": {
@@ -338,6 +367,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     void compact(context, deps, options.spend, undefined, options);
     return result;
   } catch (error) {
+    for (const outcome of outcomes) await deps.history.noteOutcome(context.userId, outcome);
     const failure = classify(error, signal, context.provider);
     logger.warn(`Run ${runId} failed: ${failure.code} ${failure.message}`);
     report(deps, context, options, {
