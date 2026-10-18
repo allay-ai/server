@@ -1,5 +1,6 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
+import { forModel } from "./schema";
 import { MAX_MEMORIES, MAX_MEMORY_CHARS, type MemoryStore } from "../../infrastructure/memory/memory";
 import { logger } from "../../shared/logging/logger";
 import { type Emit, type Summary, summaryFields } from "../chat/chat.events";
@@ -14,8 +15,9 @@ export const memoryTools = (memories: MemoryStore, options: { userId: string; em
   return {
     remember: createTool({
       id: "remember",
-      description: `Saves a lasting fact about the asking player for future conversations: their goals, what they have done, how they like answers. Never for places: anything about where something is or where the player stands goes in the notebook (add_note), which records the coordinates. One short fact per call, up to ${MAX_MEMORY_CHARS} characters, at most ${MAX_MEMORIES} in total. Never secrets, passwords, or other players' data.`,
-      inputSchema: z.object({ text: z.string().min(3).max(MAX_MEMORY_CHARS) }),
+      description: `Saves a lasting fact about the asking player for future conversations: their goals, what they have done, how they like answers. Never for places: anything about where something is or where the player stands goes in the notebook (notes add), which records the coordinates. One short fact per call, up to ${MAX_MEMORY_CHARS} characters, at most ${MAX_MEMORIES} in total. Never secrets, passwords, or other players' data.`,
+      inputSchema: forModel(z.object({ text: z.string().min(3).max(MAX_MEMORY_CHARS) })),
+      strict: false,
       execute: async ({ text }) => {
         const report = status("remember", { text });
         report("started");
@@ -37,7 +39,8 @@ export const memoryTools = (memories: MemoryStore, options: { userId: string; em
     forget: createTool({
       id: "forget",
       description: "Deletes one remembered fact about the asking player by its id, when they ask or when it's outdated.",
-      inputSchema: z.object({ id: z.string().min(1).max(16) }),
+      inputSchema: forModel(z.object({ id: z.string().min(1).max(16) })),
+      strict: false,
       execute: async ({ id }) => {
         const report = status("forget", { id });
         report("started");

@@ -4,7 +4,7 @@ import type { Billing } from "../features/billing/billing";
 import type { ToolBridge } from "../features/chat/chat.bridge";
 import type { Emit } from "../features/chat/chat.events";
 import { exactCalculationsTool } from "../features/tools/exact-calculations.tool";
-import { gameTools, offeredTools, pluginName } from "../features/tools/game.tools";
+import { gameTools, offeredTools } from "../features/tools/game.tools";
 import { memoryTools } from "../features/tools/memory.tools";
 import { searchWebTool } from "../features/tools/search-web.tool";
 import { type HistoryStore, threadOf } from "../infrastructure/history/history";
@@ -147,7 +147,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       maxSteps: context.mode === "task" ? MAX_TASK_STEPS : MAX_STEPS,
       modelSettings: { maxRetries: 2 },
       toolsets: {
-        game: gameTools(tools, runId, deps.bridge, (name) => pluginName(name, context.tools)),
+        game: gameTools(tools, runId, deps.bridge, { offered: context.tools, readOnly: context.mode === "askx" }),
         // A server that brought its own key without a search model gets no web search, and an automation agent never does.
         ...(context.mode === "task" || (context.provider && !context.provider.searchModel)
           ? {}

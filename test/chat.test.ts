@@ -68,7 +68,7 @@ describe("POST /api/v2/chat", () => {
 
   test("streams reasoning, a client tool round trip, the answer, usage, and done", async () => {
     const { model, prompts } = scripted([
-      [...reasoning("Let me look at the inventory"), toolCall("get_inventory", {}), finish("tool-calls")],
+      [...reasoning("Let me look at the inventory"), toolCall("inventory", {}), finish("tool-calls")],
       [...text("You have ", "&ea diamond sword&r."), finish()],
     ]);
     const deps = testDeps(model);
@@ -97,7 +97,7 @@ describe("POST /api/v2/chat", () => {
       attributes: [{ attribute: "attack_damage", amount: 6, operation: "add_value", slot: "mainhand" }],
       tooltip: { attack_damage: 7, attack_speed: 1.6 },
     };
-    const { model, prompts } = scripted([
+    const { model, prompts, offered } = scripted([
       [toolCall("inspect_item", { from: "container", slot: 0 }), finish("tool-calls")],
       [...text("7 damage."), finish()],
     ]);
@@ -107,19 +107,19 @@ describe("POST /api/v2/chat", () => {
       answerTools(base, { inspect_item: sword }),
     );
     expect(events.find((e) => e.event === "tool_call")!.data).toMatchObject({ name: "inspect_item", args: { from: "container", slot: 0 } });
-    expect(JSON.stringify(prompts[0])).toContain("Game tools you can call: inspect_item, look_at");
+    expect(offered[0]).toEqual(expect.arrayContaining(["look_at", "inspect_item"]));
     expect(JSON.stringify(prompts[1])).toContain("attack_speed");
     expect(events.at(-1)!.data.answer).toBe("7 damage.");
   });
 
   test("the system prompt describes the player and the offered tools", async () => {
-    const { model, prompts } = scripted([[...text("hi"), finish()]]);
+    const { model, prompts, offered } = scripted([[...text("hi"), finish()]]);
     const base = start(testDeps(model));
     await readSse(await chat(base, { message: "hi", locale: "en_us", server: { software: "Paper", version: "26.3" }, tools: ["get_world"] }));
+    expect(offered[0]).toContain("get_world");
     const system = JSON.stringify(prompts[0]);
     expect(system).toContain("Player: Steve");
     expect(system).toContain("Paper 26.3");
-    expect(system).toContain("Game tools you can call: get_world");
     expect(system).toContain("Game locale (a fallback for when the message has no clear language): en_us");
   });
 
@@ -127,14 +127,13 @@ describe("POST /api/v2/chat", () => {
     const tools = ["get_world", "give_item"];
     const asOp = scripted([[...text("ok"), finish()]]);
     await readSse(await chat(start(testDeps(asOp.model)), { message: "hi", player: { name: "Admin", op: true }, tools }));
-    expect(JSON.stringify(asOp.prompts[0])).toContain("Game tools you can call: get_world, give_item");
+    expect(asOp.offered[0]).toEqual(expect.arrayContaining(["get_world", "give_item"]));
     server?.stop(true);
 
     const asPlayer = scripted([[toolCall("give_item", { item: "diamond_sword" }), finish("tool-calls")], [...text("Admins only."), finish()]]);
     const events = await readSse(await chat(start(testDeps(asPlayer.model)), { message: "give me a sword", tools }));
-    const system = JSON.stringify(asPlayer.prompts[0]);
-    expect(system).toContain("Game tools you can call: get_world");
-    expect(system).not.toContain("get_world, give_item");
+    expect(asPlayer.offered[0]).toContain("get_world");
+    expect(asPlayer.offered[0]).not.toContain("give_item");
     // A forced call to a tool this player doesn't have never reaches the plugin.
     expect(events.some((e) => e.event === "tool_call")).toBe(false);
   });

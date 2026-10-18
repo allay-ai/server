@@ -1,5 +1,6 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
+import { forModel } from "./schema";
 import { logger } from "../../shared/logging/logger";
 import { type Emit, type Summary, summaryFields } from "../chat/chat.events";
 
@@ -72,9 +73,12 @@ export const exactCalculationsTool = (options: { emit: Emit }) =>
     id: "exact_calculations",
     description:
       "Evaluates math expressions exactly (math.js syntax, 64 significant digits). Use it for any arithmetic that isn't trivial: stacks and totals (ceil(1000 / 64)), Nether coordinates (-1024 / 8), XP, farm rates, durability, percentages, unit conversions (3 hours to seconds). Up to 10 expressions per call; each returns a result or an error.",
-    inputSchema: z.object({
-      expressions: z.array(z.string().min(1).max(MAX_EXPRESSION_CHARS)).min(1).max(MAX_EXPRESSIONS),
-    }),
+    inputSchema: forModel(
+      z.object({
+        expressions: z.array(z.string().min(1).max(MAX_EXPRESSION_CHARS)).min(1).max(MAX_EXPRESSIONS),
+      }),
+    ),
+    strict: false,
     execute: async ({ expressions }) => {
       const callId = crypto.randomUUID();
       const status = (state: "started" | "finished" | "failed", summary?: Summary) =>

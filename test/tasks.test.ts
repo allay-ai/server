@@ -89,22 +89,22 @@ describe("task tools", () => {
 
   test("the chat starts and steers tasks; the automation tools stay with the agents", () => {
     expect(offeredTools(every, true, "ask")).toEqual([
-      "get_inventory", "look_at", "show_marks", "add_buttons", "write_book", "get_nearby_players", "give_item", "start_task", "message_task", "cancel_task",
+      "inventory", "look_at", "get_nearby_players", "show_marks", "add_buttons", "write_book", "start_task", "message_task", "cancel_task", "give_item",
     ]);
   });
 
   test("a question everyone sees can't start or steer a task", () => {
-    expect(offeredTools(every, false, "ask", "public")).toEqual(["get_inventory", "look_at", "show_marks", "add_buttons"]);
+    expect(offeredTools(every, false, "ask", "public")).toEqual(["inventory", "look_at", "show_marks", "add_buttons"]);
   });
 
   test("an agent gets the automation tools, and start_task only above the depth limit", () => {
     const work = ["say", "wait", "finish", "pick_blocks", "chests", "smelt", "brew", "craft"] as const;
-    expect(offeredTools(every, true, "task", "private", 1)).toEqual(["get_inventory", "look_at", "show_marks", "start_task", ...work]);
-    expect(offeredTools(every, true, "task", "private", 2)).toEqual(["get_inventory", "look_at", "show_marks", ...work]);
+    expect(offeredTools(every, true, "task", "private", 1)).toEqual(["inventory", "look_at", "show_marks", "start_task", ...work]);
+    expect(offeredTools(every, true, "task", "private", 2)).toEqual(["inventory", "look_at", "show_marks", ...work]);
   });
 
   test("askx gets none of them", () => {
-    expect(offeredTools(every, false, "askx")).toEqual(["get_inventory", "look_at", "get_nearby_players"]);
+    expect(offeredTools(every, false, "askx")).toEqual(["inventory", "look_at", "get_nearby_players"]);
   });
 
   const tools = gameTools([...AUTOMATION_TOOLS], "run", {} as ToolBridge);

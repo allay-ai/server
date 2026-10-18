@@ -45,11 +45,8 @@ export const systemPrompt = (context: RunContext, recall: Recall = {}): string =
   } else if (context.platform === "minecraft") {
     lines.push("- Server: version unknown; assume the latest Java Edition release");
   }
-  lines.push(
-    context.tools.length > 0
-      ? `- Game tools you can call: ${context.tools.join(", ")}`
-      : "- No game tools in this conversation: answer from knowledge and search_web",
-  );
+  // The model sees the tools themselves; listing their names again would only cost tokens.
+  if (context.tools.length === 0) lines.push("- No game tools in this conversation: answer from knowledge and search_web");
   const sections = [base(context).trim(), "# This conversation", lines.join("\n")];
   // Both come from earlier model output and player text, so they're framed as data.
   if (recall.summary) {
