@@ -151,11 +151,25 @@ describe("task tools", () => {
     expect(valid("smelt", { action: "collect", to: "chest" })).toBe(false);
     expect(valid("brew", { action: "start", potion: "night_vision", form: "splash_potion", bottles: 3 })).toBe(true);
     expect(valid("brew", { action: "start", potion: "long_night_vision", bottles: 4, fresh: false })).toBe(true);
-    expect(valid("brew", { action: "start", bottles: 25 })).toBe(false);
+    expect(valid("brew", { action: "start", bottles: 65 })).toBe(false);
     expect(valid("chests", { action: "plan", mode: "move", categories: ["wood"], to: [{ x: 1, y: 2, z: 3 }], from: ["inventory", "nearby"] })).toBe(true);
     expect(valid("chests", { action: "plan", mode: "move", from: ["ender_chest"] })).toBe(false);
     expect(valid("craft", { item: "iron_pickaxe", count: 2, dry_run: true })).toBe(true);
     expect(valid("craft", { item: "iron_pickaxe", count: 65 })).toBe(false);
+  });
+
+  test("take, stash, outputs to remember, adding to a smelt, and several potions in rounds", () => {
+    expect(valid("chests", { action: "plan", mode: "take", items: ["torch"], up_to: 64 })).toBe(true);
+    expect(valid("chests", { action: "plan", mode: "take", items: ["iron"], count: 64, from: ["nearby"], keep: ["enchanted"] })).toBe(true);
+    expect(valid("chests", { action: "plan", mode: "stash", hotbar: true, assign: [{ x: 1, y: 64, z: 2, category: "ores" }] })).toBe(true);
+    expect(valid("chests", { action: "plan", mode: "move", items: ["tools"], count: 32, to: [{ x: 1, y: 2, z: 3 }], from: ["inventory"] })).toBe(true);
+    expect(valid("chests", { action: "plan", mode: "loot" })).toBe(false);
+    expect(valid("smelt", { action: "start", item: "raw_iron", to: "auto", remember: true })).toBe(true);
+    expect(valid("smelt", { action: "start", item: "raw_iron", fuel: "lava_bucket" })).toBe(true);
+    expect(valid("smelt", { action: "add", items: [{ item: "raw_gold", count: 20 }] })).toBe(true);
+    expect(valid("brew", { action: "start", potions: [{ potion: "fire_resistance", bottles: 6 }, { potion: "night_vision", form: "splash_potion" }], to: "inventory" })).toBe(true);
+    expect(valid("brew", { action: "start", potions: [] })).toBe(false);
+    expect(valid("brew", { action: "start", potion: "healing", bottles: 64, to: [{ x: 1, y: 2, z: 3 }] })).toBe(true);
   });
 });
 

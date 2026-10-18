@@ -259,8 +259,9 @@ const definitions = {
   },
   sort_inventory: {
     description:
-      "Merges stacks and sorts the asking player's main inventory at once. The hotbar and offhand stay unless the player asks to sort them too («и хотбар тоже»); pins work without that and leave the rest of the hotbar alone. pins put items in slots first, the best candidate winning (material, enchantments, durability; food by what it fills; the fullest stack of equals): “sword first, golden carrot last” is [{slot: 1, item: \"sword\"}, {slot: 9, item: \"golden_carrot\"}]; “three bundles at the start of the inventory” is inventory:1–3 with item bundle (plugin 5.8+). With hotbar and pins, the hotbar holds just the pins: every other item goes into the main inventory, and a hotbar slot fills only when that's full, so slots between pins stay empty. layout shapes the main inventory beyond a plain sort by id: an order, zones (rows, columns, start, end), by category or count, rows per category, keep, or merge_only; pins stay for single best items in fixed slots. With hotbar and no pins, the hotbar keeps the weapons, tools, food, torches, buckets, and pearls it had, weapons first. The result's hotbar (slots 1–9), offhand, and rows (the main inventory's three rows) say what's really there: tell the player from them. Armor never moves. Only when asked.",
+      "Merges stacks and sorts the asking player's main inventory at once. The hotbar and offhand stay unless the player asks to sort them too («и хотбар тоже»); pins work without that and leave the rest of the hotbar alone. pins put items in slots first, the best candidate winning (material, enchantments, durability; food by what it fills; the fullest stack of equals): “sword first, golden carrot last” is [{slot: 1, item: \"sword\"}, {slot: 9, item: \"golden_carrot\"}]; “three bundles at the start of the inventory” is inventory:1–3 with item bundle (plugin 5.8+). With hotbar and pins, the hotbar holds just the pins: every other item goes into the main inventory, and a hotbar slot fills only when that's full, so slots between pins stay empty. layout shapes the main inventory beyond a plain sort by id: an order, zones (rows, columns, start, end), by category or count, rows per category, keep, or merge_only; pins stay for single best items in fixed slots. With hotbar and no pins, the hotbar keeps the weapons, tools, food, torches, buckets, and pearls it had, weapons first. The result's hotbar (slots 1–9), offhand, and rows (the main inventory's three rows) say what's really there: tell the player from them. Armor never moves. Only when asked. An undo button goes under your answer by itself; undo: true puts back the last sort, or the last change an automation agent made to chests, when the player asks («верни как было»), within a few minutes and only if nothing changed since (plugin 5.11+).",
     input: z.object({
+      undo: z.boolean().optional().describe("Put back the last sort instead of sorting; nothing else is needed"),
       hotbar: z.boolean().optional().describe("Also sort the hotbar slots no pin takes, moving what isn't held in hand into the main inventory"),
       layout: layout.optional(),
       offhand: z.boolean().optional(),
@@ -476,9 +477,12 @@ const itemId = z.string().min(1).max(64);
 const taskRef = z.string().regex(/^[a-z0-9]{1,16}$/).describe("The task's id, from start_task or the running tasks in “This conversation”");
 export const CATEGORIES = ["building", "wood", "stone", "ores", "redstone", "food", "farming", "mob_drops", "tools", "potions", "other"] as const;
 const output = z
-  .union([z.literal("inventory"), z.array(spot).min(1).max(8)])
+  .union([z.literal("inventory"), z.literal("auto"), z.array(spot).min(1).max(8)])
   .optional()
-  .describe("Where the output goes: inventory, or chests by coordinates from a tool; ask the player when they didn't say");
+  .describe(
+    "Where the output goes: inventory; auto, the chests around that already hold the same, the rest to the inventory (plugin 5.11+); or chests by coordinates from a tool. Leave it out when the player chose before (player_output in scan); otherwise ask",
+  );
+const remember = z.boolean().optional().describe("Keep this output as the player's choice for later tasks of this kind, when they say so («всегда клади в инвентарь»)");
 
 /**
  * Automation agents (since 5.5): the chat starts and steers them, and each wake of one gets the rest.
@@ -535,10 +539,10 @@ const automationDefinitions = {
   },
   chests: {
     description:
-      "Works with chests the player may open, by coordinates from pick_blocks or an earlier result. action read: each chest's contents, the text of the signs on it, the items in frames on it, and what's wrong with it (a hopper, someone has it open, no access). plan: what would go where, as a preview; nothing moves. mode sort sorts each chest on its own (layout shapes it: «в каждом сундуке руды в верхний ряд»); group pools the chests and lays them out by category, so one resource doesn't end up in several chests (assign pins chests to a category or items, from signs, frames, or what the player said; the rest by the plugin's categories); move takes items or categories to the chests in to, from the chests given and from what from adds: inventory (the player's main inventory, hotbar included) and nearby (every chest around the player they may open, no picking needed). apply: does the plan, but only if nothing changed since; returns each chest with its coordinates, category, and main contents. undo: puts everything back as it was before the last apply, within 5 minutes and if nobody touched it.",
+      "Works with chests the player may open, by coordinates from pick_blocks or an earlier result. action read: each chest's contents, the text of the signs on it, the items in frames on it, and what's wrong with it (a hopper, someone has it open, no access). plan: what would go where, as a preview; nothing moves. mode sort sorts each chest on its own (layout shapes it: «в каждом сундуке руды в верхний ряд»); group pools the chests and lays them out by category, so one resource doesn't end up in several chests (assign pins chests to a category or items, from signs, frames, or what the player said; the rest by the plugin's categories); move takes items or categories to the chests in to, from the chests given and from what from adds: inventory (the player's inventory, hotbar included; the item in hand and the offhand stay) and nearby (every chest around the player they may open, no picking needed); take brings items out of the chests given, or every chest around, into the player's inventory: count in all, or up_to to top up what they carry («пополни факелы до стака» is up_to 64); stash puts the player's inventory away the way a player would, each item into the chests around (or those given) that already hold it, then into chests a sign or frame names for it (assign), the hotbar staying unless hotbar is true; what nothing is for comes back in no_chest_for. items in move and take are selectors like a layout's: ids, groups, materials (iron is raw iron, ingots, nuggets, blocks, ore), categories, enchanted, named, damaged; keep leaves what it names alone. Chests a hopper feeds (a sorter's input) may only take things: move, stash, and outputs may fill them. Copper chests, barrels, and placed shulker boxes count as chests. apply: does the plan, but only if nothing changed since; returns each chest with its coordinates, category, and main contents. undo: puts back the last apply (the five last, one per call), within 5 minutes and if nobody touched it.",
     input: z.object({
       action: z.enum(["read", "plan", "apply", "undo"]),
-      mode: z.enum(["sort", "group", "move"]).optional(),
+      mode: z.enum(["sort", "group", "move", "take", "stash"]).optional(),
       chests: z.array(spot).max(64).optional(),
       assign: z
         .array(
@@ -549,46 +553,62 @@ const automationDefinitions = {
         )
         .max(64)
         .optional(),
-      items: z.array(itemId).max(64).optional().describe("move: item ids to take"),
-      categories: z.array(z.enum(CATEGORIES)).max(11).optional().describe("move: categories to take"),
+      items: selectors.optional().describe("move and take: what to move, as selectors (ids, groups, materials, categories, enchanted, named, damaged); stash: only these"),
+      categories: z.array(z.enum(CATEGORIES)).max(11).optional().describe("move and take: categories to move"),
+      count: z.number().int().min(1).max(2304).optional().describe("move and take: at most this many in all («отнеси 32 железа»)"),
+      up_to: z.number().int().min(1).max(2304).optional().describe("take: how many the player should carry in the end, counting what they have («пополни до стака» is 64)"),
+      keep: selectors.optional().describe("move, take, and stash: what stays where it is («кроме зачарованного»)"),
+      hotbar: z.boolean().optional().describe("stash: put the hotbar away too, all but the item in hand"),
       to: z.array(spot).max(64).optional().describe("move: the chests to put them in"),
-      from: z.array(z.enum(["inventory", "nearby"])).max(2).optional().describe("move: take from the player's inventory, every chest around, or both"),
+      from: z
+        .array(z.enum(["inventory", "nearby"]))
+        .max(2)
+        .optional()
+        .describe("move: take from the player's inventory, every chest around, or both; take and stash: nearby adds every chest around to the ones given"),
       layout: layout.optional().describe("sort and group: how each chest is laid out inside; in group, order also decides which categories get the nearest chests"),
     }),
   },
   smelt: {
     description:
-      "Smelting in furnaces, blast furnaces, and smokers near the player, each by what it can cook. action scan: the free and busy ones around, what the player has to smelt (to_smelt_at_hand) and to burn; no need to search the inventory yourself. start: smelts count of item, or several items at once with items (“the iron and the gold”: one call, never one after the other), over furnaces (or the free ones around); each furnace takes one item, and the split weighs speed (a blast furnace cooks ores twice as fast) so all finish about together. Items the player has none of are skipped and listed in not_at_hand. Exactly the fuel it needs; coal blocks are split into coal, and leftovers go back where they came from. fuel: only puts fuel into the fuel slots, nothing to cook (“put the coal in the furnaces”); how much with exactly one of count (in all, spread evenly), each (added to every furnace), up_to (the level every fuel slot should reach, 64 is full), or need (just what each furnace needs for what it's cooking now); into furnaces, or every usable one around of types; the fuel asked, else what the furnaces already burn, else the cheapest at hand; coal blocks split into coal when coal runs short. status: how far it is. collect: takes the output to to. You wake when the smelting ends.",
+      "Smelting in furnaces, blast furnaces, and smokers near the player, each by what it can cook. action scan: the free and busy ones around, what the player has to smelt (to_smelt_at_hand) and to burn; no need to search the inventory yourself. start: smelts count of item, or several items at once with items (“the iron and the gold”: one call, never one after the other), over furnaces (or the free ones around); each furnace takes one item, and the split weighs speed (a blast furnace cooks ores twice as fast) so all finish about together. Items the player has none of are skipped and listed in not_at_hand. Exactly the fuel it needs; coal blocks are split into coal, and leftovers go back where they came from. fuel: only puts fuel into the fuel slots, nothing to cook (“put the coal in the furnaces”); how much with exactly one of count (in all, spread evenly), each (added to every furnace), up_to (the level every fuel slot should reach, 64 is full), or need (just what each furnace needs for what it's cooking now); into furnaces, or every usable one around of types; the fuel asked, else what the furnaces already burn, else the cheapest at hand; coal blocks split into coal when coal runs short. status: how far it is. collect: takes the output to to. With to on start (plugin 5.11+), full furnaces empty themselves there and everything goes there at the end, so no collect is needed; collect and the end pay the player the furnace's experience, as taking the output does. add: more of an item the running job cooks («докинь ещё 20 руды»), spread over its furnaces with the fuel it needs; another item needs a new task. Fuel besides coal: planks, sticks, and bamboo at hand when nothing better is there, logs or a bucket of lava (one to a furnace, cooks 100, the empty bucket comes back) when asked; nether wood doesn't burn. Furnaces burning another fuel are left out and listed in skipped. A furnace with output waiting takes only what makes the same. You wake when the smelting ends.",
     input: z.object({
-      action: z.enum(["scan", "start", "fuel", "status", "collect"]),
-      item: itemId.optional().describe("start: what to smelt, like raw_gold"),
+      action: z.enum(["scan", "start", "add", "fuel", "status", "collect"]),
+      item: itemId.optional().describe("start and add: what to smelt, like raw_gold"),
       count: z.number().int().min(1).max(4096).optional().describe("start: how many to smelt, left out for all the player has; fuel: how much fuel in all, spread evenly"),
       items: z
         .array(z.object({ item: itemId, count: z.number().int().min(1).max(4096).optional().describe("Leave it out for all the player has") }))
         .min(1)
         .max(8)
         .optional()
-        .describe("start: several items at once instead of item and count"),
+        .describe("start and add: several items at once instead of item and count"),
       furnaces: z.array(spot).max(16).optional(),
       each: z.number().int().min(1).max(64).optional().describe("fuel: added to every furnace («по 8 угля в каждую»)"),
       up_to: z.number().int().min(1).max(64).optional().describe("fuel: the level every fuel slot should reach («заполни до 32», full is 64)"),
       need: z.boolean().optional().describe("fuel: true for just what each furnace needs to finish what it's cooking now"),
       types: z.array(z.enum(["furnace", "blast_furnace", "smoker"])).min(1).max(3).optional().describe("fuel: only these kinds («только в плавильные печи»)"),
-      fuel: itemId.optional().describe("start: the fuel to use, like coal; leave it out to pick the cheapest at hand. fuel: what to put in, coal when left out"),
+      fuel: itemId.optional().describe("start: the fuel to use, like coal or lava_bucket; leave it out to pick the cheapest at hand. fuel: what to put in; left out, what the furnaces burn, else the cheapest at hand"),
       to: output,
+      remember,
     }),
   },
   brew: {
     description:
-      "Brewing in stands near the player. action scan: the stands that suit (the right base already in them, water bottles there) and the ingredients and blaze powder at hand. start: brews bottles of potion in form in all (default: every bottle of the player's own that is a step toward it, else 3), three to a stand in as few stands as it takes, since one reagent brews a whole stand. The player's own potions of a step go in before water bottles: long night vision from the night vision they carry, so “make my potions longer” upgrades those. fresh: true brews from water bottles only. It takes only what's needed, skips the steps already done, and a missing ingredient comes back as a list. status: how far it is. collect: takes the potions to to. You wake when a step ends.",
+      "Brewing in stands near the player. action scan: the stands that suit (the right base already in them, water bottles there), the ingredients, glass bottles, and blaze powder at hand, and whether water is near. start: brews bottles of potion in form in all (default: every bottle of the player's own that is a step toward it, else 3), three to a stand, since one reagent brews a whole stand; several potions at once go in potions, each in stands of its own (one start, never one after another). More than the stands hold brews in rounds on the same stands, up to 64 potions: each round's potions go to to (the inventory without it) before the next goes in. The player's own potions of a step go in before water bottles: long night vision from the night vision they carry, so “make my potions longer” upgrades those. fresh: true brews from water bottles only. Water bottles the player lacks are filled from their glass bottles at water or a cauldron near. It takes only what's needed, skips the steps already done, and a missing ingredient comes back as a list. With to on start everything goes there at the end, so no collect is needed. status: how far it is. collect: takes the potions to to. You wake when it's all done.",
     input: z.object({
       action: z.enum(["scan", "start", "status", "collect"]),
       potion: itemId.optional().describe("start: the potion's id, like night_vision or long_swiftness"),
-      form: z.enum(["potion", "splash_potion", "lingering_potion"]).optional(),
-      bottles: z.number().int().min(1).max(24).optional().describe("start: how many potions in all"),
+      form: potionForm.optional(),
+      bottles: z.number().int().min(1).max(64).optional().describe("start: how many potions in all"),
+      potions: z
+        .array(z.object({ potion: itemId, form: potionForm.optional(), bottles: z.number().int().min(1).max(64).optional() }))
+        .min(1)
+        .max(4)
+        .optional()
+        .describe("start: several potions at once instead of potion, form, and bottles («огнестойкость и ночное зрение»)"),
       fresh: z.boolean().optional(),
       stands: z.array(spot).max(8).optional(),
       to: output,
+      remember,
     }),
   },
   craft: {

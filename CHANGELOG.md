@@ -2,6 +2,15 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.9.0
+
+For Allay 5.11.0; older plugins ignore the new modes and fields.
+
+- 📥 **Chests take and stash.** The chests agent gets the modes `take` (out of the chests into the inventory, with `count` or `up_to`) and `stash` (the inventory into the chests where each item belongs), selectors in `items` (“all the iron”, “tools”), `count` for a move, `keep`, and `hotbar` for a stash. The chat knows the agent can do both.
+- ↩️ **Undo a sort.** `sort_inventory` takes `undo`; the chat uses it for “put it back”.
+- 🔥 **Smelting and brewing deliver by themselves.** `smelt` and `brew` take `to` on start, `auto` as an output, and `remember` to keep the player's choice; the agents check `player_output` before asking. `smelt` gets action `add` for more of the same while a job runs, and the agent knows about planks, sticks, bamboo, logs, and lava.
+- 🧪 **Several potions in rounds.** `brew` start takes `potions` and up to 64 bottles; the agent tells the player when they brew in rounds, and that missing water bottles get filled from glass bottles at water.
+
 ## 5.8.2
 
 For Allay 5.10.2; older plugins ignore `from` and move only between the chests given.
