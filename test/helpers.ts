@@ -101,20 +101,22 @@ export const testBilling = (options: { enabled?: boolean; net?: Net; now?: () =>
 export const testDeps = (
   chat: LanguageModelV4,
   options: { search?: LanguageModelV4; toolTimeoutMs?: number; billing?: Billing } = {},
-): AllayDeps & { searchCalls: number; lastProvider?: unknown } => {
+): AllayDeps & { searchCalls: number; lastProvider?: unknown; lastModel?: string } => {
   const deps = {
     searchCalls: 0,
     lastProvider: undefined as unknown,
+    lastModel: undefined as string | undefined,
     history: memoryHistory(),
     memories: memoryMemories(),
     bridge: new ToolBridge(options.toolTimeoutMs ?? 2_000),
     billing: options.billing ?? testBilling(),
-    models: (({ search, provider }) => {
+    models: (({ search, provider, model }) => {
       deps.lastProvider = provider;
       if (search) {
         deps.searchCalls++;
         return options.search ?? chat;
       }
+      deps.lastModel = model;
       return chat;
     }) as ModelFactory,
   };

@@ -217,6 +217,7 @@ describe("the subscription gate", () => {
     await h.pay("week", "charge-1");
     await readSse(await chat(h.base, { provider: { model: "gpt-ultra", base_url: "https://example.com" } }, h.auth));
     expect(h.deps.lastProvider).toBeUndefined();
+    expect(h.deps.lastModel).toBeUndefined();
     await Bun.sleep(20);
     const [grant] = await h.billing.licenses.grants(h.created.license_id);
     // Two model steps at $0.0005 and a search at $0.002.
@@ -359,6 +360,18 @@ describe("bring your own key", () => {
     const events = await readSse(await chat(base, { provider: { base_url: "http://localhost:11434/v1", model: "qwen3" } }, { "X-Provider-Key": "ollama-local-key" }));
     expect(events.at(-1)!.event).toBe("done");
     expect(deps.lastProvider).toMatchObject({ baseURL: "http://localhost:11434/v1" });
+    expect(deps.lastModel).toBeUndefined();
+  });
+
+  test("a self-hosted backend without a key runs the plugin's model on its own key", async () => {
+    const { model } = scripted([[...text("Hi."), finish()]]);
+    const deps = testDeps(model, { billing: testBilling({ enabled: false }) });
+    const base = start(deps);
+    await readSse(await chat(base, { provider: { model: "anthropic/claude-vip", base_url: "https://example.com" } }));
+    expect(deps.lastProvider).toBeUndefined();
+    expect(deps.lastModel).toBe("anthropic/claude-vip");
+    await readSse(await chat(base, {}));
+    expect(deps.lastModel).toBeUndefined();
   });
 });
 

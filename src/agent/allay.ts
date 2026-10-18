@@ -104,7 +104,7 @@ const record = (context: RunContext, deps: AllayDeps, answer: string, asked: str
 
 const compact = async (context: RunContext, deps: AllayDeps, spend?: (usd: number) => void) => {
   try {
-    const model = deps.models({ provider: context.provider, platform: context.platform });
+    const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
     if (await deps.history.compact(thread(context), summarizeWith(model, spend))) logger.info(`Folded the session of ${thread(context)}`);
   } catch (error) {
     logger.warn(`Couldn't fold the session of ${thread(context)}: ${redact(String(error), context.provider?.apiKey)}`);
@@ -125,7 +125,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     options.spend?.(usd);
   };
   try {
-    const model = deps.models({ provider: context.provider, platform: context.platform });
+    const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
     const tools = offeredTools(context.tools, context.player?.op === true, context.mode, context.visibility);
     const memories = await loadMemories(deps, context.userId);
     // askx turns one request into commands; earlier chat would only confuse it, as in v1.

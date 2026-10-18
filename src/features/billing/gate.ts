@@ -14,6 +14,8 @@ export interface ProviderBlock {
 /** Who pays for a run that may start: its provider (none means the backend's), where its costs go, and its slot to give back. */
 export interface Admission {
   provider?: ByokProvider;
+  /** The plugin's model on the backend's own key: honored only with billing off. */
+  model?: string;
   spend?: (usd: number) => void;
   release: () => void;
 }
@@ -67,7 +69,8 @@ export const admit = async (
     }
     return { ok: true, admission: { provider: byok, release } };
   }
-  if (!billing.enabled) return { ok: true, admission: { release: nothing } };
+  // A self-hosted backend serves its own servers, so their plugin may pick a model per player; a hosted one keeps its own.
+  if (!billing.enabled) return { ok: true, admission: { release: nothing, ...(block?.model?.trim() ? { model: block.model.trim() } : {}) } };
 
   const license = await verifyLicense(billing, headers.get("Authorization"));
   if (license instanceof ApiFailure) return { ok: false, error: license };
@@ -88,4 +91,8 @@ export const admit = async (
 
 /** Logs who pays without the key or the license secret. */
 export const payer = (admission: Admission) =>
-  admission.provider ? `own key at ${new URL(admission.provider.baseURL).host}` : admission.spend ? "subscription" : "backend key";
+  admission.provider
+    ? `own key at ${new URL(admission.provider.baseURL).host}`
+    : admission.spend
+      ? "subscription"
+      : `backend key${admission.model ? ` with ${admission.model}` : ""}`;

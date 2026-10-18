@@ -13,8 +13,11 @@ export interface ByokProvider {
   searchModel?: string;
 }
 
-/** Without a provider, the run goes on the backend's own key and models: a subscription, or a self-hosted backend. */
-export type ModelFactory = (options: { provider?: ByokProvider; platform: string; search?: boolean }) => LanguageModelV4;
+/**
+ * Without a provider, the run goes on the backend's own key and models: a subscription, or a self-hosted backend.
+ * `model` replaces the backend's main model on its own key; the gate passes one only when billing is off.
+ */
+export type ModelFactory = (options: { provider?: ByokProvider; platform: string; search?: boolean; model?: string }) => LanguageModelV4;
 
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1";
 
@@ -49,7 +52,7 @@ const byokModel = (provider: ByokProvider, platform: string, search: boolean): L
 };
 
 /** The models for a run: the server's own key when it brought one, the backend's otherwise. */
-export const openrouterModels: ModelFactory = ({ provider, platform, search }) => {
+export const openrouterModels: ModelFactory = ({ provider, platform, search, model }) => {
   if (provider) return byokModel(provider, platform, !!search);
   const env = openrouterEnv();
   if (!env.apiKey) throw new Error("OPENROUTER_API_KEY is not set");
@@ -60,7 +63,7 @@ export const openrouterModels: ModelFactory = ({ provider, platform, search }) =
       extraBody: { web_search_options: { search_context_size: env.searchContext } },
     });
   }
-  return client.chat(env.model, {
+  return client.chat(model || env.model, {
     usage: { include: true },
     ...(env.reasoningEffort ? { reasoning: { effort: env.reasoningEffort } } : {}),
   });

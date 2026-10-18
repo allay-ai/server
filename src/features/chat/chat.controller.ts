@@ -27,7 +27,7 @@ export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Ser
   // Runs outlast Bun's idle timeout while the model thinks; pings keep proxies happy instead.
   server?.timeout(req, 0);
   const runId = crypto.randomUUID();
-  const context = { ...parsed.context, provider: admission.provider };
+  const context = { ...parsed.context, provider: admission.provider, model: admission.model };
   logger.info(
     `Run ${runId}: ${context.mode} from ${context.player?.name ?? context.userId}, tools: ${context.tools.length}, on ${payer(admission)}`,
   );
