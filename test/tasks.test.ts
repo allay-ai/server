@@ -152,6 +152,8 @@ describe("task tools", () => {
     expect(valid("brew", { action: "start", potion: "night_vision", form: "splash_potion", bottles: 3 })).toBe(true);
     expect(valid("brew", { action: "start", potion: "long_night_vision", bottles: 4, fresh: false })).toBe(true);
     expect(valid("brew", { action: "start", bottles: 25 })).toBe(false);
+    expect(valid("chests", { action: "plan", mode: "move", categories: ["wood"], to: [{ x: 1, y: 2, z: 3 }], from: ["inventory", "nearby"] })).toBe(true);
+    expect(valid("chests", { action: "plan", mode: "move", from: ["ender_chest"] })).toBe(false);
     expect(valid("craft", { item: "iron_pickaxe", count: 2, dry_run: true })).toBe(true);
     expect(valid("craft", { item: "iron_pickaxe", count: 65 })).toBe(false);
   });

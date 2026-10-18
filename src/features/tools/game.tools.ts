@@ -535,7 +535,7 @@ const automationDefinitions = {
   },
   chests: {
     description:
-      "Works with chests the player may open, by coordinates from pick_blocks or an earlier result. action read: each chest's contents, the text of the signs on it, the items in frames on it, and what's wrong with it (a hopper, someone has it open, no access). plan: what would go where, as a preview; nothing moves. mode sort sorts each chest on its own (layout shapes it: «в каждом сундуке руды в верхний ряд»); group pools the chests and lays them out by category, so one resource doesn't end up in several chests (assign pins chests to a category or items, from signs, frames, or what the player said; the rest by the plugin's categories); move takes items or categories to the chests in to. apply: does the plan, but only if nothing changed since; returns each chest with its coordinates, category, and main contents. undo: puts everything back as it was before the last apply, within 5 minutes and if nobody touched it.",
+      "Works with chests the player may open, by coordinates from pick_blocks or an earlier result. action read: each chest's contents, the text of the signs on it, the items in frames on it, and what's wrong with it (a hopper, someone has it open, no access). plan: what would go where, as a preview; nothing moves. mode sort sorts each chest on its own (layout shapes it: «в каждом сундуке руды в верхний ряд»); group pools the chests and lays them out by category, so one resource doesn't end up in several chests (assign pins chests to a category or items, from signs, frames, or what the player said; the rest by the plugin's categories); move takes items or categories to the chests in to, from the chests given and from what from adds: inventory (the player's main inventory, hotbar included) and nearby (every chest around the player they may open, no picking needed). apply: does the plan, but only if nothing changed since; returns each chest with its coordinates, category, and main contents. undo: puts everything back as it was before the last apply, within 5 minutes and if nobody touched it.",
     input: z.object({
       action: z.enum(["read", "plan", "apply", "undo"]),
       mode: z.enum(["sort", "group", "move"]).optional(),
@@ -552,6 +552,7 @@ const automationDefinitions = {
       items: z.array(itemId).max(64).optional().describe("move: item ids to take"),
       categories: z.array(z.enum(CATEGORIES)).max(11).optional().describe("move: categories to take"),
       to: z.array(spot).max(64).optional().describe("move: the chests to put them in"),
+      from: z.array(z.enum(["inventory", "nearby"])).max(2).optional().describe("move: take from the player's inventory, every chest around, or both"),
       layout: layout.optional().describe("sort and group: how each chest is laid out inside; in group, order also decides which categories get the nearest chests"),
     }),
   },

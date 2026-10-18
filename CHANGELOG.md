@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.8.2
+
+For Allay 5.10.2; older plugins ignore `from` and move only between the chests given.
+
+- 📦 **Chests move from the inventory and from every chest around.** `chests` plan with mode move takes `from`: `inventory`, `nearby`, or both. The chests agent uses it for “put all my wood into this chest” and “gather the wood from all the chests here”, picking only the target.
+
 ## 5.8.1
 
 For Allay 5.10.1; older plugins still read `bottles` per stand.
