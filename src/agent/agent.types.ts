@@ -1,6 +1,7 @@
 import type { ByokProvider } from "../infrastructure/providers/openrouter/openrouter.client";
 
-export type Mode = "ask" | "askx";
+/** ask answers a question, askx turns a request into commands, task is one wake of an automation agent (since 5.5). */
+export type Mode = "ask" | "askx" | "task";
 export type Platform = "minecraft" | "telegram";
 /** Who sees the answer: only the asker, or every player online (`/askall`). */
 export type Visibility = "private" | "public";
@@ -24,6 +25,28 @@ export interface ServerInfo {
   plugin_version?: string;
 }
 
+export const TASK_KINDS = ["chests", "furnaces", "brewing", "crafting"] as const;
+export type TaskKind = (typeof TASK_KINDS)[number];
+
+/** The automation agent a task-mode run wakes; depth 1 is started from the chat, 2 by another agent. */
+export interface TaskInfo {
+  id: string;
+  name: string;
+  depth: 1 | 2;
+  kind: TaskKind;
+}
+
+export const TASK_STATES = ["working", "waiting", "asking"] as const;
+
+/** One of the asker's running automations, as the plugin sees it when they ask. */
+export interface RunningTask {
+  id: string;
+  name: string;
+  state: (typeof TASK_STATES)[number];
+  /** What the task asked the player, while it waits for an answer. */
+  question?: string;
+}
+
 /** Everything a run needs to know about who asks and from where. */
 export interface RunContext {
   mode: Mode;
@@ -40,6 +63,12 @@ export interface RunContext {
   tools: string[];
   /** The server's own key and models (BYOK); without it the run uses the backend's. */
   provider?: ByokProvider;
+  /** A model for the backend's own key, from the plugin; only a backend with billing off honors it. */
+  model?: string;
+  /** Task mode: the automation agent this run wakes. */
+  task?: TaskInfo;
+  /** Ask mode: the asker's running automations, so answers to them can be passed on. */
+  tasks?: RunningTask[];
 }
 
 export interface Usage {
