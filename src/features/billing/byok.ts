@@ -76,6 +76,8 @@ const openrouterCatalog = async (baseURL: string, net: Net): Promise<Map<string,
 
 /** What OpenRouter's catalog says of a model; unknown when the catalog can't be read. */
 export const catalogCheck = async (baseURL: string, model: string, net: Net): Promise<"ok" | "missing" | "no_tools" | "unknown"> => {
+  // A ~ alias, like ~openai/gpt-luna-latest, follows the newest model of a line and isn't in the catalog itself.
+  if (model.startsWith("~")) return "unknown";
   try {
     const models = await openrouterCatalog(baseURL.replace(/\/$/, ""), net);
     if (!models) return "unknown";

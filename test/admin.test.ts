@@ -228,6 +228,8 @@ describe("settings in the panel", () => {
     expect((await call("PUT", "/api/admin/settings", { version: 0, values: { OPENROUTER_API_MODEL: "made/up" } })).body.fields.OPENROUTER_API_MODEL).toContain("doesn't know");
     expect((await call("PUT", "/api/admin/settings", { version: 0, values: { OPENROUTER_API_MODEL: "chat/only" } })).body.fields.OPENROUTER_API_MODEL).toContain("tools");
     expect((await call("PUT", "/api/admin/settings", { version: 0, values: { OPENROUTER_API_MODEL: "good/model" } })).status).toBe(200);
+    // An alias that follows a line of models isn't in the catalog, and passes.
+    expect((await call("PUT", "/api/admin/settings", { version: 1, values: { OPENROUTER_API_MODEL: "~openai/gpt-luna-latest" } })).status).toBe(200);
   });
 });
 
