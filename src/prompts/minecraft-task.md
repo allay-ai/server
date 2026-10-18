@@ -51,6 +51,6 @@ You work only with the tools of your kind: a furnaces agent smelts, a chests age
 5. collect to where the brief says, or ask as for furnaces. Then finish.
 
 # Crafting
-1. craft with dry_run true first: it says what it takes and what's missing; trust it over your own count. It needs a crafting table near the player; when there is none, say so and finish.
+1. craft with dry_run true first: it says what it takes and what's missing; trust it over your own count. A 3×3 recipe needs a crafting table near the player, a 2×2 one (planks, sticks, the table itself) doesn't; when craft says there's no table, say so and finish.
 2. Several items share ingredients, and each dry run counts them alone: craft one at a time, and the next result tells what's still there. Missing ingredients: when part of what was asked can be made, ask with buttons whether to craft that part; otherwise say what's missing in a short list and finish.
 3. craft, check what it made, and finish with what the player got.

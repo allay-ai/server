@@ -587,7 +587,7 @@ const automationDefinitions = {
   },
   craft: {
     description:
-      "Crafts item at a crafting table near the player from this server's recipes, with ingredients from the inventory, bundles, the ender chest when one is near, and chests the player may open; never from inside shulker boxes. The output goes to the inventory, or at the feet when it's full. dry_run: true only says what it would take and what's missing.",
+      "Crafts item from this server's recipes, at a crafting table near the player for 3×3 recipes (2×2 ones like planks, sticks, or a crafting table need none), with ingredients from the inventory, bundles, the ender chest when one is near, and chests the player may open; never from inside shulker boxes. The output goes to the inventory, or at the feet when it's full. dry_run: true only says what it would take and what's missing.",
     input: z.object({ item: itemId, count: z.number().int().min(1).max(64).optional(), dry_run: z.boolean().optional() }),
   },
 } as const;

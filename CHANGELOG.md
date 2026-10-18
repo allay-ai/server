@@ -2,6 +2,10 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.7.1
+
+- 🛠️ **The crafting agent knows 2×2 recipes need no crafting table.** `craft` and the agent's instructions say so, to match Allay 5.9.1, which crafts planks, sticks, and a crafting table without one.
+
 ## 5.7.0
 
 For Allay 5.9, which adds `/allay init`; older plugins keep working, and so does every environment variable from before.
