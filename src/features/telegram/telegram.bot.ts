@@ -116,7 +116,7 @@ const callback = async (billing: Billing, api: TelegramApi, query: NonNullable<U
       telegram_payment_charge_id: payment.charge_id,
       is_canceled: action === "stop",
     });
-    await billing.licenses.update(license.id, { renews: action === "resume" });
+    await billing.licenses.update(license.id, action === "resume" ? { renews: true, stopped_at: undefined } : { renews: false, stopped_at: billing.now() });
     if (action === "resume") return say(api, chat, t.resumed);
     const quota = await quotaFor(billing, license);
     return say(api, chat, fill(t.stopped, { date: quota.paidUntil ? dateIn(language, quota.paidUntil) : "—" }));
@@ -132,7 +132,7 @@ const parsePayload = (payload: string) => {
 const preCheckout = async (billing: Billing, api: TelegramApi, query: NonNullable<Update["pre_checkout_query"]>) => {
   const { plan, license } = parsePayload(query.invoice_payload);
   const known = license ? await billing.licenses.get(license) : null;
-  const ok = !!plan && !!known && query.currency === "XTR" && query.total_amount === plan.stars;
+  const ok = !!plan && !!known && !known.blocked_at && query.currency === "XTR" && query.total_amount === plan.stars;
   await api.call("answerPreCheckoutQuery", {
     pre_checkout_query_id: query.id,
     ok,
@@ -188,11 +188,13 @@ const unbook = async (billing: Billing, chargeId: string) => {
   return { payment, license };
 };
 
-/** /refund <charge id>, for the bot's admins only: returns the Stars and closes what they paid for. */
-const refund = async (billing: Billing, api: TelegramApi, chat: number, from: TelegramUser, chargeId: string) => {
-  if (!billing.bot.admins.includes(from.id)) return;
+/**
+ * Returns a payment's Stars and closes what they paid for, stopping the subscription it belonged to:
+ * the bot's /refund and the admin panel's button. Null when there's no such payment or it's refunded already.
+ */
+export const refundPayment = async (billing: Billing, api: TelegramApi, chargeId: string) => {
   const payment = await billing.licenses.payment(chargeId);
-  if (!payment || payment.refunded_at) return say(api, chat, `No such payment, or it's refunded already: ${chargeId}`);
+  if (!payment || payment.refunded_at) return null;
   await api.call("refundStarPayment", { user_id: payment.telegram_user_id, telegram_payment_charge_id: chargeId });
   if (payment.recurring) {
     const license = await billing.licenses.get(payment.license);
@@ -207,8 +209,16 @@ const refund = async (billing: Billing, api: TelegramApi, chat: number, from: Te
     }
   }
   const done = await unbook(billing, chargeId);
-  const server = done?.license ? serverName(done.license) : payment.license;
-  return say(api, chat, fill(textsOf(languageOf(from.language_code)).refunded, { stars: payment.stars, server }));
+  return { payment, license: done?.license ?? null };
+};
+
+/** /refund <charge id>, for the bot's admins only. */
+const refund = async (billing: Billing, api: TelegramApi, chat: number, from: TelegramUser, chargeId: string) => {
+  if (!billing.bot.admins.includes(from.id)) return;
+  const done = await refundPayment(billing, api, chargeId);
+  if (!done) return say(api, chat, `No such payment, or it's refunded already: ${chargeId}`);
+  const server = done.license ? serverName(done.license) : done.payment.license;
+  return say(api, chat, fill(textsOf(languageOf(from.language_code)).refunded, { stars: done.payment.stars, server }));
 };
 
 /** One update from the webhook or from polling. */

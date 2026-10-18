@@ -112,7 +112,8 @@ describe("setup", () => {
 
 const withOwner = async (options: Parameters<typeof start>[0] = {}) => {
   const ctx = start(options);
-  const code = ctx.codeOf((await ctx.init()).body.url);
+  // A hosted backend's code comes from its log, not from /allay init.
+  const code = options.selfHosted === false ? ctx.admin.setup.issue(null).code : ctx.codeOf((await ctx.init()).body.url);
   await ctx.call("POST", "/api/admin/setup", { code, username: "owner", password: PASSWORD });
   return ctx;
 };
@@ -227,5 +228,61 @@ describe("settings in the panel", () => {
     expect((await call("PUT", "/api/admin/settings", { version: 0, values: { OPENROUTER_API_MODEL: "made/up" } })).body.fields.OPENROUTER_API_MODEL).toContain("doesn't know");
     expect((await call("PUT", "/api/admin/settings", { version: 0, values: { OPENROUTER_API_MODEL: "chat/only" } })).body.fields.OPENROUTER_API_MODEL).toContain("tools");
     expect((await call("PUT", "/api/admin/settings", { version: 0, values: { OPENROUTER_API_MODEL: "good/model" } })).status).toBe(200);
+  });
+});
+
+describe("billing in the panel", () => {
+  const paid = async (ctx: Awaited<ReturnType<typeof withOwner>>) => {
+    const { billing } = ctx.deps;
+    const now = billing.now();
+    await billing.licenses.create({ id: "lic1", secret_hash: "x", name: "Moonlands", created_at: now, renews: true, telegram_user_id: 7 });
+    await billing.licenses.pay(
+      { charge_id: "ch1", license: "lic1", plan: "month", stars: 500, telegram_user_id: 7, at: now, recurring: true },
+      [{ budget: 3, starts: new Date(now.getTime() - 1000), ends: new Date(now.getTime() + 30 * 86_400_000) }],
+    );
+    await billing.licenses.update("lic1", { plan: "month", last_payment_at: now, subscription_charge_id: "ch1" });
+  };
+
+  test("a self-hosted backend has no billing pages", async () => {
+    const { call } = await withOwner();
+    expect((await call("GET", "/api/admin/licenses")).body.error.code).toBe("BILLING_OFF");
+  });
+
+  test("licenses show in dollars, and admins grant, extend, and block", async () => {
+    const ctx = await withOwner({ selfHosted: false, billing: true });
+    await paid(ctx);
+    const { call, audit } = ctx;
+    const list = (await call("GET", "/api/admin/licenses")).body;
+    expect(list.licenses[0]).toMatchObject({ id: "lic1", name: "Moonlands", status: "active", plan: "month", budget: 3, spent: 0, renews: true });
+
+    expect((await call("POST", "/api/admin/licenses/lic1/grant", { usd: 2, days: 10 })).status).toBe(200);
+    expect((await call("GET", "/api/admin/licenses/lic1")).body.license.budget).toBe(5);
+
+    const before = (await call("GET", "/api/admin/licenses/lic1")).body.license.paid_until;
+    const extended = await call("POST", "/api/admin/licenses/lic1/extend", { days: 7 });
+    expect(Date.parse(extended.body.paid_until) - Date.parse(before)).toBe(7 * 86_400_000);
+
+    expect((await call("POST", "/api/admin/licenses/lic1/block")).body.license.status).toBe("blocked");
+    expect(audit.entries.map((e) => e.action)).toEqual(expect.arrayContaining(["license.grant", "license.extend", "license.block"]));
+  });
+
+  test("a refund goes through the bot and closes the period", async () => {
+    const ctx = await withOwner({ selfHosted: false, billing: true });
+    await paid(ctx);
+    const calls: string[] = [];
+    ctx.deps.billing.bot.api = { call: async <T>(method: string) => (calls.push(method), true as T) };
+    const refunded = await ctx.call("POST", "/api/admin/payments/ch1/refund");
+    expect(refunded.body).toEqual({ refunded: true, stars: 500 });
+    expect(calls).toEqual(["refundStarPayment", "editUserStarSubscription"]);
+    expect((await ctx.call("GET", "/api/admin/licenses/lic1")).body.license.status).toBe("expired");
+    expect((await ctx.call("POST", "/api/admin/payments/ch1/refund")).status).toBe(404);
+  });
+
+  test("revenue sums payments by week", async () => {
+    const ctx = await withOwner({ selfHosted: false, billing: true });
+    await paid(ctx);
+    const revenue = (await ctx.call("GET", "/api/admin/billing/revenue?range=30d")).body;
+    expect(revenue.totals).toMatchObject({ payments: 1, stars: 500, net_stars: 500, usd: 6.5 });
+    expect(revenue.series).toHaveLength(1);
   });
 });

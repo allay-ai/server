@@ -38,6 +38,15 @@ export interface LicenseStore {
   /** Marks a payment refunded and closes the windows it opened. */
   refund(chargeId: string, at: Date): Promise<PaymentRecord | null>;
   charge(grantId: string, usd: number): Promise<void>;
+  /** Newest first, for the admin panel; `search` matches the id or the name's start. */
+  list(options: { search?: string; limit: number; skip: number }): Promise<{ licenses: LicenseRecord[]; total: number }>;
+  /** Newest first. */
+  payments(options: { license?: string; from?: Date; before?: Date; limit: number }): Promise<PaymentRecord[]>;
+  /** A budget window an admin gave by hand, without a payment. */
+  grant(license: string, window: Pick<GrantRecord, "budget" | "starts" | "ends">): Promise<GrantRecord>;
+  moveEnd(grantId: string, ends: Date): Promise<void>;
+  /** How many licenses stopped renewal since a time. */
+  stoppedSince(from: Date): Promise<number>;
 }
 
 const id = () => crypto.randomUUID().replace(/-/g, "");
@@ -101,6 +110,32 @@ export const mongoLicenses: LicenseStore = {
   async charge(grantId, usd) {
     await GrantModel.updateOne({ id: grantId }, { $inc: { spent: usd } });
   },
+  async list({ search, limit, skip }) {
+    const filter = search ? { $or: [{ id: search }, { name: { $regex: `^${search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, $options: "i" } }] } : {};
+    const [licenses, total] = await Promise.all([
+      LicenseModel.find(filter, { _id: 0, __v: 0 }).sort({ created_at: -1 }).skip(skip).limit(limit).lean<LicenseRecord[]>(),
+      LicenseModel.countDocuments(filter),
+    ]);
+    return { licenses, total };
+  },
+  async payments({ license, from, before, limit }) {
+    const at = { ...(from ? { $gte: from } : {}), ...(before ? { $lt: before } : {}) };
+    return PaymentModel.find({ ...(license ? { license } : {}), ...(from || before ? { at } : {}) }, { _id: 0, __v: 0 })
+      .sort({ at: -1 })
+      .limit(limit)
+      .lean<PaymentRecord[]>();
+  },
+  async grant(license, window) {
+    const grant: GrantRecord = { ...window, id: id(), license, spent: 0 };
+    await GrantModel.create(grant);
+    return grant;
+  },
+  async moveEnd(grantId, ends) {
+    await GrantModel.updateOne({ id: grantId }, { $set: { ends } });
+  },
+  async stoppedSince(from) {
+    return LicenseModel.countDocuments({ stopped_at: { $gte: from } });
+  },
 };
 
 /** For tests and local runs without MongoDB. */
@@ -153,6 +188,31 @@ export const memoryLicenses = (): LicenseStore => {
     async charge(grantId, usd) {
       const grant = grants.find((g) => g.id === grantId);
       if (grant) grant.spent += usd;
+    },
+    async list({ search, limit, skip }) {
+      const found = [...licenses.values()]
+        .filter((l) => !search || l.id === search || l.name?.toLowerCase().startsWith(search.toLowerCase()))
+        .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+      return { licenses: found.slice(skip, skip + limit).map((l) => ({ ...l })), total: found.length };
+    },
+    async payments({ license, from, before, limit }) {
+      return [...payments.values()]
+        .filter((p) => (!license || p.license === license) && (!from || p.at >= from) && (!before || p.at < before))
+        .sort((a, b) => b.at.getTime() - a.at.getTime())
+        .slice(0, limit)
+        .map((p) => ({ ...p }));
+    },
+    async grant(license, window) {
+      const grant: GrantRecord = { ...window, id: id(), license, spent: 0 };
+      grants.push(grant);
+      return { ...grant };
+    },
+    async moveEnd(grantId, ends) {
+      const grant = grants.find((g) => g.id === grantId);
+      if (grant) grant.ends = ends;
+    },
+    async stoppedSince(from) {
+      return [...licenses.values()].filter((l) => l.stopped_at && l.stopped_at >= from).length;
     },
   };
 };

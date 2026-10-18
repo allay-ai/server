@@ -16,6 +16,10 @@ export interface LicenseDocument {
   renews: boolean;
   subscription_charge_id?: string;
   last_payment_at?: Date;
+  /** When the payer stopped the subscription's renewal in the bot. */
+  stopped_at?: Date;
+  /** Blocked in the admin panel: no questions and no payments until unblocked. */
+  blocked_at?: Date;
 }
 
 const licenseSchema = new Schema<LicenseDocument>({
@@ -32,6 +36,8 @@ const licenseSchema = new Schema<LicenseDocument>({
   renews: { type: Boolean, default: false },
   subscription_charge_id: String,
   last_payment_at: Date,
+  stopped_at: Date,
+  blocked_at: Date,
 });
 
 /** One budget window a payment opened: dollars the server may spend between `starts` and `ends`. */
@@ -77,6 +83,8 @@ const paymentSchema = new Schema<PaymentDocument>({
   recurring: { type: Boolean, default: false },
   refunded_at: Date,
 });
+
+paymentSchema.index({ at: -1 });
 
 export const LicenseModel = model<LicenseDocument>("License", licenseSchema);
 export const GrantModel = model<GrantDocument>("Grant", grantSchema);

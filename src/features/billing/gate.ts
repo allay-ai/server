@@ -80,6 +80,7 @@ export const admit = async (
 
   const license = await verifyLicense(billing, headers.get("Authorization"));
   if (license instanceof ApiFailure) return { ok: false, error: license };
+  if (license.blocked_at) return { ok: false, error: new ApiFailure(apierror(API_ERRORS.SUBSCRIPTION_INACTIVE)) };
   const refused = refusal(await quotaFor(billing, license));
   if (refused) return { ok: false, error: refused };
   const take = billing.limits.hosted.take(license.id, billing.now().getTime());

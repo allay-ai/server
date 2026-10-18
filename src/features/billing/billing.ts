@@ -88,7 +88,7 @@ export const statusOf = async (billing: Billing, license: LicenseRecord) => {
     billing: true,
     license_id: license.id,
     linked: license.telegram_user_id !== undefined,
-    active: quota.active,
+    active: quota.active && !license.blocked_at,
     plan: license.plan ?? null,
     paid_until: quota.paidUntil?.toISOString() ?? null,
     renews: license.renews && quota.active,
