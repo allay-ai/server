@@ -2,6 +2,10 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.6.0
+
+- 📌 **Pins in the main inventory.** A `sort_inventory` pin takes `inventory:1`–`inventory:27` besides the hotbar's 1–9 and `offhand` (plugin 5.8), so “three bundles at the start of the inventory” works instead of a refusal.
+
 ## 5.5.1
 
 - 🧹 **`sort_inventory`** tells the model how a sorted hotbar works since plugin 5.7.1: with pins it holds just them, slots between pins stay empty, and the result's `hotbar` and `offhand` say what's really there, so the answer matches the game.
