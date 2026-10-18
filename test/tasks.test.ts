@@ -164,6 +164,9 @@ describe("task tools", () => {
     expect(valid("chests", { action: "plan", mode: "stash", hotbar: true, assign: [{ x: 1, y: 64, z: 2, category: "ores" }] })).toBe(true);
     expect(valid("chests", { action: "plan", mode: "move", items: ["tools"], count: 32, to: [{ x: 1, y: 2, z: 3 }], from: ["inventory"] })).toBe(true);
     expect(valid("chests", { action: "plan", mode: "loot" })).toBe(false);
+    expect(valid("chests", { action: "plan", mode: "take", amounts: [{ item: "lapis_lazuli", count: 6 }, { item: "coal", count: 8 }] })).toBe(true);
+    expect(valid("chests", { action: "plan", mode: "take", amounts: [{ item: "torch", up_to: 64 }, { item: "cooked_beef", up_to: 64 }] })).toBe(true);
+    expect(valid("chests", { action: "plan", mode: "take", amounts: [{ count: 6 }] })).toBe(false);
     expect(valid("smelt", { action: "start", item: "raw_iron", to: "auto", remember: true })).toBe(true);
     expect(valid("smelt", { action: "start", item: "raw_iron", fuel: "lava_bucket" })).toBe(true);
     expect(valid("smelt", { action: "add", items: [{ item: "raw_gold", count: 20 }] })).toBe(true);

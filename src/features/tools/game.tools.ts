@@ -555,7 +555,18 @@ const automationDefinitions = {
         .optional(),
       items: selectors.optional().describe("move and take: what to move, as selectors (ids, groups, materials, categories, enchanted, named, damaged); stash: only these"),
       categories: z.array(z.enum(CATEGORIES)).max(11).optional().describe("move and take: categories to move"),
-      count: z.number().int().min(1).max(2304).optional().describe("move and take: at most this many in all («отнеси 32 железа»)"),
+      count: z.number().int().min(1).max(2304).optional().describe("move and take: at most this many in all («отнеси 32 железа»); for several items with a number each, amounts"),
+      amounts: z
+        .array(
+          z.object({
+            item: z.string().min(1).max(64).describe("A selector, like items"),
+            count: z.number().int().min(1).max(2304).optional().describe("How many of it"),
+            up_to: z.number().int().min(1).max(2304).optional().describe("take: how many of it the player should carry in the end"),
+          }),
+        )
+        .max(16)
+        .optional()
+        .describe("move and take: a number for each item (plugin 5.11.1+): «6 лазуритов и 8 углей» is [{item: lapis_lazuli, count: 6}, {item: coal, count: 8}], one call; each needs count or up_to"),
       up_to: z.number().int().min(1).max(2304).optional().describe("take: how many the player should carry in the end, counting what they have («пополни до стака» is 64)"),
       keep: selectors.optional().describe("move, take, and stash: what stays where it is («кроме зачарованного»)"),
       hotbar: z.boolean().optional().describe("stash: put the hotbar away too, all but the item in hand"),

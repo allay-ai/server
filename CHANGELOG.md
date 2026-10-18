@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.9.1
+
+For Allay 5.11.1.
+
+- 🔢 **A number for each item.** The chests agent puts “6 lapis and 8 coal” into `amounts`, one plan with a count each, instead of one `count` over both.
+
 ## 5.9.0
 
 For Allay 5.11.0; older plugins ignore the new modes and fields.
