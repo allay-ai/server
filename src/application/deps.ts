@@ -18,6 +18,7 @@ export const productionDeps: AllayDeps = {
   history: redisHistory,
   memories: mongoMemories,
   bridge,
+  perplexity: process.env.PERPLEXITY_API_KEY ? { apiKey: process.env.PERPLEXITY_API_KEY } : undefined,
   billing: {
     enabled: !selfHosted(),
     licenses: mongoLicenses,

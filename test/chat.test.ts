@@ -189,6 +189,30 @@ describe("POST /api/v2/chat", () => {
     expect(deps.searchCalls).toBe(1);
   });
 
+  test("with a Perplexity key, web search reads its results, on the run's cost", async () => {
+    const { model, prompts } = scripted([
+      [toolCall("search_web", { query: "26.3 changes", sites: ["minecraft.wiki"] }), finish("tool-calls")],
+      [...text("Copper golems."), finish()],
+    ]);
+    const requests: { url: string; body: Record<string, unknown>; auth?: string }[] = [];
+    const deps = testDeps(model);
+    deps.perplexity = {
+      apiKey: "pplx-test-key",
+      fetch: (async (url: string, init: RequestInit) => {
+        requests.push({ url, body: JSON.parse(String(init.body)), auth: (init.headers as Record<string, string>).Authorization });
+        return Response.json({ results: [{ title: "Java Edition 26.3", url: "https://minecraft.wiki/w/26.3", snippet: "Adds copper golems." }] });
+      }) as typeof fetch,
+    };
+    const events = await readSse(await chat(start(deps), { message: "what's new?" }));
+    expect(requests).toEqual([
+      { url: "https://api.perplexity.ai/search", body: { query: "26.3 changes", max_results: 5, max_tokens_per_page: 400, search_domain_filter: ["minecraft.wiki"] }, auth: "Bearer pplx-test-key" },
+    ]);
+    expect(deps.searchCalls).toBe(0);
+    expect(JSON.stringify(prompts[1])).toContain("Adds copper golems.");
+    // Two model steps at $0.0005 each, plus the search.
+    expect(events.at(-2)!.data.cost).toBe(0.006);
+  });
+
   test("askx returns validated commands instead of text", async () => {
     const { model } = scripted([[...text('{"is_sequence":false,"commands":["/give @s diamond_sword"],"error":null}'), finish()]]);
     const base = start(testDeps(model));

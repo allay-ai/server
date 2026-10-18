@@ -6,7 +6,7 @@ import type { Emit } from "../features/chat/chat.events";
 import { exactCalculationsTool } from "../features/tools/exact-calculations.tool";
 import { gameTools, offeredTools } from "../features/tools/game.tools";
 import { memoryTools } from "../features/tools/memory.tools";
-import { searchWebTool } from "../features/tools/search-web.tool";
+import { type PerplexitySearch, searchWebTool } from "../features/tools/search-web.tool";
 import { estimateTokens, type HistoryStore, IDLE_FOLD, IDLE_FOLD_SECONDS, IDLE_FOLD_TOKENS, MAX_TOKENS, threadOf } from "../infrastructure/history/history";
 import type { Memory, MemoryStore } from "../infrastructure/memory/memory";
 import { type ByokProvider, type ModelFactory, costOf } from "../infrastructure/providers/openrouter/openrouter.client";
@@ -27,6 +27,8 @@ export interface AllayDeps {
   memories: MemoryStore;
   bridge: ToolBridge;
   billing: Billing;
+  /** Perplexity's Search API for runs on the backend's own key; without it they use the search model. */
+  perplexity?: PerplexitySearch;
   /** How long a session stays quiet before it folds: IDLE_FOLD_SECONDS by default, shorter in tests; 0 never. */
   idleFoldMs?: number;
 }
@@ -157,7 +159,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
         // A server that brought its own key without a search model gets no web search, and an automation agent never does.
         ...(context.mode === "task" || (context.provider && !context.provider.searchModel)
           ? {}
-          : { web: { search_web: searchWebTool(deps.models, { provider: context.provider, platform: context.platform, emit, spend }) } }),
+          : { web: { search_web: searchWebTool(deps.models, { provider: context.provider, platform: context.platform, emit, spend, perplexity: deps.perplexity }) } }),
         math: { exact_calculations: exactCalculationsTool({ emit }) },
         ...(context.mode === "ask" && remembers(context.userId)
           ? { memory: memoryTools(deps.memories, { userId: context.userId, emit }) }
