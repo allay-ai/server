@@ -36,6 +36,10 @@ export interface RunOptions {
 }
 
 const MAX_STEPS = Number(process.env.MAX_AGENT_STEPS || 8);
+/** An automation agent's wake reads, plans, and acts in one go, so it gets more steps than a question. */
+const MAX_TASK_STEPS = Number(process.env.MAX_TASK_STEPS || 16);
+/** What a task's thread records for a wake that ended with tool calls only. */
+export const TASK_WAITING = "(waiting)";
 
 /** v1 callers without a user id share "anonymous"; they get no memory. */
 const remembers = (userId: string) => userId !== "anonymous";
@@ -92,7 +96,7 @@ const question = (context: RunContext): string => {
   return `${name}${localStamp(context.timezone)} ${context.message}`;
 };
 
-const thread = (context: RunContext) => threadOf(context.userId, context.visibility, context.server?.id);
+const thread = (context: RunContext) => threadOf(context.userId, context.visibility, context.server?.id, context.task?.id);
 
 /** Adds this exchange to the session; askx requests go in with a slash so later answers know what was run. */
 const record = (context: RunContext, deps: AllayDeps, answer: string, asked: string) =>
@@ -126,10 +130,10 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
   };
   try {
     const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
-    const tools = offeredTools(context.tools, context.player?.op === true, context.mode, context.visibility);
+    const tools = offeredTools(context.tools, context.player?.op === true, context.mode, context.visibility, context.task?.depth ?? 0);
     const memories = await loadMemories(deps, context.userId);
-    // askx turns one request into commands; earlier chat would only confuse it, as in v1.
-    const session = context.mode === "ask" ? await deps.history.load(thread(context)) : { messages: [] };
+    // askx turns one request into commands; earlier chat would only confuse it, as in v1. A task reads its own thread.
+    const session = context.mode === "askx" ? { messages: [] } : await deps.history.load(thread(context));
     const instructions = systemPrompt({ ...context, tools }, { memories, summary: session.summary });
     const agent = new Agent({ id: "allay", name: "Allay", instructions, model });
     const asked = question(context);
@@ -140,12 +144,12 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     const common = {
       runId,
       abortSignal: signal,
-      maxSteps: MAX_STEPS,
+      maxSteps: context.mode === "task" ? MAX_TASK_STEPS : MAX_STEPS,
       modelSettings: { maxRetries: 2 },
       toolsets: {
         game: gameTools(tools, runId, deps.bridge, (name) => pluginName(name, context.tools)),
-        // A server that brought its own key without a search model gets no web search.
-        ...(context.provider && !context.provider.searchModel
+        // A server that brought its own key without a search model gets no web search, and an automation agent never does.
+        ...(context.mode === "task" || (context.provider && !context.provider.searchModel)
           ? {}
           : { web: { search_web: searchWebTool(deps.models, { provider: context.provider, platform: context.platform, emit, spend }) } }),
         math: { exact_calculations: exactCalculationsTool({ emit }) },
@@ -172,8 +176,8 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
         case "text-delta":
           if (typeof payload.text === "string") {
             text += payload.text;
-            // askx text is the JSON result, not something to show.
-            if (context.mode === "ask") emit({ event: "text", data: { delta: payload.text } });
+            // askx text is the JSON result, not something to show; a task's is its note, which the plugin keeps to itself.
+            if (context.mode !== "askx") emit({ event: "text", data: { delta: payload.text } });
           }
           break;
         case "step-finish": {
@@ -217,8 +221,9 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       result = { answer: "", commands, usage, durationMs: Date.now() - started };
     } else {
       const answer = text.trim();
-      if (!answer) throw new ApiFailure(apierror(API_ERRORS.NO_AI_RESPONSE));
-      await record(context, deps, answer, asked);
+      // A wake may end with wait or finish and no words; that's done, not a failure.
+      if (!answer && context.mode !== "task") throw new ApiFailure(apierror(API_ERRORS.NO_AI_RESPONSE));
+      await record(context, deps, answer || TASK_WAITING, asked);
       result = { answer, usage, durationMs: Date.now() - started };
     }
     emit({ event: "usage", data: usage });

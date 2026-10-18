@@ -29,7 +29,7 @@ export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Ser
   const runId = crypto.randomUUID();
   const context = { ...parsed.context, provider: admission.provider, model: admission.model };
   logger.info(
-    `Run ${runId}: ${context.mode} from ${context.player?.name ?? context.userId}, tools: ${context.tools.length}, on ${payer(admission)}`,
+    `Run ${runId}: ${context.mode}${context.task ? ` ${context.task.id}` : ""} from ${context.player?.name ?? context.userId}, tools: ${context.tools.length}, on ${payer(admission)}`,
   );
 
   return sseResponse(async (emit, signal) => {
