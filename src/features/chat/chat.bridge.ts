@@ -1,7 +1,6 @@
 import { logger } from "../../shared/logging/logger";
+import { settings } from "../settings/settings";
 import type { Emit } from "./chat.events";
-
-export const TOOL_TIMEOUT_MS = Number(process.env.TOOL_TIMEOUT_MS || 15_000);
 
 export type ToolAnswer = { ok: true; result: unknown } | { ok: false; error: string };
 
@@ -26,7 +25,8 @@ interface Run {
 export class ToolBridge {
   private readonly runs = new Map<string, Run>();
 
-  constructor(private readonly timeoutMs = TOOL_TIMEOUT_MS) {}
+  /** Without a fixed timeout, each call reads TOOL_TIMEOUT_MS as it starts. */
+  constructor(private readonly fixedTimeoutMs?: number) {}
 
   open(runId: string, emit: Emit): void {
     this.runs.set(runId, { emit, calls: new Map() });
@@ -51,6 +51,7 @@ export class ToolBridge {
     const run = this.runs.get(runId);
     if (!run) return Promise.resolve({ ok: false, error: "The run is over" });
     const callId = crypto.randomUUID();
+    const timeoutMs = this.fixedTimeoutMs ?? settings.get("TOOL_TIMEOUT_MS");
     return new Promise<ToolAnswer>((resolve) => {
       const call: PendingCall = {
         answered: false,
@@ -73,8 +74,8 @@ export class ToolBridge {
       };
       call.timer = setTimeout(() => {
         logger.warn(`Tool ${name} timed out in run ${runId}`);
-        call.settle({ ok: false, error: `TOOL_TIMEOUT: the game didn't answer within ${this.timeoutMs / 1000} s` });
-      }, this.timeoutMs);
+        call.settle({ ok: false, error: `TOOL_TIMEOUT: the game didn't answer within ${timeoutMs / 1000} s` });
+      }, timeoutMs);
       signal?.addEventListener("abort", () => call.settle({ ok: false, error: "Cancelled" }), { once: true });
       run.calls.set(callId, call);
       run.emit({ event: "tool_status", data: { call_id: callId, name, kind: "client", state: "started", args } });

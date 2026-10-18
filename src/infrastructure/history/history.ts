@@ -1,5 +1,6 @@
 import type { ModelMessage } from "ai";
 import { redis } from "bun";
+import { settings } from "../../features/settings/settings";
 import { logger } from "../../shared/logging/logger";
 
 /** A message as the model reads it: the question, the answer, and the tool calls and results between them. */
@@ -19,7 +20,7 @@ export interface HistoryStore {
   load(userId: string): Promise<Session>;
   /** Adds one exchange: the question and everything the run said and called for it. */
   append(userId: string, ...messages: HistoryMessage[]): Promise<void>;
-  /** Once the session outgrows foldAt tokens (FOLD_TOKENS by default) or MAX_EXCHANGES, folds all but about KEEP_TOKENS of it into the summary. True when it folded. */
+  /** Once the session outgrows foldAt tokens (CHAT_FOLD_TOKENS by default) or MAX_EXCHANGES, folds all but about CHAT_KEEP_TOKENS of it into the summary. True when it folded. */
   compact(userId: string, summarize: Summarize, foldAt?: number): Promise<boolean>;
   clear(userId: string): Promise<void>;
 }
@@ -28,21 +29,21 @@ export interface HistoryStore {
  * The session folds once its messages pass this many tokens. Each step reads them again, mostly from the
  * provider's cache, so a long verbatim window is cheap until a question comes after the cache has gone cold.
  */
-export const FOLD_TOKENS = Number(process.env.CHAT_FOLD_TOKENS || 32_000);
+export const foldTokens = () => settings.get("CHAT_FOLD_TOKENS");
 /** Past this many, the session folds before the next question is answered, not after: the player waits for the summary. */
-export const MAX_TOKENS = Number(process.env.CHAT_MAX_TOKENS || 42_000);
+export const maxTokens = () => settings.get("CHAT_MAX_TOKENS");
 /** About this many tokens of the newest exchanges stay verbatim after a fold. */
-export const KEEP_TOKENS = Number(process.env.CHAT_KEEP_TOKENS || 12_000);
+export const keepTokens = () => settings.get("CHAT_KEEP_TOKENS");
 /** A fold keeps at least this many exchanges, however long they are. */
 export const MIN_KEEP_EXCHANGES = 2;
 /** Short exchanges fold too, once there are this many, down to at most KEEP_EXCHANGES. */
 export const MAX_EXCHANGES = 100;
 export const KEEP_EXCHANGES = 30;
-export const SESSION_TTL_SECONDS = Number(process.env.CHAT_TTL_SECONDS || 24 * 3600);
+export const sessionTtl = () => settings.get("CHAT_TTL_SECONDS");
 /** A server's thread of public questions is a passing talk, so it lives shorter than a player's session. */
-export const PUBLIC_TTL_SECONDS = Number(process.env.PUBLIC_CHAT_TTL_SECONDS || 2 * 3600);
+export const publicTtl = () => settings.get("PUBLIC_CHAT_TTL_SECONDS");
 /** An automation agent's own thread: its wakes and its notes to itself, for as long as a task could run. */
-export const TASK_TTL_SECONDS = Number(process.env.TASK_CHAT_TTL_SECONDS || 2 * 3600);
+export const taskTtl = () => settings.get("TASK_CHAT_TTL_SECONDS");
 const PUBLIC_PREFIX = "public:";
 const TASK_PREFIX = "task:";
 
@@ -56,8 +57,8 @@ export const threadOf = (userId: string, visibility?: string, serverId?: string,
 };
 
 export const ttlOf = (thread: string) => {
-  if (thread.startsWith(TASK_PREFIX)) return TASK_TTL_SECONDS;
-  return thread.startsWith(PUBLIC_PREFIX) ? PUBLIC_TTL_SECONDS : SESSION_TTL_SECONDS;
+  if (thread.startsWith(TASK_PREFIX)) return taskTtl();
+  return thread.startsWith(PUBLIC_PREFIX) ? publicTtl() : sessionTtl();
 };
 // If folding keeps failing, the oldest exchanges simply fall off here.
 const CAP = MAX_EXCHANGES + 20;
@@ -101,7 +102,7 @@ const keepOf = (exchanges: HistoryMessage[][], foldAt: number): number | undefin
   if (total <= foldAt && exchanges.length <= MAX_EXCHANGES) return undefined;
   let kept = 0;
   let tokens = 0;
-  while (kept < exchanges.length && (kept < MIN_KEEP_EXCHANGES || (kept < KEEP_EXCHANGES && tokens + sizes[kept] <= KEEP_TOKENS))) tokens += sizes[kept++];
+  while (kept < exchanges.length && (kept < MIN_KEEP_EXCHANGES || (kept < KEEP_EXCHANGES && tokens + sizes[kept] <= keepTokens()))) tokens += sizes[kept++];
   return kept < exchanges.length ? kept : undefined;
 };
 
@@ -134,7 +135,7 @@ export const redisHistory: HistoryStore = {
       logger.warn(`Couldn't save history for ${userId}: ${String(error)}`);
     }
   },
-  async compact(userId, summarize, foldAt = FOLD_TOKENS) {
+  async compact(userId, summarize, foldAt = foldTokens()) {
     const raw = (await redis.send("LRANGE", [key(userId), "0", "-1"])) as string[];
     const exchanges = exchangesOf(raw);
     const kept = keepOf(exchanges, foldAt);
@@ -167,7 +168,7 @@ export const memoryHistory = (): HistoryStore => {
       const session = of(userId);
       store.set(userId, { ...session, exchanges: [...session.exchanges, kept].slice(-CAP) });
     },
-    async compact(userId, summarize, foldAt = FOLD_TOKENS) {
+    async compact(userId, summarize, foldAt = foldTokens()) {
       const session = of(userId);
       const newest = [...session.exchanges].reverse();
       const kept = keepOf(newest, foldAt);

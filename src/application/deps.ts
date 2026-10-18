@@ -8,20 +8,28 @@ import { redisHistory } from "../infrastructure/history/history";
 import { tracing } from "../infrastructure/observability/tracing";
 import { mongoMemories } from "../infrastructure/memory/memory";
 import { openrouterModels } from "../infrastructure/providers/openrouter/openrouter.client";
+import { settings } from "../features/settings/settings";
 
-const admins = (process.env.TELEGRAM_ADMIN_IDS || "")
-  .split(",")
-  .map((id) => Number(id.trim()))
-  .filter((id) => Number.isInteger(id) && id > 0);
+const admins = () =>
+  (settings.get("TELEGRAM_ADMIN_IDS") ?? "")
+    .split(",")
+    .map((id) => Number(id.trim()))
+    .filter((id) => Number.isInteger(id) && id > 0);
 
-/** The real services; tests build their own with a mock model, in-memory stores, and a fake network. */
-export const productionDeps: AllayDeps = {
+/**
+ * The real services; tests build their own with a mock model, in-memory stores, and a fake network.
+ * Built once the stored settings are loaded, since tracing reads them at start.
+ */
+export const productionDeps = (): AllayDeps => ({
   models: openrouterModels,
   history: redisHistory,
   memories: mongoMemories,
   bridge,
-  perplexity: process.env.PERPLEXITY_API_KEY ? { apiKey: process.env.PERPLEXITY_API_KEY } : undefined,
-  mastra: tracing(MONGODB_URI, MONGODB_DATABASE, selfHosted()),
+  get perplexity() {
+    const apiKey = settings.get("PERPLEXITY_API_KEY");
+    return apiKey ? { apiKey } : undefined;
+  },
+  mastra: tracing(MONGODB_URI, MONGODB_DATABASE),
   billing: {
     enabled: !selfHosted(),
     licenses: mongoLicenses,
@@ -29,8 +37,12 @@ export const productionDeps: AllayDeps = {
       fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(10_000) }),
       resolve: async (host) => (await lookup(host, { all: true })).map((a) => a.address),
     },
-    bot: { admins },
+    bot: {
+      get admins() {
+        return admins();
+      },
+    },
     limits: newLimits(),
     now: () => new Date(),
   },
-};
+});

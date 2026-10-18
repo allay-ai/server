@@ -4,10 +4,9 @@ import { jsonError, readJson } from "../../shared/lib/http";
 import { logger } from "../../shared/logging/logger";
 import { API_ERRORS, apierror } from "../../shared/types/errors";
 import { admit, payer } from "../billing/gate";
+import { settings } from "../settings/settings";
 import { parseChatRequest, toolAnswerSchema } from "./chat.types";
 import { sseResponse } from "./chat.sse";
-
-const MAX_ACTIVE_RUNS = Number(process.env.MAX_ACTIVE_RUNS || 200);
 
 /** POST /api/v2/chat: one question, streamed back as events while the agent works. */
 export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Server): Promise<Response> => {
@@ -16,7 +15,7 @@ export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Ser
   if (!json.ok) return jsonError(json.error);
   const parsed = parseChatRequest(json.body);
   if (!parsed.ok) return jsonError(parsed.error);
-  if (deps.bridge.active >= MAX_ACTIVE_RUNS) {
+  if (deps.bridge.active >= settings.get("MAX_ACTIVE_RUNS")) {
     return jsonError({ code: "QUEUE_ERROR", message: "Too many questions at once; try again in a minute", statusCode: 503 });
   }
   const serverKey = parsed.context.server?.id ?? server?.requestIP(req)?.address ?? "unknown";

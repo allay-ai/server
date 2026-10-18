@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   estimateTokens,
-  FOLD_TOKENS,
+  foldTokens,
   type HistoryMessage,
   KEEP_EXCHANGES,
-  KEEP_TOKENS,
+  keepTokens,
   MAX_EXCHANGES,
   MIN_KEEP_EXCHANGES,
   memoryHistory,
@@ -40,10 +40,10 @@ describe("the chat session", () => {
     expect((await history.load("p1")).messages).toHaveLength(40);
   });
 
-  test("folds by tokens, keeping about KEEP_TOKENS of the newest exchanges", async () => {
+  test("folds by tokens, keeping about CHAT_KEEP_TOKENS of the newest exchanges", async () => {
     const history = memoryHistory();
     const per = 1_000;
-    const count = Math.ceil(FOLD_TOKENS / per) + 2;
+    const count = Math.ceil(foldTokens() / per) + 2;
     for (let i = 0; i < count; i++) await history.append("p1", ...sized(i, per));
     let seen: { summary?: string; older: HistoryMessage[] } | undefined;
     const folded = await history.compact("p1", async (summary, older) => {
@@ -55,14 +55,14 @@ describe("the chat session", () => {
     expect(session.summary).toBe("The player asked many questions.");
     // The oldest exchanges went to the summarizer, in order; the newest stayed.
     expect(seen!.older[0]).toEqual({ role: "user", content: "question 0" });
-    expect(estimateTokens(session.messages)).toBeLessThanOrEqual(KEEP_TOKENS);
+    expect(estimateTokens(session.messages)).toBeLessThanOrEqual(keepTokens());
     expect(session.messages.length / 4 + seen!.older.length / 4).toBe(count);
     expect(session.messages.at(-1)).toEqual({ role: "assistant", content: `answer ${count - 1}` });
   });
 
   test("keeps the last exchanges even when each is huge", async () => {
     const history = memoryHistory();
-    for (let i = 0; i < 4; i++) await history.append("p1", ...sized(i, FOLD_TOKENS / 2));
+    for (let i = 0; i < 4; i++) await history.append("p1", ...sized(i, foldTokens() / 2));
     expect(await history.compact("p1", async () => "Long talk.")).toBe(true);
     expect((await history.load("p1")).messages).toHaveLength(MIN_KEEP_EXCHANGES * 4);
   });

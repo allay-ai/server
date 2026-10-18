@@ -4,11 +4,12 @@ import { APICallError, type ModelMessage } from "ai";
 import type { Billing } from "../features/billing/billing";
 import type { ToolBridge } from "../features/chat/chat.bridge";
 import type { Emit } from "../features/chat/chat.events";
+import { settings } from "../features/settings/settings";
 import { exactCalculationsTool } from "../features/tools/exact-calculations.tool";
 import { gameTools, offeredTools } from "../features/tools/game.tools";
 import { memoryTools } from "../features/tools/memory.tools";
 import { type PerplexitySearch, searchWebTool } from "../features/tools/search-web.tool";
-import { estimateTokens, type HistoryStore, MAX_TOKENS, threadOf } from "../infrastructure/history/history";
+import { estimateTokens, type HistoryStore, maxTokens, threadOf } from "../infrastructure/history/history";
 import type { Memory, MemoryStore } from "../infrastructure/memory/memory";
 import { type ByokProvider, type ModelFactory, costOf } from "../infrastructure/providers/openrouter/openrouter.client";
 import { redact } from "../shared/lib/redact";
@@ -41,9 +42,6 @@ export interface RunOptions {
   spend?: (usd: number) => void;
 }
 
-const MAX_STEPS = Number(process.env.MAX_AGENT_STEPS || 8);
-/** An automation agent's wake reads, plans, and acts in one go, so it gets more steps than a question. */
-const MAX_TASK_STEPS = Number(process.env.MAX_TASK_STEPS || 16);
 /** What a task's thread records for a wake that ended with tool calls only. */
 export const TASK_WAITING = "(waiting)";
 
@@ -137,8 +135,8 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     // askx turns one request into commands; earlier chat would only confuse it, as in v1. A task reads its own thread.
     let session = context.mode === "askx" ? { messages: [] } : await deps.history.load(thread(context));
     // Folding after answers keeps a session well below this; a fold that failed, or one huge exchange, may not.
-    if (estimateTokens(session.messages) > MAX_TOKENS) {
-      await compact(context, deps, spend, MAX_TOKENS);
+    if (estimateTokens(session.messages) > maxTokens()) {
+      await compact(context, deps, spend, maxTokens());
       session = await deps.history.load(thread(context));
     }
     const instructions = systemPrompt({ ...context, tools }, { memories, summary: session.summary });
@@ -152,7 +150,8 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     const common = {
       runId,
       abortSignal: signal,
-      maxSteps: context.mode === "task" ? MAX_TASK_STEPS : MAX_STEPS,
+      // An automation agent's wake reads, plans, and acts in one go, so it gets more steps than a question.
+      maxSteps: context.mode === "task" ? settings.get("MAX_TASK_STEPS") : settings.get("MAX_AGENT_STEPS"),
       modelSettings: { maxRetries: 2 },
       toolsets: {
         game: gameTools(tools, runId, deps.bridge, { offered: context.tools, readOnly: context.mode === "askx" }),

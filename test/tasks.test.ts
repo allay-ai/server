@@ -13,7 +13,7 @@ import { handleHealth } from "../src/features/health/health.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { AUTOMATION_TOOLS, gameTools, offeredTools } from "../src/features/tools/game.tools";
 import { handleMemories, handleMemory, handleSession } from "../src/features/users/users.controller";
-import { TASK_TTL_SECONDS, threadOf, ttlOf } from "../src/infrastructure/history/history";
+import { taskTtl, threadOf, ttlOf } from "../src/infrastructure/history/history";
 import { finish, readSse, scripted, testDeps, text, toolCall } from "./helpers";
 
 const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram };
@@ -155,8 +155,8 @@ describe("task tools", () => {
 describe("task threads", () => {
   test("each task has its own thread under the player, living two hours", () => {
     expect(threadOf("p1", "private", "srv-1", "k3f9")).toBe("task:p1:k3f9");
-    expect(ttlOf("task:p1:k3f9")).toBe(TASK_TTL_SECONDS);
-    expect(TASK_TTL_SECONDS).toBe(2 * 3600);
+    expect(ttlOf("task:p1:k3f9")).toBe(taskTtl());
+    expect(taskTtl()).toBe(2 * 3600);
   });
 });
 

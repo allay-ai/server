@@ -10,7 +10,7 @@ import { handleLicense } from "../src/features/billing/license.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { finish, reasoning, readSse, scripted, testDeps, text, toolCall } from "./helpers";
 import { MAX_MEMORIES } from "../src/infrastructure/memory/memory";
-import { type HistoryMessage, MAX_EXCHANGES, MAX_TOKENS } from "../src/infrastructure/history/history";
+import { type HistoryMessage, MAX_EXCHANGES, maxTokens } from "../src/infrastructure/history/history";
 
 const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram };
 let server: Server | undefined;
@@ -334,7 +334,7 @@ describe("POST /api/v2/chat", () => {
   test("a session past the cap folds before the answer", async () => {
     const { model, prompts } = scripted([[...text("The player built a beacon."), finish()], [...text("Yes."), finish()]]);
     const deps = testDeps(model);
-    for (let i = 0; i < 6; i++) await deps.history.append("player-1", ...bulky(i, (MAX_TOKENS + 6_000) / 6));
+    for (let i = 0; i < 6; i++) await deps.history.append("player-1", ...bulky(i, (maxTokens() + 6_000) / 6));
     await readSse(await chat(start(deps), { message: "still there?" }));
     // The summary came first, and the answer's prompt read it instead of the whole session.
     expect(JSON.stringify(prompts[1])).toContain("The player built a beacon.");

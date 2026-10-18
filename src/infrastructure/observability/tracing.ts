@@ -2,10 +2,9 @@ import { Mastra } from "@mastra/core";
 import { SamplingStrategyType, SpanType } from "@mastra/core/observability";
 import { MongoDBStore } from "@mastra/mongodb";
 import { MastraStorageExporter, Observability } from "@mastra/observability";
+import { settings } from "../../features/settings/settings";
 import { logger } from "../../shared/logging/logger";
 
-/** Days a trace stays: long enough to look into a complaint, short enough that players' questions don't pile up. */
-export const TRACE_DAYS = Number(process.env.TRACE_DAYS || 7);
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
 /**
@@ -13,11 +12,13 @@ const PRUNE_EVERY_MS = 60 * 60 * 1000;
  * and tokens, and each tool call with its arguments and result. Mastra Studio reads them.
  * The agent is built per run, so each run registers with this instance.
  */
-export const tracing = (uri: string, dbName: string, everyRun: boolean): Mastra | undefined => {
+export const tracing = (uri: string, dbName: string): Mastra | undefined => {
   // About 150 KB a run: every run on a self-hosted backend, a tenth on the hosted one, where thousands pass a day.
-  const sample = Number(process.env.TRACE_SAMPLE || (everyRun ? 1 : 0.1));
+  const sample = settings.get("TRACE_SAMPLE");
+  // Long enough to look into a complaint, short enough that players' questions don't pile up.
+  const days = settings.get("TRACE_DAYS");
   if (!(sample > 0)) return undefined;
-  const storage = new MongoDBStore({ id: "allay", uri, dbName, retention: { observability: { spans: { maxAge: `${TRACE_DAYS}d` } } } });
+  const storage = new MongoDBStore({ id: "allay", uri, dbName, retention: { observability: { spans: { maxAge: `${days}d` } } } });
   const mastra = new Mastra({
     storage,
     logger: false,
@@ -41,6 +42,6 @@ export const tracing = (uri: string, dbName: string, everyRun: boolean): Mastra 
   const prune = () => storage.prune().catch((error) => logger.warn(`Couldn't prune old traces: ${String(error)}`));
   setInterval(prune, PRUNE_EVERY_MS).unref();
   void prune();
-  logger.info(`Tracing ${sample >= 1 ? "every run" : `${Math.round(sample * 100)}% of runs`} to MongoDB for ${TRACE_DAYS} days`);
+  logger.info(`Tracing ${sample >= 1 ? "every run" : `${Math.round(sample * 100)}% of runs`} to MongoDB for ${days} days`);
   return mastra;
 };

@@ -3,10 +3,10 @@ import { z } from "zod";
 import { forModel } from "./schema";
 import { logger } from "../../shared/logging/logger";
 import { type Emit, type Summary, summaryFields } from "../chat/chat.events";
+import { settings } from "../settings/settings";
 
 export const MAX_EXPRESSIONS = 10;
 export const MAX_EXPRESSION_CHARS = 300;
-const TIMEOUT_MS = Number(process.env.CALC_TIMEOUT_MS || 1000);
 // Worker startup loads math.js; that doesn't count against an expression's second.
 const STARTUP_MS = 10_000;
 
@@ -39,7 +39,7 @@ const startWorker = (): Promise<Worker> =>
  * Evaluates each expression in a worker that gets terminated when one runs past its time,
  * so `factorial(10^9)` costs one second, not the server.
  */
-export const calculateAll = async (expressions: string[], timeoutMs = TIMEOUT_MS): Promise<Calculation[]> => {
+export const calculateAll = async (expressions: string[], timeoutMs = settings.get("CALC_TIMEOUT_MS")): Promise<Calculation[]> => {
   const results: Calculation[] = [];
   let worker: Worker | undefined;
   try {

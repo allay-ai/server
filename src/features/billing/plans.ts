@@ -1,4 +1,5 @@
 import type { GrantRecord } from "../../infrastructure/billing/licenses";
+import { settings } from "../settings/settings";
 
 export type PlanId = "week" | "month" | "year";
 
@@ -17,26 +18,12 @@ export interface Plan {
   subscription: boolean;
 }
 
-const BASE: Record<PlanId, Plan> = {
-  week: { id: "week", stars: 150, days: 7, budget: 0.75, windows: 1, subscription: false },
-  month: { id: "month", stars: 500, days: 30, budget: 3, windows: 1, subscription: true },
-  year: { id: "year", stars: 10_000, days: 365, budget: 6, windows: 12, subscription: false },
-};
-
-/** PLAN_STARS=week=1,month=1,year=1 lowers the prices for a test payment that gets refunded. */
-const overrides = () =>
-  Object.fromEntries(
-    (process.env.PLAN_STARS || "")
-      .split(",")
-      .map((pair) => pair.split("=").map((s) => s.trim()))
-      .filter(([id, stars]) => id in BASE && Number(stars) >= 1)
-      .map(([id, stars]) => [id, Number(stars)]),
-  ) as Partial<Record<PlanId, number>>;
-
-export const plans = (): Plan[] => {
-  const stars = overrides();
-  return Object.values(BASE).map((plan) => ({ ...plan, stars: stars[plan.id] ?? plan.stars }));
-};
+/** Prices and budgets are settings (PLAN_WEEK_STARS, PLAN_WEEK_BUDGET, …); a change never touches periods already paid. */
+export const plans = (): Plan[] => [
+  { id: "week", stars: settings.get("PLAN_WEEK_STARS"), days: 7, budget: settings.get("PLAN_WEEK_BUDGET"), windows: 1, subscription: false },
+  { id: "month", stars: settings.get("PLAN_MONTH_STARS"), days: 30, budget: settings.get("PLAN_MONTH_BUDGET"), windows: 1, subscription: true },
+  { id: "year", stars: settings.get("PLAN_YEAR_STARS"), days: 365, budget: settings.get("PLAN_YEAR_BUDGET"), windows: 12, subscription: false },
+];
 
 export const planOf = (id: string): Plan | undefined => plans().find((plan) => plan.id === id);
 

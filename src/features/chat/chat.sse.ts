@@ -1,6 +1,5 @@
+import { settings } from "../settings/settings";
 import type { ChatEvent, Emit } from "./chat.events";
-
-export const PING_INTERVAL_MS = Number(process.env.SSE_PING_MS || 15_000);
 
 const encoder = new TextEncoder();
 
@@ -36,7 +35,7 @@ export const sseResponse = (run: (emit: Emit, signal: AbortSignal) => Promise<un
         }
       };
       requestSignal?.addEventListener("abort", () => abort.abort(), { once: true });
-      ping = setInterval(() => write(": ping\n\n"), PING_INTERVAL_MS);
+      ping = setInterval(() => write(": ping\n\n"), settings.get("SSE_PING_MS"));
       run((event) => write(frame(event)), abort.signal)
         .catch(() => {
           // The run already sent its error event.

@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { AllayDeps } from "../../agent/allay";
 import { logger } from "../../shared/logging/logger";
 import { type Billing, sha256 } from "../billing/billing";
+import { settings } from "../settings/settings";
 import { handleUpdate } from "./telegram.bot";
 import { type TelegramApi, type Update, telegramApi } from "./telegram.client";
 import { LANGUAGE_CODES, textsOf } from "./telegram.texts";
@@ -50,10 +51,13 @@ const describe = async (api: TelegramApi) => {
   }
 };
 
+/** Each start of the bot; an older polling loop stops once a newer start begins. */
+let generation = 0;
+
 /** Long polling for local runs, where Telegram can't reach a webhook. */
-const poll = async (billing: Billing, api: TelegramApi) => {
+const poll = async (billing: Billing, api: TelegramApi, run: number) => {
   let offset = 0;
-  for (;;) {
+  while (run === generation) {
     try {
       const updates = await api.call<Update[]>("getUpdates", { offset, timeout: 30, allowed_updates: ALLOWED_UPDATES });
       for (const update of updates) {
@@ -68,28 +72,42 @@ const poll = async (billing: Billing, api: TelegramApi) => {
 
 /**
  * Starts the payment bot when billing is on and TELEGRAM_BOT_TOKEN is set: learns its username for
- * payment links, then takes updates through the webhook at API_URL, or by polling with TELEGRAM_POLLING=1.
+ * payment links, then takes updates through the webhook at API_URL, or by polling with TELEGRAM_POLLING.
+ * Starting again replaces the running bot, as a settings change does.
  */
 export const startTelegram = async (billing: Billing) => {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const run = ++generation;
   if (!billing.enabled) return;
+  const token = settings.get("TELEGRAM_BOT_TOKEN");
   if (!token) {
+    Object.assign(billing.bot, { api: undefined, secret: undefined, username: undefined });
     logger.warn("Billing is on, but TELEGRAM_BOT_TOKEN is not set: servers can't get payment links");
     return;
   }
-  const api = telegramApi(token, { base: process.env.TELEGRAM_API_URL, test: process.env.TELEGRAM_TEST_ENV === "1" });
+  const api = telegramApi(token, { base: settings.get("TELEGRAM_API_URL"), test: settings.get("TELEGRAM_TEST_ENV") });
   // Derived from the token unless set, so there's no second secret to keep.
-  const secret = process.env.TELEGRAM_WEBHOOK_SECRET || sha256(`allay-webhook:${token}`);
+  const secret = settings.get("TELEGRAM_WEBHOOK_SECRET") || sha256(`allay-webhook:${token}`);
   const me = await api.call<{ username: string }>("getMe");
+  if (run !== generation) return;
   Object.assign(billing.bot, { api, secret, username: me.username });
   await describe(api);
-  if (process.env.TELEGRAM_POLLING === "1") {
+  if (settings.get("TELEGRAM_POLLING")) {
     await api.call("deleteWebhook");
     logger.info(`Telegram bot @${me.username} polls for updates`);
-    void poll(billing, api);
+    void poll(billing, api, run);
     return;
   }
-  const url = `${(process.env.API_URL || "https://allay.chat").replace(/\/$/, "")}${WEBHOOK_PATH}`;
+  const url = `${settings.get("API_URL")}${WEBHOOK_PATH}`;
   await api.call("setWebhook", { url, secret_token: secret, allowed_updates: ALLOWED_UPDATES });
   logger.info(`Telegram bot @${me.username} takes updates at ${url}`);
 };
+
+const RESTARTS_BOT = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "TELEGRAM_POLLING", "TELEGRAM_API_URL", "TELEGRAM_TEST_ENV", "API_URL"];
+
+/** Restarts the bot when a setting it started with changes in the panel. */
+export const watchTelegram = (billing: Billing) =>
+  settings.onChange((keys) => {
+    if (!billing.enabled || !keys.some((key) => RESTARTS_BOT.includes(key))) return;
+    logger.info("The bot's settings changed; restarting it");
+    void startTelegram(billing).catch((error) => logger.error(`The Telegram bot didn't start: ${String(error)}`));
+  });
