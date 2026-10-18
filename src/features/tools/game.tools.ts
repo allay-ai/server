@@ -93,7 +93,7 @@ const definitions = {
   },
   find_item: {
     description:
-      "Where an item is and how many there are: the asking player's inventory, armor, and offhand, their ender chest, and the containers around, including inside shulker boxes and bundles. Returns total and places (where, slot or x, y, z with distance and direction, count, and what box holds them). An exact id finds that item; a part of an id finds all that contain it (log finds every log) and lists matched_ids. Answers \"where did I put my redstone?\" and \"how many diamonds do I have?\".",
+      "Where an item is and how many there are: the asking player's inventory, armor, and offhand, their ender chest, and the containers around, including inside shulker boxes and bundles. Returns total and places (where, slot or x, y, z with distance and direction, count, and what box holds them). An exact id finds that item; a part of an id finds all that contain it (log finds every log) and lists matched_ids. The containers it finds glow for the player with a label of what's there (highlighted in the result), and a way button goes under your answer when the nearest is far or behind a wall, so don't call show_marks or add a way button for them yourself. Answers \"where did I put my redstone?\" and \"how many diamonds do I have?\".",
     input: z.object({
       item: z.string().min(1).max(64).describe("Item id or part of one, such as diamond or log"),
       radius: z.number().int().min(1).max(12).optional().describe("How far to search containers; 8 by default"),
@@ -257,8 +257,20 @@ const definitions = {
   },
   sort_inventory: {
     description:
-      "Merges stacks and sorts the asking player's main inventory by item. The hotbar, armor, and offhand stay where they are. Only when the player asks for it.",
-    input: z.object({}),
+      "Merges stacks and sorts the asking player's main inventory by item, at once. The hotbar and offhand stay unless hotbar or offhand is true, which only the player's words turn on («и хотбар тоже»). pins puts items in given slots first: “sword first, water second, golden carrot in the last slot” is [{slot: 1, item: \"sword\"}, {slot: 2, item: \"water_bucket\"}, {slot: 9, item: \"golden_carrot\"}]; with several candidates the best takes the slot (material, then enchantments, then durability; food by what it fills). When the player asks you to remember a layout, save it with remember, and pass it as pins when they ask to sort again. Armor never moves. Only when the player asks for it.",
+    input: z.object({
+      hotbar: z.boolean().optional().describe("Also sort the hotbar slots 1–9 that no pin takes"),
+      offhand: z.boolean().optional(),
+      pins: z
+        .array(
+          z.object({
+            slot: z.union([z.number().int().min(1).max(9), z.literal("offhand")]).describe("1–9 for the hotbar from the left, or offhand"),
+            item: z.string().min(1).max(64).describe("An item id, or a group: sword, pickaxe, axe, shovel, hoe, spear, bow, crossbow, trident, mace, shield, totem, torch, bucket, pearl, rocket, arrow, block, food"),
+          }),
+        )
+        .max(10)
+        .optional(),
+    }),
   },
   reminders: {
     description:
