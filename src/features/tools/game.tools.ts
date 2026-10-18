@@ -257,7 +257,7 @@ const definitions = {
   },
   sort_inventory: {
     description:
-      "Merges stacks and sorts the asking player's main inventory by item, at once. The hotbar and offhand stay unless hotbar or offhand is true, which only the player's words turn on («и хотбар тоже»). pins puts items in given slots first: “sword first, water second, golden carrot in the last slot” is [{slot: 1, item: \"sword\"}, {slot: 2, item: \"water_bucket\"}, {slot: 9, item: \"golden_carrot\"}]; with several candidates the best takes the slot (material, then enchantments, then durability; food by what it fills). When the player asks you to remember a layout, save it with remember, and pass it as pins when they ask to sort again. Armor never moves. Only when the player asks for it.",
+      "Merges stacks and sorts the asking player's main inventory by item, at once. The hotbar and offhand stay unless hotbar or offhand is true, which only the player's words about sorting the hotbar itself turn on («и хотбар тоже»); pins into hotbar slots work without it and leave the rest of the hotbar alone. pins puts items in given slots first: “sword first, water second, golden carrot in the last slot” is [{slot: 1, item: \"sword\"}, {slot: 2, item: \"water_bucket\"}, {slot: 9, item: \"golden_carrot\"}]; with several candidates the best takes the slot (material, then enchantments, then durability; food by what it fills). When the player asks you to remember a layout, save it with remember, and pass it as pins when they ask to sort again. Armor never moves. Only when the player asks for it.",
     input: z.object({
       hotbar: z.boolean().optional().describe("Also sort the hotbar slots 1–9 that no pin takes"),
       offhand: z.boolean().optional(),
@@ -472,7 +472,7 @@ const automationDefinitions = {
   },
   smelt: {
     description:
-      "Smelting in furnaces, blast furnaces, and smokers near the player, each by what it can cook. action scan: the free and busy ones around, and what the player has to smelt and burn. start: smelts count of item, or several items at once with items (“the iron and the gold”: one call, never one after the other), over furnaces (or the free ones around); each furnace takes one item, and the split weighs speed (a blast furnace cooks ores twice as fast) so all finish about together. Exactly the fuel it needs; coal blocks are split into coal, and leftovers go back where they came from. status: how far it is. collect: takes the output to to. You wake when the smelting ends.",
+      "Smelting in furnaces, blast furnaces, and smokers near the player, each by what it can cook. action scan: the free and busy ones around, what the player has to smelt (to_smelt_at_hand) and to burn; no need to search the inventory yourself. start: smelts count of item, or several items at once with items (“the iron and the gold”: one call, never one after the other), over furnaces (or the free ones around); each furnace takes one item, and the split weighs speed (a blast furnace cooks ores twice as fast) so all finish about together. Items the player has none of are skipped and listed in not_at_hand. Exactly the fuel it needs; coal blocks are split into coal, and leftovers go back where they came from. status: how far it is. collect: takes the output to to. You wake when the smelting ends.",
     input: z.object({
       action: z.enum(["scan", "start", "status", "collect"]),
       item: itemId.optional().describe("start: what to smelt, like raw_gold"),
