@@ -1,3 +1,4 @@
+import type { Mastra } from "@mastra/core";
 import { Agent } from "@mastra/core/agent";
 import { APICallError, type ModelMessage } from "ai";
 import type { Billing } from "../features/billing/billing";
@@ -29,6 +30,8 @@ export interface AllayDeps {
   billing: Billing;
   /** Perplexity's Search API for runs on the backend's own key; without it they use the search model. */
   perplexity?: PerplexitySearch;
+  /** Where runs are traced; none in tests. */
+  mastra?: Mastra;
   /** How long a session stays quiet before it folds: IDLE_FOLD_SECONDS by default, shorter in tests; 0 never. */
   idleFoldMs?: number;
 }
@@ -144,6 +147,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     }
     const instructions = systemPrompt({ ...context, tools }, { memories, summary: session.summary });
     const agent = new Agent({ id: "allay", name: "Allay", instructions, model });
+    if (deps.mastra) agent.__registerMastra(deps.mastra);
     const asked = question(context);
     const messages: ModelMessage[] = [...session.messages, { role: "user", content: asked }];
 

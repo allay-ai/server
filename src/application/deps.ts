@@ -3,7 +3,9 @@ import type { AllayDeps } from "../agent/allay";
 import { newLimits, selfHosted } from "../features/billing/billing";
 import { bridge } from "../features/chat/chat.bridge";
 import { mongoLicenses } from "../infrastructure/billing/licenses";
+import { MONGODB_DATABASE, MONGODB_URI } from "../infrastructure/database/mongodb.env";
 import { redisHistory } from "../infrastructure/history/history";
+import { tracing } from "../infrastructure/observability/tracing";
 import { mongoMemories } from "../infrastructure/memory/memory";
 import { openrouterModels } from "../infrastructure/providers/openrouter/openrouter.client";
 
@@ -19,6 +21,7 @@ export const productionDeps: AllayDeps = {
   memories: mongoMemories,
   bridge,
   perplexity: process.env.PERPLEXITY_API_KEY ? { apiKey: process.env.PERPLEXITY_API_KEY } : undefined,
+  mastra: tracing(MONGODB_URI, MONGODB_DATABASE, selfHosted()),
   billing: {
     enabled: !selfHosted(),
     licenses: mongoLicenses,
