@@ -29,9 +29,11 @@ For `/askx`, a `commands` event with the command list replaces the text. The ful
 
 Game tools only see the player who asked and the world around them; other players' coordinates and inventories stay out of reach. Other players reach the agent only as the asker's locator bar shows them (`get_nearby_players`, plugin 5.4): a name, a distance, and a direction, by the game's rules, so whoever hides from the bar hides from the agent too. `point_to` with `player` draws a trail that follows that player. `show_marks` (plugin 5.5) draws glowing boxes, ghost blocks, and labels only the asker sees: the chests that hold what they look for, ghost torches on dark spots. `show_draft` (plugin 5.6) draws any build up to 20×15×20 as ghosts the player builds into, layer by layer, and `inspect_redstone` reads a machine and the faults the game's rules make certain. The agent matches the name the player says to a real one, a nickname it was asked to remember included, and asks with a way button for each player when it can't tell. The plugin sends the list of tools it offers, so a server admin can switch any of them off. Besides reading, everyone gets harmless actions: pointing the compass at a spot, sorting the inventory, reminders, and a notebook. The agent pins a note to a place (“a villager here sells arrows”), then finds it from a loose question later and points the way. The plugin tells the agent which dimension the player stands in, so a place named without one lands there. The way is a particle trail as long as the player asks or the walk needs, in a style that fits the place, and it ends when they arrive. In one call it sees whatever the player looks at: a block, a chest, a mob, or a villager. It finds where an item is, even inside shulker boxes and bundles, examines any item in full (a book’s enchantments, a potion’s effects, a weapon’s damage and speed, a shulker box’s contents), works out durability, XP, and food, tells where to put torches, and estimates a farm’s rate. Tools that give items, teleport, or change the game mode, time, or weather go to operators only. The backend drops them for everyone else, even if a plugin offers them, and `/askx` gets only the tools that read the game. Server tools send their short results as a key, so the plugin shows them in the player's language.
 
+The model sees fewer tools than the plugin runs, so it picks the right one more often and every step costs fewer tokens. `notes` adds, finds, and deletes notes; `inventory` gives the overview, what needs repair, food, or brewing supplies; `locate` finds a structure or a biome; `get_recipes` covers potions too; `get_locations` tells what lies at the death point; `get_player_status` carries the XP; `allay_settings` sets the time zone. The backend calls the plugin's own tools under their own names, so older plugins keep working. Every field of a tool reaches the model as required and nullable, as OpenAI models fill them best: left optional, they fill each one with a placeholder.
+
 Three tools run on the backend:
 
-- `search_web` searches the web through a search model. The agent decides when it's worth it instead of searching for every question;
+- `search_web` searches the web. With `PERPLEXITY_API_KEY`, it asks Perplexity's Search API and the agent reads up to five pages itself, in about a second for $0.005; without it, and for servers with their own key, a search model answers. The agent decides when it's worth it instead of searching for every question;
 - `exact_calculations` evaluates expressions exactly with [math.js](https://mathjs.org) at 64 significant digits: stacks, Nether coordinates, XP, unit conversions. Each expression runs in a worker for at most a second;
 - `remember` and `forget` keep a lasting memory about the player.
 
@@ -49,13 +51,17 @@ A question from `/askall` comes with `visibility: "public"`: every player online
 
 ### Memory
 
-Each player has a session and a lasting memory. The session lives in Redis for 24 hours after the last question. It holds the last 8 to 12 questions verbatim and a short summary of everything before them. The model writes that summary after the answer, so the player never waits for it. `/askx` requests land in the session as one line: what was asked and which commands came out.
+Each player has a session and a lasting memory. The session lives in Redis for 24 hours after the last question. It keeps whole exchanges: the question, the tool calls with their results, whole as the model saw them, and the answer, so a follow-up like “how many were in that chest?” needs no second call. Everything but the newest 12 000 tokens (at least 2 exchanges, at most 30) folds into a summary of up to 3000 characters in three cases. After an answer, once the session passes about 32 000 tokens or 100 exchanges; the player doesn't wait for it. After 25 quiet minutes, once it passes 20 000 tokens: OpenAI drops the cached prompt at 30, and the next question would read the whole session at full price. And before an answer, when the session somehow passed 42 000 tokens; only then does the player wait. Between folds the session only grows at the end, so the provider's prompt cache keeps it. `/askx` requests land in the session as one line: what was asked and which commands came out.
 
-Public questions have their own thread, one per server, apart from players' sessions. Each question there starts with the asker's name, so when a friend follows up on someone else's question, the agent knows what it's about. The thread lives 2 hours after the last question. Each automation agent has a thread of its own too, apart from the player's session, for 2 hours after its last wake.
+Public questions have their own thread, one per server, apart from players' sessions. Each question there starts with the asker's name, so when a friend follows up on someone else's question, the agent knows what it's about. It keeps the answers but not the tool results, which only the asker may see. The thread lives 2 hours after the last question. Each automation agent has a thread of its own too, apart from the player's session, for 2 hours after its last wake.
 
 The lasting memory sits in MongoDB and never expires. It's up to 30 short facts: where the base is, what the player is working on, how they like answers. The agent saves them itself and says so. The plugin gives players `/allay new`, `/allay memory` (with text, it saves a fact by hand), and `/allay forget` through the `/api/v2/users/{user_id}/…` endpoints described in the protocol.
 
 `POST /api/ask` and `POST /api/askx` work as before for the Telegram bot and plugins older than 2.0: the same agent without game tools, one JSON answer. The session is shared between both API versions.
+
+### Traces
+
+The backend traces runs into its MongoDB through Mastra's observability: each run, model step (prompt, output, tokens), and tool call with its arguments and result. Mastra Studio reads them. A self-hosted backend traces every run, the hosted one a tenth (`TRACE_SAMPLE`), and traces go after 7 days (`TRACE_DAYS`). A trace holds players' questions, so it lives no longer than it needs to; keys are redacted. A run takes about 150 KB.
 
 > Pending tool calls live in the process's memory, so the server assumes a single instance. With several, the tool result must reach the instance that holds the stream.
 
@@ -104,7 +110,8 @@ Send your own key with `-H "X-Provider-Key: sk-or-..."`, or a license with `-H "
 | `OPENROUTER_API_KEY` | OpenRouter key | required |
 | `OPENROUTER_API_URL` | OpenRouter API address | `https://openrouter.ai/api/v1` |
 | `OPENROUTER_API_MODEL` | The agent's model. It must support tool calling: `perplexity/sonar*` won't do | `openai/gpt-6-luna` |
-| `SEARCH_MODEL` | Online model for web search | `perplexity/sonar` |
+| `PERPLEXITY_API_KEY` | Perplexity's Search API for web search on the backend's own key | unset, so `SEARCH_MODEL` searches |
+| `SEARCH_MODEL` | Online model for web search without a Perplexity key, and for servers with their own key | `perplexity/sonar` |
 | `OPENROUTER_API_CTX` | Search context size: `low`, `medium`, `high` | `medium` |
 | `OPENROUTER_REASONING_EFFORT` | Reasoning effort for models that reason: `low`, `medium`, `high` | unset |
 | `TOOL_TIMEOUT_MS` | How long to wait for the plugin's tool result | `15000` |
@@ -115,6 +122,14 @@ Send your own key with `-H "X-Provider-Key: sk-or-..."`, or a license with `-H "
 | `CHAT_TTL_SECONDS` | How long a chat session lives after the last question | `86400` |
 | `PUBLIC_CHAT_TTL_SECONDS` | How long a server's thread of public questions lives after the last one | `7200` |
 | `TASK_CHAT_TTL_SECONDS` | How long an automation agent's thread lives after its last wake | `7200` |
+| `CHAT_FOLD_TOKENS` | A session folds into its summary past this many tokens | `32000` |
+| `CHAT_KEEP_TOKENS` | About how many tokens of the newest exchanges stay verbatim after a fold | `12000` |
+| `CHAT_MAX_TOKENS` | Past this many tokens, a session folds before the answer | `42000` |
+| `CHAT_IDLE_FOLD` | `0` turns folding quiet sessions off | on |
+| `CHAT_IDLE_FOLD_SECONDS` | How long a session stays quiet before it folds | `1500` |
+| `CHAT_IDLE_FOLD_TOKENS` | A quiet session folds only past this many tokens | `20000` |
+| `TRACE_SAMPLE` | The share of runs traced, 0 turns tracing off | `1` self-hosted, `0.1` hosted |
+| `TRACE_DAYS` | How long traces stay | `7` |
 | `CALC_TIMEOUT_MS` | How long `exact_calculations` gives one expression | `1000` |
 | `SELFHOSTED` | `1` turns billing off: everyone runs on this backend's key | unset, so billing is on |
 | `API_URL` | The backend's public address; the Telegram webhook goes to `API_URL/api/telegram/webhook` | `https://allay.chat` |
@@ -126,7 +141,7 @@ Send your own key with `-H "X-Provider-Key: sk-or-..."`, or a license with `-H "
 | `TELEGRAM_TEST_ENV` | `1` talks to Telegram's test environment | unset |
 | `PLAN_STARS` | Other prices, such as `week=1,month=1,year=1` for a test payment you refund | unset |
 
-Prompts live in [src/prompts](src/prompts) (`minecraft-ask.md`, `minecraft-askx.md`, `minecraft-task.md` for automation agents, `telegram.md`) and ship inside the build. Each run appends who asks, their language, the server version, and the available tools. Remove old `SYSTEM_MESSAGE*` variables to switch to the new prompts. The old `SYSTEM_MESSAGE*` variables are no longer read. A `perplexity/…` main model can’t call tools, so the server moves it to search and answers with the default model.
+Prompts live in [src/prompts](src/prompts) (`minecraft-ask.md`, `minecraft-askx.md`, `minecraft-task.md` for automation agents, `telegram.md`) and ship inside the build. Each run appends who asks, their language, and the server version. Remove old `SYSTEM_MESSAGE*` variables to switch to the new prompts. The old `SYSTEM_MESSAGE*` variables are no longer read. A `perplexity/…` main model can’t call tools, so the server moves it to search and answers with the default model.
 
 ## Deployment
 

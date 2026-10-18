@@ -14,11 +14,11 @@ The backend of Allay, an AI helper for Minecraft players and a Telegram bot. A M
 | `src/application/` | Entrypoint, routes, shared dependencies |
 | `src/features/chat/` | `POST /api/v2/chat`: the SSE stream and the bridge that hands client tools to the plugin and waits for `POST /api/v2/chat/{run}/tools/{call}` |
 | `src/features/ask`, `src/features/askx` | v1 endpoints for plugins before 2.0 (the Telegram bot allay-ai/bot is archived); keep their request and response shapes |
-| `src/features/tools/` | Client tool definitions (run by the plugin, only about the asking player; operator tools only for operators) and the server tools: `search_web` (an OpenRouter search model), `exact_calculations` (math.js in a worker), `remember`/`forget` |
+| `src/features/tools/` | Client tool definitions (run by the plugin, only about the asking player; operator tools only for operators) and the server tools: `search_web` (Perplexity's Search API with the backend's key, an OpenRouter search model otherwise), `exact_calculations` (math.js in a worker), `remember`/`forget` |
 | `src/features/users/` | `/api/v2/users/{user_id}/session` and `/memories`: the plugin's `/ask new`, `/ask memory`, `/ask forget` |
 | `src/agent/` | The agent runner, prompt assembly, the session summarizer, askx command validation |
 | `src/prompts/*.md` | The system prompts, bundled into the build; the only place to change them |
-| `src/infrastructure/` | The Redis session (v1 history key plus `chat_summary:*`), memories in MongoDB, the OpenRouter provider |
+| `src/infrastructure/` | The Redis session (v1 history key plus `chat_summary:*`, whole exchanges with tool calls since 5.5), memories in MongoDB, the OpenRouter provider, traces into MongoDB through Mastra's observability |
 | `src/features/billing/` | Who pays for a run (`gate.ts`): the server's own key (BYOK, with `byok.ts` checking the URL, the key, and the model), or a license with money left. Plans and budget windows (`plans.ts`), licenses (`billing.ts`), `/api/v2/license`, the per-server limits |
 | `src/features/telegram/` | The payment bot: the webhook at `/api/telegram/webhook` (or polling), `/start <claim code>`, Stars invoices, pre-checkout, payments, renewals, `/status`, `/refund`, texts in en, ru, es, pt, de |
 | `src/infrastructure/billing/` | Licenses, budget windows (grants), and payments in MongoDB, plus an in-memory store for tests |

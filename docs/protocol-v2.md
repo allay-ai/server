@@ -64,7 +64,7 @@ Answers: `200 { "accepted": true }`, `404` unknown or finished run or call, `409
 
 ## Client tools (run by the plugin, on the server thread, about the asking player only)
 
-2.4 merged and reshaped tools, and the backend serves only the 2.4 set: plugins before 2.4 lose the tools whose names changed. Every spot comes as absolute `x`, `y`, `z` with `distance` (horizontal, in blocks) and `direction` (north, north-east…); dimensions are `overworld`, `the_nether`, `the_end`, and tools accept Bukkit's old `normal` and `nether` too.
+2.4 merged and reshaped tools, and the backend serves only the 2.4 set: plugins before 2.4 lose the tools whose names changed. Since backend 5.5 the model sees some of these as one tool (`notes` for the three note tools, `inventory` for `get_inventory`, `get_item_durability`, `get_food_options`, and `get_brewing_items`, `locate` for both locate tools, `get_recipes` with `get_brewing_recipe`, `get_locations` with `get_death_info`, `get_player_status` with `get_xp_info`, `allay_settings` with `set_timezone`), but the backend still calls the plugin by the names below, so nothing changes for a plugin. Every spot comes as absolute `x`, `y`, `z` with `distance` (horizontal, in blocks) and `direction` (north, north-east…); dimensions are `overworld`, `the_nether`, `the_end`, and tools accept Bukkit's old `normal` and `nether` too.
 
 | Name | Args | Returns |
 |---|---|---|
@@ -171,9 +171,9 @@ Listed only for operators and only when the admin enables them (`tools.operator`
 
 | Name | Args | Notes |
 |---|---|---|
-| `search_web` | `{ "query": "…" }` | Searches through an OpenRouter online model; the result keeps source URLs |
+| `search_web` | `{ "query": "…", "sites"?: [domain], "recency"?: "day" \| "week" \| "month" \| "year" }` | Since 5.5, with the backend's `PERPLEXITY_API_KEY` and no server key: Perplexity's Search API, up to 5 results {title, url, date?, snippet}. Otherwise, and for BYOK: `{ "query" }` through the search model, a summary with source URLs |
 | `exact_calculations` | `{ "expressions": ["ceil(1000 / 64)", "(-1024 / 8)", "3 hours to seconds"] }` | Up to 10 expressions, each ≤ 300 chars, evaluated with math.js at 64 significant digits (units and conversions work). Returns `[{ expression, result }]` or `{ expression, error }` per line; each expression gets 1 s |
-| `remember` | `{ "text": "≤ 200 chars" }` | Saves a lasting fact about the player (goals, what they've done, preferences; places go to the notebook with `add_note`); at most 30 per player |
+| `remember` | `{ "text": "≤ 200 chars" }` | Saves a lasting fact about the player (goals, what they've done, preferences; places go to the notebook with `notes`); at most 30 per player |
 | `forget` | `{ "id": "…" }` | Deletes one remembered fact |
 
 All server tools report progress only through `tool_status` (kind `server`).
@@ -200,7 +200,7 @@ Since 5.5, for plugin 5.7. The chat hands work in the world (sorting chests, sme
 
 The backend keeps two things per `user_id`:
 
-- **The session.** At least the last 8 exchanges verbatim plus a short summary of everything older. Once 12 pile up, the backend folds the oldest into the summary with the model, after the answer is out. A session lives 24 hours after the last question. `/askx` requests land in it as one short exchange (the request and the commands or the refusal), so a later `/ask` knows what was done.
+- **The session.** Whole exchanges verbatim (since 5.5 with the tool calls and their results, whole) plus a summary of everything older. The backend folds all but the newest 12 000 tokens (2 to 30 exchanges) into the summary with the model after an answer once the session passes about 32 000 tokens or 100 exchanges, after 25 quiet minutes once it passes 20 000, and before an answer past 42 000. A session lives 24 hours after the last question. `/askx` requests land in it as one short exchange (the request and the commands or the refusal), so a later `/ask` knows what was done.
 - **The server's public thread** (since 3.0). Public questions with a `server.id` go to `public:<server.id>` instead of the asker's session, each question prefixed with the asker's name in brackets, so a follow-up from another player continues the talk. It folds like a session and lives 2 hours after the last question (`PUBLIC_CHAT_TTL_SECONDS`). Without `server.id` a public question uses the asker's session.
 - **A task's thread** (since 5.5). Each wake of an automation agent reads and extends `task:<user_id>:<task.id>`: the wake's message and the agent's final text, or `(waiting)` when it ended without one. It folds like a session and lives 2 hours after the last wake (`TASK_CHAT_TTL_SECONDS`). The player's session never sees it.
 - **Memories.** Lasting facts the model saves with `remember`, kept in MongoDB without expiry. They go into the system prompt with their ids.
@@ -262,7 +262,7 @@ Before a stream these come as `{ "error": { "code", "message", "resets_at"?, "re
 
 The limit is a budget in US dollars: what the server's questions really cost, counting the model, web search, and the session summaries. Each run is charged when it ends, so one run can overshoot a little.
 
-A backend with billing off (`SELFHOSTED=1`, as on a server's own backend) never asks for a license: it serves everyone on its own key, and BYOK still works without limits. Since 5.5, such a backend honors `provider.model` from a request without a key: the run (and its session summary) uses that model on the backend's own key, so the plugin can give each player tier its own model. `base_url` and `search_model` are ignored there, and search keeps the backend's search model. With billing on, a request without a key never picks the model.
+A backend with billing off (`SELFHOSTED=1`, as on a server's own backend) never asks for a license: it serves everyone on its own key, and BYOK still works without limits. Since 5.5, such a backend honors `provider.model` from a request without a key: the run (and its session summary) uses that model on the backend's own key, so the plugin can give each player tier its own model. `base_url` and `search_model` are ignored there, and search stays the backend's own. With billing on, a request without a key never picks the model.
 
 ### License endpoints
 
