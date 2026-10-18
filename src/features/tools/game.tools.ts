@@ -1,6 +1,6 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
-import type { Visibility } from "../../agent/agent.types";
+import type { Mode, Visibility } from "../../agent/agent.types";
 import type { ToolBridge } from "../chat/chat.bridge";
 
 /** Client tools: the plugin runs them in the game and posts the result back. */
@@ -371,6 +371,120 @@ const definitions = {
   },
 } as const;
 
+const spot = z.object({ x: z.number().int(), y: z.number().int(), z: z.number().int() });
+const itemId = z.string().min(1).max(64);
+const taskRef = z.string().regex(/^[a-z0-9]{1,16}$/).describe("The task's id, from start_task or the running tasks in “This conversation”");
+export const CATEGORIES = ["building", "wood", "stone", "ores", "redstone", "food", "farming", "mob_drops", "tools", "potions", "other"] as const;
+const output = z
+  .union([z.literal("inventory"), z.array(spot).min(1).max(8)])
+  .optional()
+  .describe("Where the output goes: inventory, or chests by coordinates from a tool; ask the player when they didn't say");
+
+/**
+ * Automation agents (since 5.5): the chat starts and steers them, and each wake of one gets the rest.
+ * The plugin runs them all, checks the player's rights, and keeps every task near the player.
+ */
+const automationDefinitions = {
+  start_task: {
+    description:
+      "Starts an automation agent that works in the background while the player's chat stays free: kind chests (sort, group, or move items between chests), furnaces (smelting), brewing (brewing potions for the player), or crafting. The agent starts with no history and knows only brief, so write everything into it: what to do, step by step for chains, every detail and preference the player said (items, counts, chests, where the output goes), the coordinates tools gave you, and the language the player writes in. name is a few words in that language, shown to the player as “Automation agent: name”. Returns id and name, or an error: the player's task limit, no rights, or automation switched off; say that plainly.",
+    input: z.object({
+      kind: z.enum(["chests", "furnaces", "brewing", "crafting"]),
+      name: z.string().min(1).max(40).describe("A few words in the player's language, like «Сортировка сундуков»"),
+      brief: z.string().min(1).max(2000).describe("The full task for an agent that knows nothing else"),
+    }),
+  },
+  message_task: {
+    description:
+      "Passes the player's words on to a running automation agent: the answer to the question it asked, or a change of plans («положи всё в нижний сундук»). Pass what the player said, complete, in their words; the agent wakes with it.",
+    input: z.object({ id: taskRef, text: z.string().min(1).max(500) }),
+  },
+  cancel_task: {
+    description: "Stops a running automation agent by id when the player asks. What it already moved stays where it is.",
+    input: z.object({ id: taskRef }),
+  },
+  say: {
+    description:
+      "Writes a line to the player in chat under your agent's name: a question, a short progress note, or what went wrong. Up to 4 buttons; a click wakes you with “[button] reply”. The only way the player hears you: your final text never reaches them.",
+    input: z.object({
+      text: z.string().min(1).max(500).describe("Short, in the player's language, with the chat's color codes like an ordinary answer"),
+      buttons: z
+        .array(
+          z.object({
+            label: z.string().min(1).max(24).describe("A word or two in the player's language"),
+            reply: z.string().min(1).max(200).describe("What the click tells you, written so you understand it on the next wake"),
+          }),
+        )
+        .max(4)
+        .optional(),
+    }),
+  },
+  wait: {
+    description:
+      "Ends this wake and sleeps until something happens: the player answers or clicks a button, your job ends (smelting or brewing done, a picking mode closed), or seconds pass. You wake with what happened. Call it last, then write your note.",
+    input: z.object({ seconds: z.number().int().min(1).max(600).optional().describe("Wake by this time at the latest; leave it out to wait only for the player or the job") }),
+  },
+  finish: {
+    description: "Ends the task for good. summary is the one line the player sees: what was done, or why it stopped. Call it last, then write your note.",
+    input: z.object({ summary: z.string().min(1).max(500).describe("In the player's language, with the numbers that matter") }),
+  },
+  pick_blocks: {
+    description:
+      "Lets the player pick blocks: left-clicks pick and unpick chests (a double chest counts once), furnaces, or brewing stands, which glow; unsuitable ones glow in another color with why. The player gets [Done] [All] [Cancel], and you wake with what they picked. looking: true takes the block under the crosshair at once and returns it, with no picking mode.",
+    input: z.object({ kind: z.enum(["chests", "furnaces", "brewing_stands"]), looking: z.boolean().optional() }),
+  },
+  chests: {
+    description:
+      "Works with chests the player may open, by coordinates from pick_blocks or an earlier result. action read: each chest's contents, the text of the signs on it, the items in frames on it, and what's wrong with it (a hopper, someone has it open, no access). plan: what would go where, as a preview; nothing moves. mode sort sorts each chest on its own; group pools the chests and lays them out by category, so one resource doesn't end up in several chests (assign pins chests to a category or items, from signs, frames, or what the player said; the rest by the plugin's categories); move takes items or categories to the chests in to. apply: does the plan, but only if nothing changed since; returns each chest with its coordinates, category, and main contents. undo: puts everything back as it was before the last apply, within 5 minutes and if nobody touched it.",
+    input: z.object({
+      action: z.enum(["read", "plan", "apply", "undo"]),
+      mode: z.enum(["sort", "group", "move"]).optional(),
+      chests: z.array(spot).max(64).optional(),
+      assign: z
+        .array(
+          spot.extend({
+            category: z.enum(CATEGORIES).optional(),
+            items: z.array(itemId).max(27).optional().describe("Item ids this chest holds, such as an item frame shows"),
+          }),
+        )
+        .max(64)
+        .optional(),
+      items: z.array(itemId).max(64).optional().describe("move: item ids to take"),
+      categories: z.array(z.enum(CATEGORIES)).max(11).optional().describe("move: categories to take"),
+      to: z.array(spot).max(64).optional().describe("move: the chests to put them in"),
+    }),
+  },
+  smelt: {
+    description:
+      "Smelting in furnaces, blast furnaces, and smokers near the player, each by what it can cook. action scan: the free and busy ones around, and what the player has to smelt and burn. start: spreads count of item evenly over furnaces (or the free ones around), with exactly the fuel it needs; coal blocks are split into coal, and leftovers go back where they came from. status: how far it is. collect: takes the output to to. You wake when the smelting ends.",
+    input: z.object({
+      action: z.enum(["scan", "start", "status", "collect"]),
+      item: itemId.optional().describe("start: what to smelt, like raw_gold"),
+      count: z.number().int().min(1).max(4096).optional().describe("start: how many; leave it out for all the player has"),
+      furnaces: z.array(spot).max(16).optional(),
+      fuel: itemId.optional().describe("start: the fuel to use, like coal; leave it out to pick the cheapest at hand"),
+      to: output,
+    }),
+  },
+  brew: {
+    description:
+      "Brewing in stands near the player. action scan: the stands that suit (the right base already in them, water bottles there) and the ingredients and blaze powder at hand. start: brews potion in form in bottles 1–3 per stand, taking only what's needed and skipping the steps already done; a missing ingredient comes back as a list. status: how far it is. collect: takes the potions to to. You wake when a step ends.",
+    input: z.object({
+      action: z.enum(["scan", "start", "status", "collect"]),
+      potion: itemId.optional().describe("start: the potion's id, like night_vision or long_swiftness"),
+      form: z.enum(["potion", "splash_potion", "lingering_potion"]).optional(),
+      bottles: z.number().int().min(1).max(3).optional(),
+      stands: z.array(spot).max(8).optional(),
+      to: output,
+    }),
+  },
+  craft: {
+    description:
+      "Crafts item at a crafting table near the player from this server's recipes, with ingredients from the inventory, bundles, the ender chest when one is near, and chests the player may open; never from inside shulker boxes. The output goes to the inventory, or at the feet when it's full. dry_run: true only says what it would take and what's missing.",
+    input: z.object({ item: itemId, count: z.number().int().min(1).max(64).optional(), dry_run: z.boolean().optional() }),
+  },
+} as const;
+
 /** Tools that change the game for the asker; only operators get them, and only when the admin enables them. */
 const operatorDefinitions = {
   give_item: {
@@ -420,10 +534,11 @@ const operatorDefinitions = {
   },
 } as const;
 
-const allDefinitions = { ...definitions, ...operatorDefinitions };
+const allDefinitions = { ...definitions, ...automationDefinitions, ...operatorDefinitions };
 
 export type GameToolName = keyof typeof allDefinitions;
 export const GAME_TOOLS = Object.keys(definitions) as GameToolName[];
+export const AUTOMATION_TOOLS = Object.keys(automationDefinitions) as GameToolName[];
 export const OPERATOR_TOOLS = Object.keys(operatorDefinitions) as GameToolName[];
 
 const isOperatorTool = (name: string) => name in operatorDefinitions;
@@ -431,32 +546,50 @@ const isOperatorTool = (name: string) => name in operatorDefinitions;
 /** Tools that do something for the player rather than read the game; askx only writes commands, so it gets none of them. */
 const ACTION_TOOLS: ReadonlySet<string> = new Set([
   "point_to", "show_marks", "show_draft", "ping_me", "sort_inventory", "reminders", "goals", "add_note", "delete_note", "add_buttons", "write_book", "set_timezone",
-  "allay_settings",
+  "allay_settings", ...AUTOMATION_TOOLS,
 ]);
 
 /**
  * Tools whose result only the asker could see; a question everyone sees goes without them.
  * The locator bar is the asker's own: read out in public, it would tell everyone where others are.
+ * Tasks belong to the asker too, and a shared thread mustn't start or steer them.
  */
-const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players"]);
+const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players", "start_task", "message_task", "cancel_task"]);
+
+/** What only an automation agent gets: it talks to the player, waits, and does the work the chat hands it. */
+const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "pick_blocks", "chests", "smelt", "brew", "craft"]);
+
+/** What an automation agent never gets: it talks through say, and only the chat steers other tasks. */
+const NOT_IN_TASKS: ReadonlySet<string> = new Set(["add_buttons", "write_book", "get_nearby_players", "message_task", "cancel_task"]);
+
+/** The chat is depth 0; an agent it starts is 1 and may start one more at 2, which may not. */
+export const MAX_TASK_DEPTH = 2;
+
+const fitsMode = (name: string, mode: Mode, depth: number) => {
+  if (mode === "askx") return !isOperatorTool(name) && !ACTION_TOOLS.has(name);
+  if (mode === "task") return !isOperatorTool(name) && !NOT_IN_TASKS.has(name) && (name !== "start_task" || depth < MAX_TASK_DEPTH);
+  return !TASK_ONLY_TOOLS.has(name);
+};
 
 /**
  * The client tools this run really gets: the ones the plugin offered and the backend knows,
  * minus operator tools unless the asker is an operator. The plugin checks again when it runs one.
  * askx reads only: it turns a request into commands, so actions and operator tools stay out.
+ * A task wake gets the automation tools and no operator tools; the chat gets only the ones that start and steer tasks.
  * A public question loses the tools that only make sense for the asker alone.
  */
 export const offeredTools = (
   names: string[],
   operator: boolean,
-  mode: "ask" | "askx" = "ask",
+  mode: Mode = "ask",
   visibility: Visibility = "private",
+  depth = 0,
 ): GameToolName[] =>
   names.map(canonical).filter(
     (name): name is GameToolName =>
       name in allDefinitions &&
       (operator || !isOperatorTool(name)) &&
-      (mode === "ask" || (!isOperatorTool(name) && !ACTION_TOOLS.has(name))) &&
+      fitsMode(name, mode, depth) &&
       (visibility === "private" || !PRIVATE_TOOLS.has(name)),
   );
 
