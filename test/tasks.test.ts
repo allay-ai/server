@@ -150,7 +150,8 @@ describe("task tools", () => {
     expect(valid("anvil", { action: "plan", item: "diamond_sword", enchantments: ["mending"], rename: "Excalibur" })).toBe(true);
     expect(valid("smelt", { action: "collect", to: "chest" })).toBe(false);
     expect(valid("brew", { action: "start", potion: "night_vision", form: "splash_potion", bottles: 3 })).toBe(true);
-    expect(valid("brew", { action: "start", bottles: 4 })).toBe(false);
+    expect(valid("brew", { action: "start", potion: "long_night_vision", bottles: 4, fresh: false })).toBe(true);
+    expect(valid("brew", { action: "start", bottles: 25 })).toBe(false);
     expect(valid("craft", { item: "iron_pickaxe", count: 2, dry_run: true })).toBe(true);
     expect(valid("craft", { item: "iron_pickaxe", count: 65 })).toBe(false);
   });

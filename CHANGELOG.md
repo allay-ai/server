@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.8.1
+
+For Allay 5.10.1; older plugins still read `bottles` per stand.
+
+- 🧪 **Brewing counts potions in all.** `brew` takes `bottles` as the number of potions the player wants, up to 24, and `fresh` to skip their own potions. The brewing agent upgrades the potions a player has when they ask for longer or stronger ones, instead of brewing new ones, and the chat writes its brief that way.
+
 ## 5.8.0
 
 For Allay 5.10, which adds the fuel action, the anvil, and new crafting stations; older plugins keep working.

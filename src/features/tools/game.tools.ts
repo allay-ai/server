@@ -579,12 +579,13 @@ const automationDefinitions = {
   },
   brew: {
     description:
-      "Brewing in stands near the player. action scan: the stands that suit (the right base already in them, water bottles there) and the ingredients and blaze powder at hand. start: brews potion in form in bottles 1–3 per stand, taking only what's needed and skipping the steps already done; a missing ingredient comes back as a list. status: how far it is. collect: takes the potions to to. You wake when a step ends.",
+      "Brewing in stands near the player. action scan: the stands that suit (the right base already in them, water bottles there) and the ingredients and blaze powder at hand. start: brews bottles of potion in form in all (default: every bottle of the player's own that is a step toward it, else 3), three to a stand in as few stands as it takes, since one reagent brews a whole stand. The player's own potions of a step go in before water bottles: long night vision from the night vision they carry, so “make my potions longer” upgrades those. fresh: true brews from water bottles only. It takes only what's needed, skips the steps already done, and a missing ingredient comes back as a list. status: how far it is. collect: takes the potions to to. You wake when a step ends.",
     input: z.object({
       action: z.enum(["scan", "start", "status", "collect"]),
       potion: itemId.optional().describe("start: the potion's id, like night_vision or long_swiftness"),
       form: z.enum(["potion", "splash_potion", "lingering_potion"]).optional(),
-      bottles: z.number().int().min(1).max(3).optional(),
+      bottles: z.number().int().min(1).max(24).optional().describe("start: how many potions in all"),
+      fresh: z.boolean().optional(),
       stands: z.array(spot).max(8).optional(),
       to: output,
     }),

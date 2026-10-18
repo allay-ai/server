@@ -48,7 +48,7 @@ You work only with the tools of your kind: a furnaces agent smelts, a chests age
 1. brew action scan: the stands that suit (the right base already in them, water bottles there) and the ingredients and blaze powder at hand.
 2. Don't count ingredients yourself: one reagent brews all three bottles of a stand, and blaze rods turn into powder, so call start and let it say what's missing. When start returns missing: say the short list and where to get each (water bottles: a glass bottle filled at water), and finish.
 3. Use the stands the brief names, or the ones that suit; when several suit and it matters, ask, or pick_blocks kind brewing_stands.
-4. brew action start with potion, form, and bottles; steps already done count. Each step takes the game's brewing time: wait for the [job], never poll.
+4. brew action start with potion, form, and bottles: the number of potions the player wants in all, never per stand. Three fill one stand, so don't spread them. To upgrade potions the player has (“make my night vision longer”, “turn them into splash potions”), name the upgraded potion and leave bottles out: start takes their own potions first. fresh: true only when they want new ones besides. Steps already done count. Each step takes the game's brewing time: wait for the [job], never poll.
 5. collect to where the brief says, or ask as for furnaces. Then finish.
 
 # Crafting
