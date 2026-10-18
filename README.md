@@ -43,13 +43,15 @@ Besides the text, the agent puts buttons under its answer (`add_buttons`): optio
 
 The agent also knows Allay itself. Asked “what can you do?” or “how do I turn off chat mode?”, it calls `get_allay_guide`: the plugin answers with the commands this player may use, chat mode's prefixes, their settings, and what this server has switched on. So the agent never names a command that isn't there. `allay_settings` turns chat mode and its tip on or off when the player asks in words. `get_server` lists the server's plugins with versions, so a question about graves or land claims gets an answer for the plugin that really runs.
 
+Work in the world goes to automation agents (plugin 5.7): sorting or grouping chests, smelting, brewing for the player, crafting. The agent in the chat starts one with `start_task` and writes it a full brief, since the new agent starts with no history. Each agent then runs in wakes, as `mode: "task"` requests the plugin sends when the task starts and when something wakes it: the player's answer, a button, a finished job, or a timer. Between wakes no stream stays open and no tokens go. An agent talks to the player only through `say` with buttons, waits with `wait`, and ends with `finish`. It keeps its own thread for 2 hours and sees the player's memories without changing them. It gets no web search, no operator tools, and at most one level of sub-agents. When a task asks something, the chat sees it among the running tasks and passes the player's answer on with `message_task`. Sorting the player's own inventory stays instant, without an agent.
+
 A question from `/askall` comes with `visibility: "public"`: every player online sees it and the answer. The prompt tells the agent not to reveal the asker's coordinates, notes, or memories, and the run goes without a book or the locator bar. Every player gets the buttons under a public answer, and a question button asks everyone again.
 
 ### Memory
 
 Each player has a session and a lasting memory. The session lives in Redis for 24 hours after the last question. It holds the last 8 to 12 questions verbatim and a short summary of everything before them. The model writes that summary after the answer, so the player never waits for it. `/askx` requests land in the session as one line: what was asked and which commands came out.
 
-Public questions have their own thread, one per server, apart from players' sessions. Each question there starts with the asker's name, so when a friend follows up on someone else's question, the agent knows what it's about. The thread lives 2 hours after the last question.
+Public questions have their own thread, one per server, apart from players' sessions. Each question there starts with the asker's name, so when a friend follows up on someone else's question, the agent knows what it's about. The thread lives 2 hours after the last question. Each automation agent has a thread of its own too, apart from the player's session, for 2 hours after its last wake.
 
 The lasting memory sits in MongoDB and never expires. It's up to 30 short facts: where the base is, what the player is working on, how they like answers. The agent saves them itself and says so. The plugin gives players `/allay new`, `/allay memory` (with text, it saves a fact by hand), and `/allay forget` through the `/api/v2/users/{user_id}/…` endpoints described in the protocol.
 
@@ -74,7 +76,7 @@ The limit counts what the server's questions really cost: the model, web search,
 
 On a backend with billing on, BYOK is free but limited per server to 20 questions a minute, 2000 a day, and 4 at once. Its base URL must be `https://` and public, so nobody reaches the backend's own network through it.
 
-**Self-hosted backends.** Set `SELFHOSTED=1`, and billing is off: the backend serves every request on its own key, nobody needs a license, BYOK works without limits, and the plugin needs no `/allay link`. Without the variable, billing is on, so a server that runs its own backend should set it.
+**Self-hosted backends.** Set `SELFHOSTED=1`, and billing is off: the backend serves every request on its own key, nobody needs a license, BYOK works without limits, and the plugin needs no `/allay link`. Such a backend also takes the plugin's `provider.model` without a key, so a server can give each player tier its own model on the backend's key. Without the variable, billing is on, so a server that runs its own backend should set it.
 
 The old `X-OpenRouter-Token` header still works, as BYOK on OpenRouter with the backend's models.
 
@@ -107,10 +109,12 @@ Send your own key with `-H "X-Provider-Key: sk-or-..."`, or a license with `-H "
 | `OPENROUTER_REASONING_EFFORT` | Reasoning effort for models that reason: `low`, `medium`, `high` | unset |
 | `TOOL_TIMEOUT_MS` | How long to wait for the plugin's tool result | `15000` |
 | `MAX_AGENT_STEPS` | Model calls per question | `8` |
+| `MAX_TASK_STEPS` | Model calls per wake of an automation agent | `16` |
 | `MAX_ACTIVE_RUNS` | Streaming questions at once | `200` |
 | `SSE_PING_MS` | Ping interval that keeps proxies from closing the stream | `15000` |
 | `CHAT_TTL_SECONDS` | How long a chat session lives after the last question | `86400` |
 | `PUBLIC_CHAT_TTL_SECONDS` | How long a server's thread of public questions lives after the last one | `7200` |
+| `TASK_CHAT_TTL_SECONDS` | How long an automation agent's thread lives after its last wake | `7200` |
 | `CALC_TIMEOUT_MS` | How long `exact_calculations` gives one expression | `1000` |
 | `SELFHOSTED` | `1` turns billing off: everyone runs on this backend's key | unset, so billing is on |
 | `API_URL` | The backend's public address; the Telegram webhook goes to `API_URL/api/telegram/webhook` | `https://allay.chat` |
@@ -122,7 +126,7 @@ Send your own key with `-H "X-Provider-Key: sk-or-..."`, or a license with `-H "
 | `TELEGRAM_TEST_ENV` | `1` talks to Telegram's test environment | unset |
 | `PLAN_STARS` | Other prices, such as `week=1,month=1,year=1` for a test payment you refund | unset |
 
-Prompts live in [src/prompts](src/prompts) (`minecraft-ask.md`, `minecraft-askx.md`, `telegram.md`) and ship inside the build. Each run appends who asks, their language, the server version, and the available tools. Remove old `SYSTEM_MESSAGE*` variables to switch to the new prompts. The old `SYSTEM_MESSAGE*` variables are no longer read. A `perplexity/…` main model can’t call tools, so the server moves it to search and answers with the default model.
+Prompts live in [src/prompts](src/prompts) (`minecraft-ask.md`, `minecraft-askx.md`, `minecraft-task.md` for automation agents, `telegram.md`) and ship inside the build. Each run appends who asks, their language, the server version, and the available tools. Remove old `SYSTEM_MESSAGE*` variables to switch to the new prompts. The old `SYSTEM_MESSAGE*` variables are no longer read. A `perplexity/…` main model can’t call tools, so the server moves it to search and answers with the default model.
 
 ## Deployment
 

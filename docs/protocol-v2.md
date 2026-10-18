@@ -10,9 +10,9 @@ Headers: `Content-Type: application/json`, `Accept: text/event-stream`, `X-Plugi
 
 ```json
 {
-  "mode": "ask",                      // "ask" answers a question; "askx" turns a request into commands
+  "mode": "ask",                      // "ask" answers a question; "askx" turns a request into commands; "task" wakes an automation agent (since 5.5)
   "visibility": "private",            // "public" when every player online sees the question and the answer (since 3.0)
-  "message": "what should I do next?", // ≤ 1000 chars for ask, ≤ 500 for askx
+  "message": "what should I do next?", // ≤ 1000 chars for ask, ≤ 500 for askx, ≤ 2000 for task
   "platform": "minecraft",
   "user_id": "5627dd98-e6be-3c21-b8a8-e92344183641",
   "locale": "ru_ru",
@@ -29,7 +29,11 @@ Headers: `Content-Type: application/json`, `Accept: text/event-stream`, `X-Plugi
 
 `player.dimension` (optional, since 5.1) is the dimension the player stood in when they asked: `overworld`, `the_nether`, or `the_end`. The prompt tells the model, so a place named without a dimension lands where the player is; any other value is dropped.
 
-`tools` lists the client tools this plugin offers (server admins can switch some off). The backend registers only those for this run. The plugin lists operator tools only when the asking player is an operator, and the backend drops them anyway when `player.op` is false. An `askx` run gets only the tools that read the game: no actions (`point_to`, `show_marks`, `reminders`, `goals`, notes, buttons, books) and no operator tools.
+`tools` lists the client tools this plugin offers (server admins can switch some off). The backend registers only those for this run. The plugin lists operator tools only when the asking player is an operator, and the backend drops them anyway when `player.op` is false. An `askx` run gets only the tools that read the game: no actions (`point_to`, `show_marks`, `reminders`, `goals`, notes, buttons, books, automations) and no operator tools. Since 5.5 the backend also sorts the automation tools by mode (see “Automation agents”): `ask` keeps `start_task`, `message_task`, and `cancel_task` and drops the ones only agents use; a public `ask` drops those three too.
+
+`tasks` (optional, `ask` only, since 5.5) lists the asker's running automations, at most 4: `[{ "id": "k3f9", "name": "Furnaces", "state": "working" | "waiting" | "asking", "question"?: "≤ 200 chars" }]`. `id` is `[a-z0-9]{1,16}`, `name` ≤ 40 chars, `question` what a task in state `asking` asked the player. The prompt shows them to the model as data, so it can pass a free-text answer on with `message_task`. Other modes ignore it.
+
+`task` (required with `mode: "task"`, since 5.5) names the automation agent the run wakes: `{ "id": "k3f9", "name": "Сортировка сундуков", "depth": 1 | 2, "kind": "chests" | "furnaces" | "brewing" | "crafting" }`, with the same limits on `id` and `name`. A task run is always private; `ask` and `askx` ignore the field.
 
 ## Response: Server-Sent Events
 
@@ -41,10 +45,10 @@ Headers: `Content-Type: application/json`, `Accept: text/event-stream`, `X-Plugi
 | `reasoning` | `{ "delta": "…" }` | A piece of the model's reasoning, when the model exposes it |
 | `tool_call` | `{ "call_id": "…", "name": "get_inventory", "args": { … } }` | The plugin must run this client tool and post the result |
 | `tool_status` | `{ "call_id": "…", "name": "search_web", "kind": "client" \| "server", "state": "started" \| "finished" \| "failed", "args": { … }, "summary": "5 sources", "summary_key"?: "sources", "summary_values"?: { "count": 5 } }` | Progress of any tool, for display. Client tools get `started` right before `tool_call`. Since 2.4, server tools add `summary_key` and `summary_values` so the plugin can show the summary in the player's language; `summary` stays in English |
-| `text` | `{ "delta": "…" }` | A piece of the answer |
+| `text` | `{ "delta": "…" }` | A piece of the answer. In task mode, a piece of the agent's note to itself: don't show it |
 | `commands` | `{ "is_sequence": true, "commands": ["give @s diamond_sword 1"] }` | askx only: the commands to run (≤ 12, no leading slash) |
 | `usage` | `{ "input_tokens": 0, "output_tokens": 0, "reasoning_tokens": 0, "cost": 0.0 }` | Totals for the run so far: sent after every model step and once more, final, right before `done`. Each one replaces the last |
-| `done` | `{ "answer": "full text", "duration_ms": 5321 }` | The run finished; for askx `answer` may be a short note |
+| `done` | `{ "answer": "full text", "duration_ms": 5321 }` | The run finished; for askx `answer` may be a short note; for task it is the agent's note to itself, often empty |
 | `error` | `{ "code": "AI_REQUEST_FAILED", "message": "…" }` | The run failed; the stream ends after it. Codes stay compatible with v1 (`QUESTION_TOO_LONG`, `NETWORK_ERROR`, …) plus `TOOL_TIMEOUT`, `RUN_NOT_FOUND` |
 
 ## Tool results
@@ -129,6 +133,26 @@ Every tool that lists items writes each one the same compact way, leaving out ke
 
 `inspect_item` adds the rest for one item. Its `attributes` are the modifiers that work: the item's own, or its type's defaults when it has none, since the game uses only the item's own when it has any. `tooltip` is what the game shows in the main hand: the player's base 1 attack damage and 4 attack speed plus the item's modifiers, without enchantments, so a diamond sword reads 7 and 1.6. Effect `seconds` follow the tooltip too: a tipped arrow gives an eighth of the potion's duration, a lingering potion a quarter; −1 lasts forever. A written book's pages never leave the server.
 
+### Automation tools
+
+Since 5.5, for plugin 5.7. The plugin runs these like any client tool, checks the player's rights (`allay.automation.*`), the task limit, and the switches in its config, and answers with `{ ok: false, error }` when one of them says no. Coordinates are `{ "x", "y", "z" }` whole numbers from earlier results. Categories are `building`, `wood`, `stone`, `ores`, `redstone`, `food`, `farming`, `mob_drops`, `tools`, `potions`, `other`.
+
+| Name | Mode | Args | Does |
+|---|---|---|---|
+| `start_task` | ask, task below depth 2 | `{ "kind": "chests" \| "furnaces" \| "brewing" \| "crafting", "name": "≤ 40", "brief": "≤ 2000" }` | Starts an automation agent with `brief` as its first wake's `message`; returns `{ id, name }`, or an error: the task limit, no rights, or automation off. From a task, the new one is one level deeper |
+| `message_task` | ask | `{ "id", "text": "≤ 500" }` | Wakes a running task with `[player] text` |
+| `cancel_task` | ask | `{ "id" }` | Stops a running task |
+| `say` | task | `{ "text": "≤ 500", "buttons"?: [{ "label": "≤ 24", "reply": "≤ 200" }] (≤ 4) }` | A chat line to the player under “Automation agent: <name>”; a click wakes the task with `[button] reply` |
+| `wait` | task | `{ "seconds"?: 1–600 }` | Ends the wake. The plugin wakes the task with `[player] …` on an answer, `[button] …` on a click, `[job] …` when its job ends (smelting or brewing done, a picking mode closed), or `[timer] …` after `seconds` |
+| `finish` | task | `{ "summary": "≤ 500" }` | Ends the task; the player sees `summary` |
+| `pick_blocks` | task | `{ "kind": "chests" \| "furnaces" \| "brewing_stands", "looking"?: bool }` | A picking mode with [Done] [All] [Cancel]; its end wakes the task with `[job] …`. `looking` takes the block under the crosshair at once and returns it |
+| `chests` | task | `{ "action": "read" \| "plan" \| "apply" \| "undo", "mode"?: "sort" \| "group" \| "move", "chests"?: [xyz] (≤ 64), "assign"?: [{ x, y, z, "category"?, "items"?: [id] (≤ 27) }] (≤ 64), "items"?: [id] (≤ 64), "categories"?: [category], "to"?: [xyz] (≤ 64) }` | Reads chests (contents, signs, item frames, problems), plans a sort, a grouping, or a move as a preview, applies it, or undoes the last apply |
+| `smelt` | task | `{ "action": "scan" \| "start" \| "status" \| "collect", "item"?, "count"?: 1–4096, "furnaces"?: [xyz] (≤ 16), "fuel"?, "to"?: "inventory" \| [xyz] (1–8) }` | Furnaces, blast furnaces, and smokers near the player |
+| `brew` | task | `{ "action": "scan" \| "start" \| "status" \| "collect", "potion"?, "form"?: "potion" \| "splash_potion" \| "lingering_potion", "bottles"?: 1–3, "stands"?: [xyz] (≤ 8), "to"?: "inventory" \| [xyz] (1–8) }` | Brewing stands near the player |
+| `craft` | task | `{ "item", "count"?: 1–64, "dry_run"?: bool }` | Crafts at a crafting table near the player |
+
+The plugin defines what each of them returns; the model reads whatever comes back.
+
 ### Operator tools
 
 Listed only for operators and only when the admin enables them (`tools.operator` in the plugin config). The plugin checks `isOp()` again when it runs one. They act on the asking player only.
@@ -154,12 +178,31 @@ Listed only for operators and only when the admin enables them (`tools.operator`
 
 All server tools report progress only through `tool_status` (kind `server`).
 
+## Automation agents
+
+Since 5.5, for plugin 5.7. The chat hands work in the world (sorting chests, smelting, brewing, crafting) to an automation agent with `start_task`. The agent runs in wakes: each wake is an ordinary `POST /api/v2/chat` with `mode: "task"` and the `task` block, which the plugin opens when the task starts and every time something wakes it. No stream stays open and no tokens go while it waits.
+
+- **Message.** The first wake's `message` is the brief from `start_task`. Later ones say what woke it: `[player] …`, `[button] …`, `[job] …`, or `[timer] …`.
+- **End of a wake.** The agent ends every wake with `wait` or `finish`. Its final text, often empty, is a note for its own next wake; the backend records it and the plugin doesn't show it. An empty final text is not an error in task mode: `done` comes with `answer: ""`.
+- **Steps.** A wake gets up to `MAX_TASK_STEPS` model steps (16 by default), against `MAX_AGENT_STEPS` (8) for a question.
+- **Tools.** A wake gets the client tools the plugin offers minus operator tools, `add_buttons`, `write_book`, `get_nearby_players`, `message_task`, and `cancel_task`; `start_task` only at depth 1. Server tools: `exact_calculations` only, no `search_web`, no `remember` or `forget`. The prompt still shows the player's memories, read-only.
+- **Prompt.** `minecraft-task.md` plus the agent's name, kind, and depth, and the player.
+- **Depth.** The chat is depth 0. A task the chat starts is 1, a task started by a task is 2 and can't start another.
+
+| Mode | Gets | Never gets |
+|---|---|---|
+| `ask` | `start_task`, `message_task`, `cancel_task` | `say`, `wait`, `finish`, `pick_blocks`, `chests`, `smelt`, `brew`, `craft` |
+| public `ask` | — | all automation tools |
+| `task` | `say`, `wait`, `finish`, `pick_blocks`, `chests`, `smelt`, `brew`, `craft`; `start_task` at depth 1 | operator tools, `add_buttons`, `write_book`, `get_nearby_players`, `message_task`, `cancel_task`, `search_web`, `remember`, `forget` |
+| `askx` | — | all automation tools |
+
 ## Conversation memory
 
 The backend keeps two things per `user_id`:
 
 - **The session.** At least the last 8 exchanges verbatim plus a short summary of everything older. Once 12 pile up, the backend folds the oldest into the summary with the model, after the answer is out. A session lives 24 hours after the last question. `/askx` requests land in it as one short exchange (the request and the commands or the refusal), so a later `/ask` knows what was done.
 - **The server's public thread** (since 3.0). Public questions with a `server.id` go to `public:<server.id>` instead of the asker's session, each question prefixed with the asker's name in brackets, so a follow-up from another player continues the talk. It folds like a session and lives 2 hours after the last question (`PUBLIC_CHAT_TTL_SECONDS`). Without `server.id` a public question uses the asker's session.
+- **A task's thread** (since 5.5). Each wake of an automation agent reads and extends `task:<user_id>:<task.id>`: the wake's message and the agent's final text, or `(waiting)` when it ended without one. It folds like a session and lives 2 hours after the last wake (`TASK_CHAT_TTL_SECONDS`). The player's session never sees it.
 - **Memories.** Lasting facts the model saves with `remember`, kept in MongoDB without expiry. They go into the system prompt with their ids.
 
 Endpoints for the plugin's `/allay new`, `/allay memory [text]`, and `/allay forget`:
@@ -219,7 +262,7 @@ Before a stream these come as `{ "error": { "code", "message", "resets_at"?, "re
 
 The limit is a budget in US dollars: what the server's questions really cost, counting the model, web search, and the session summaries. Each run is charged when it ends, so one run can overshoot a little.
 
-A backend with billing off (`SELFHOSTED=1`, as on a server's own backend) never asks for a license: it serves everyone on its own key, and BYOK still works without limits.
+A backend with billing off (`SELFHOSTED=1`, as on a server's own backend) never asks for a license: it serves everyone on its own key, and BYOK still works without limits. Since 5.5, such a backend honors `provider.model` from a request without a key: the run (and its session summary) uses that model on the backend's own key, so the plugin can give each player tier its own model. `base_url` and `search_model` are ignored there, and search keeps the backend's search model. With billing on, a request without a key never picks the model.
 
 ### License endpoints
 

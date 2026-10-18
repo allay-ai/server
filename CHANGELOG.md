@@ -2,6 +2,15 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.5.0
+
+For Allay 5.7; older plugins keep working.
+
+- 🤖 **Automation agents.** The chat hands work in the world to a background agent with `start_task`: sorting or grouping chests, moving items between them, smelting, brewing for the player, crafting. The prompt makes the chat write a full brief, with everything the player said and the language to talk in, since the agent starts with no history. It asks sort or group first when the player didn't say, and offers to brew a potion after explaining it. Sorting the player's own inventory stays `sort_inventory`, at once.
+- ⏰ **Wakes.** An agent runs as `mode: "task"` requests, one per wake, with its own prompt (`minecraft-task.md`), up to 16 steps (`MAX_TASK_STEPS`), and its own thread `task:<user_id>:<task_id>` for 2 hours (`TASK_CHAT_TTL_SECONDS`). It talks to the player only through `say` with buttons, ends each wake with `wait` or `finish`, and leaves itself a one-line note; a wake that ends with no words is no error. It gets `pick_blocks`, `chests`, `smelt`, `brew`, and `craft`, and `start_task` for one level of sub-agents, but no web search, no memory tools (memories show read-only), no operator tools, no buttons, books, or locator bar.
+- 💬 **Running tasks in the chat.** An ask lists the player's running tasks (`tasks`), and the chat passes free-text answers on with `message_task` or stops a task with `cancel_task`. A question everyone sees can't start or steer tasks.
+- 🎚️ **A model per player on a self-hosted backend.** With billing off, a request without a key may name `provider.model`, and the run uses it on the backend's own key. With billing on, the backend still picks the model.
+
 ## 5.4.0
 
 For Allay 5.6; older plugins keep working.
