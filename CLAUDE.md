@@ -22,6 +22,10 @@ The backend of Allay, an AI helper for Minecraft players and a Telegram bot. A M
 | `src/features/billing/` | Who pays for a run (`gate.ts`): the server's own key (BYOK, with `byok.ts` checking the URL, the key, and the model), or a license with money left. Plans and budget windows (`plans.ts`), licenses (`billing.ts`), `/api/v2/license`, the per-server limits |
 | `src/features/telegram/` | The payment bot: the webhook at `/api/telegram/webhook` (or polling), `/start <claim code>`, Stars invoices, pre-checkout, payments, renewals, `/status`, `/refund`, texts in en, ru, es, pt, de |
 | `src/infrastructure/billing/` | Licenses, budget windows (grants), and payments in MongoDB, plus an in-memory store for tests |
+| `src/features/settings/` | Every setting with its type, bounds, and default (`settings.definitions.ts`) and the `settings` service the code reads: environment, then MongoDB, then the default |
+| `src/features/admin/` | The admin panel's API at `/api/admin/*` (a route table in `admin.routes.ts`, `insight.routes.ts`, `billing.routes.ts`), `POST /api/v2/admin/init`, and the built panel at `/admin` (`admin.pages.ts`) |
+| `src/infrastructure/admin/`, `runs/`, `settings/` | Admin accounts, Redis sessions, the audit log; the `runs` collection and its daily rollups; the stored settings and the vault that seals secrets |
+| `admin/` | The panel: React, Vite, shadcn/ui, TanStack Router and Query, react-hook-form with zod, Recharts, react-i18next (`src/locales/en.json`) |
 | `docs/protocol-v2.md` | The contract with the plugin. Change it only additively, and change the plugin (allay-ai/minecraft) to match |
 
 The tool bridge keeps pending calls in memory, so the backend runs as one instance.
@@ -41,6 +45,18 @@ The owner settled these on 2026-10-14; change them only when the owner asks.
 - The bot is @AllayChatBot. `TELEGRAM_ADMIN_IDS` for the owner is `362695653`. A real 1-Star payment and its `/refund` went through on 2026-10-14.
 - **Never** log a provider key, a license secret, or a claim code. The bot token sits in `~/.secrets/cloud.env` and the Keychain as `ALLAY_TELEGRAM_BOT_TOKEN`, and reaches the backend as `TELEGRAM_BOT_TOKEN`.
 - Switching allay.chat to require a subscription stops servers that use it today; agree on the date with the owner first.
+
+## Admin panel
+
+The owner settled these on 2026-10-18 (task file `~/c/personal/minecraft/AGENT_ALLAY_ADMIN_TASK.txt`, section 9); change them only when the owner asks.
+
+- **No texts, ever.** The panel never shows what players asked, what Allay answered, tool arguments or results, or memories' text, in any role. `runs` holds numbers only; `traces.ts` reads Mastra's spans through a field whitelist, so the rest never leaves MongoDB. Tests check both.
+- **Settings.** A new setting goes into `settings.definitions.ts` with the env name it would have had; read it with `settings.get(...)` where it's used, so a save applies to the next run. Only what the backend needs to start (MongoDB, Redis, `SELFHOSTED`, `PORT`, `SECRETS_KEY`, `ADMIN_*`, `APP_VERSION`) reads `process.env` directly. Something read once at start gets `restart: true`.
+- **The first admin.** Self-hosted: `/allay init` → `POST /api/v2/admin/init`, a code for 30 minutes, never logged. Hosted: a code in the log at start, the one place a code is logged. `ADMIN_*` turns setup off. No “first visitor wins”.
+- **Secrets** are sealed with AES-GCM (`SECRETS_KEY`, or `/data/secrets.key` on a volume); the API shows only the last four characters and the audit log masks them.
+- **Strings** go through i18n (`admin/src/locales/en.json`), English only for now; dates and numbers through Intl. A new key goes into `en.json` in the same change.
+- **The panel works under any prefix:** relative assets, a `<base>` the backend adds from `X-Forwarded-Prefix`, and an API path derived from it. On Moonlands it's `https://minecraft.mairwunnx.com/allay/admin`.
+- **Checking the panel:** `bunx tsc -b && bunx vite build` in `admin/`, then the image with Redis and MongoDB and a headless browser: setup by code, sign-in, a settings change that the next run uses, sign-out, at 360 px too with nothing scrolling sideways, and no console errors (the CSP allows only `'self'`).
 
 ## Deploying
 
@@ -70,7 +86,7 @@ The owner's server, Moonlands, runs its own instance of this backend, built from
 Where the versions live, for `/update-deps` (in `.claude/skills/`, the same file in every project of the family). This project has no Minecraft version to move.
 
 - Bun: the `FROM oven/bun:…-alpine` line of `Dockerfile` and `bun-version` in `.github/workflows/`, always the same. Never below 1.4.3: older Bun crashes on bson from Mongoose 9.
-- Packages: `package.json`, locked in `bun.lock`, which the image installs from with `--frozen-lockfile`. `bun outdated` lists what's behind.
+- Packages: `package.json`, locked in `bun.lock`, which the image installs from with `--frozen-lockfile`. `bun outdated` lists what's behind. The panel has its own `admin/package.json` and `admin/bun.lock`; update both.
 - Redis and MongoDB: the images in `docker-compose.yaml` and `docker-compose.dev.yaml`. MongoDB stays on its major unless the owner asks; Moonlands pins its own in `~/c/personal/minecraft/compose.yaml`.
 - GitHub Actions in `.github/workflows/`.
 

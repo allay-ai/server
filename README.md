@@ -61,7 +61,7 @@ The lasting memory sits in MongoDB and never expires. It's up to 30 short facts:
 
 ### Traces
 
-The backend traces runs into its MongoDB through Mastra's observability: each run, model step (prompt, output, tokens), and tool call with its arguments and result. Mastra Studio reads them. A self-hosted backend traces every run, the hosted one a tenth (`TRACE_SAMPLE`), and traces go after 7 days (`TRACE_DAYS`). A trace holds players' questions, so it lives no longer than it needs to; keys are redacted. A run takes about 150 KB.
+The backend traces runs into its MongoDB through Mastra's observability: each run, model step (prompt, output, tokens), and tool call with its arguments and result. Mastra Studio reads them. A self-hosted backend traces every run, the hosted one a tenth (`TRACE_SAMPLE`), and traces go after 7 days (`TRACE_DAYS`). The admin panel shows only a trace's shape: steps, models, tools and whether they worked, tokens, and timings. A trace holds players' questions, so it lives no longer than it needs to; keys are redacted. A run takes about 150 KB.
 
 > Pending tool calls live in the process's memory, so the server assumes a single instance. With several, the tool result must reach the instance that holds the stream.
 
@@ -103,9 +103,39 @@ curl -N -X POST https://allay.chat/api/v2/chat \
 
 Send your own key with `-H "X-Provider-Key: sk-or-..."`, or a license with `-H "Authorization: Bearer <license>"`.
 
+## Admin panel
+
+The backend serves a web admin panel at `/admin`. There you change every setting below, manage admin accounts, and see what the backend does: questions, cost, players, servers, errors, answer times, models, and tools by day; each run's numbers and the shape of its trace; and, on a backend with billing on, licenses, payments, revenue, refunds, budgets granted by hand, and blocked licenses. Nobody sees what players asked, what Allay answered, what tools were given and returned, or what Allay remembers about a player: the backend never sends those to the browser, whatever the role.
+
+**The first account.** On a self-hosted backend (`SELFHOSTED=1`), an operator types `/allay init` in the game. The plugin shows a link that works once, for 30 minutes; it opens the panel's setup page, where the operator becomes its owner. A backend with billing on prints a setup code to its log at start instead. With `ADMIN_USERNAME` and `ADMIN_PASSWORD` (or `ADMIN_PASSWORD_HASH`, an argon2id hash from `Bun.password`) in the environment, that account is the owner, setup is off, and the panel goes straight to sign-in.
+
+**Roles.** Owners do everything, other accounts included. Admins change settings, players' memories and sessions, and billing. Viewers only read. Every change lands in the audit log with its old and new value, secrets masked.
+
+**Sessions** last 7 days from the last use, in an HttpOnly, SameSite=Strict cookie. Sign-in locks for 15 minutes after 5 wrong passwords for one name or 10 from one address.
+
+**Behind a proxy** the panel works under any path prefix: send the prefix in `X-Forwarded-Prefix` and set `PUBLIC_URL` to the address with it, such as `https://example.com/allay`. Expose only `/admin` and `/api/admin/`; the plugin's `/api/v2/*` can stay internal.
+
+**Statistics** come from a `runs` collection, one document per run with numbers only, kept 400 days, plus daily rollups kept forever.
+
 ## Environment
 
+The environment holds only what the backend can't start without. Everything else is a setting in the panel.
+
 | Variable | Purpose | Default |
+|---|---|---|
+| `MONGODB_URI`, `MONGODB_DATABASE` | Where MongoDB lives | required |
+| `REDIS_URL` | Where Redis lives | `redis://localhost:6379` |
+| `SELFHOSTED` | `1` turns billing off: everyone runs on this backend's key, and `/allay init` sets up the panel | unset, so billing is on |
+| `PORT` | The port to listen on | `3000` |
+| `SECRETS_KEY` | Any string; seals the secrets saved in the panel (keys, the bot token) with AES-GCM. Without it the backend makes a key in `/data/secrets.key`: mount `/data` as a volume, or the saved secrets die with the container | unset |
+| `ADMIN_USERNAME`, `ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH` | An owner account defined here; it turns setup off and can't change in the panel | unset |
+| `APP_VERSION` | Set by the image build | `dev` |
+
+## Settings
+
+Each setting keeps the name of the variable it was before 5.7. A variable that is set still wins and locks its field in the panel (“set by the environment”), so deployments from before keep working. **Import from the environment** in the panel copies those values into MongoDB; after that, remove the variables. Changes apply to the next run, except the two marked “after a restart”.
+
+| Setting | Purpose | Default |
 |---|---|---|
 | `OPENROUTER_API_KEY` | OpenRouter key | required |
 | `OPENROUTER_API_URL` | OpenRouter API address | `https://openrouter.ai/api/v1` |
@@ -128,7 +158,6 @@ Send your own key with `-H "X-Provider-Key: sk-or-..."`, or a license with `-H "
 | `TRACE_SAMPLE` | The share of runs traced, 0 turns tracing off | `1` self-hosted, `0.1` hosted |
 | `TRACE_DAYS` | How long traces stay | `7` |
 | `CALC_TIMEOUT_MS` | How long `exact_calculations` gives one expression | `1000` |
-| `SELFHOSTED` | `1` turns billing off: everyone runs on this backend's key | unset, so billing is on |
 | `API_URL` | The backend's public address; the Telegram webhook goes to `API_URL/api/telegram/webhook` | `https://allay.chat` |
 | `TELEGRAM_BOT_TOKEN` | The payment bot's token; without it there are no payment links | unset |
 | `TELEGRAM_ADMIN_IDS` | Telegram user ids, comma-separated, that may `/refund <charge id>` in the bot | unset |
@@ -136,7 +165,13 @@ Send your own key with `-H "X-Provider-Key: sk-or-..."`, or a license with `-H "
 | `TELEGRAM_POLLING` | `1` takes updates by long polling instead of the webhook, for local runs | unset |
 | `TELEGRAM_API_URL` | A Bot API server of your own | `https://api.telegram.org` |
 | `TELEGRAM_TEST_ENV` | `1` talks to Telegram's test environment | unset |
-| `PLAN_STARS` | Other prices, such as `week=1,month=1,year=1` for a test payment you refund | unset |
+| `PLAN_WEEK_STARS`, `PLAN_MONTH_STARS`, `PLAN_YEAR_STARS` | Prices in Stars; `PLAN_STARS=week=1,month=1,year=1` from before 5.7 still sets all three, for a test payment you refund | `150`, `500`, `10000` |
+| `PLAN_WEEK_BUDGET`, `PLAN_MONTH_BUDGET`, `PLAN_YEAR_BUDGET` | What a period's runs may cost, in US dollars (a year's per 30 days) | `0.75`, `3`, `6` |
+| `BYOK_PER_MINUTE`, `BYOK_PER_DAY`, `BYOK_CONCURRENT` | Limits for a server with its own key on a backend with billing on | `20`, `2000`, `4` |
+| `STAR_USD` | What a Star brings in US dollars, for the panel's revenue estimates | `0.013` |
+| `PUBLIC_URL` | Where people reach the backend in a browser, with any path prefix: `/allay init` links and the panel start here | `API_URL` |
+
+`TRACE_SAMPLE` and `TRACE_DAYS` apply after a restart.
 
 Prompts live in [src/prompts](src/prompts) (`minecraft-ask.md`, `minecraft-askx.md`, `minecraft-task.md` for automation agents, `telegram.md`) and ship inside the build. Each run appends who asks, their language, and the server version. Remove old `SYSTEM_MESSAGE*` variables to switch to the new prompts. The old `SYSTEM_MESSAGE*` variables are no longer read. A `perplexity/…` main model can’t call tools, so the server moves it to search and answers with the default model.
 

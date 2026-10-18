@@ -2,6 +2,19 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.7.0
+
+For Allay 5.9, which adds `/allay init`; older plugins keep working, and so does every environment variable from before.
+
+- 🖥️ **An admin panel at `/admin`.** Sign in and change every setting the environment held, manage admin accounts, and see statistics, players, servers, runs, traces, and on a backend with billing on, licenses, payments, and revenue. React with shadcn/ui, light and dark, down to phone width, built into the same image. Nobody sees what players asked, what Allay answered, tool data, or memories' text, in any role: only numbers and the shape of runs.
+- 🔑 **The first admin.** A self-hosted backend hands out a one-time setup link through `POST /api/v2/admin/init` (`/allay init` in plugin 5.9), valid 30 minutes; a hosted one prints a setup code to its log at start. `ADMIN_USERNAME` with `ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH` defines an owner in the environment and turns setup off.
+- 👥 **Accounts and roles.** Owners manage accounts, admins change settings, players, and billing, viewers read. Argon2id passwords, 7-day sessions in Redis behind an HttpOnly, SameSite=Strict cookie, an Origin check on every change, and sign-in locks after 5 wrong passwords for a name or 10 from an address. Every change goes to an audit log with old and new values, secrets masked.
+- ⚙️ **Settings in MongoDB.** One settings service reads the environment first, then what the panel saved, then the default, so deployments from before keep working; “Import from the environment” moves the values over so the variables can go. Changes apply to the next run without a restart, except `TRACE_SAMPLE` and `TRACE_DAYS`; the bot restarts by itself when its settings change. Keys and the bot token are sealed with AES-GCM by `SECRETS_KEY` or a key in `/data/secrets.key` (mount `/data`), and the panel shows only their last four characters. “Test key and model”, “Test Perplexity”, and “Test bot” check before saving; a main model OpenRouter doesn't know, or one without tools, is refused.
+- 💰 **Plans and limits are settings:** `PLAN_WEEK_STARS`, `PLAN_WEEK_BUDGET` and the same for month and year (`PLAN_STARS` still works), `BYOK_PER_MINUTE`, `BYOK_PER_DAY`, `BYOK_CONCURRENT`, and `STAR_USD` for revenue estimates.
+- 📊 **Statistics.** Each run leaves its numbers in a `runs` collection for 400 days: kind, who paid, player, model, tokens, cost, steps, tools and whether they worked, searches, duration, and result; daily rollups stay forever. The dashboard shows questions, cost, active players, errors, p50 and p95 answer times, models, and tools over 24 hours, 7 or 30 days, or a year.
+- 🧾 **Billing actions.** Refund a payment (what `/refund` does in the bot), grant a budget or extend a period by hand, block a license, which then can't ask or pay.
+- 🌐 **`PUBLIC_URL`** names where people reach the backend, with any path prefix; behind a proxy, send the prefix in `X-Forwarded-Prefix`.
+
 ## 5.6.0
 
 For Allay 5.8; older plugins ignore `layout` and refuse main inventory pins.
