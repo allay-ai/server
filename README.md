@@ -51,7 +51,7 @@ A question from `/askall` comes with `visibility: "public"`: every player online
 
 ### Memory
 
-Each player has a session and a lasting memory. The session lives in Redis for 24 hours after the last question. It keeps whole exchanges: the question, the tool calls with their results, whole as the model saw them, and the answer, so a follow-up like “how many were in that chest?” needs no second call. Everything but the newest 12 000 tokens (at least 2 exchanges, at most 30) folds into a summary of up to 3000 characters in three cases. After an answer, once the session passes about 32 000 tokens or 100 exchanges; the player doesn't wait for it. After 25 quiet minutes, once it passes 20 000 tokens: OpenAI drops the cached prompt at 30, and the next question would read the whole session at full price. And before an answer, when the session somehow passed 42 000 tokens; only then does the player wait. Between folds the session only grows at the end, so the provider's prompt cache keeps it. `/askx` requests land in the session as one line: what was asked and which commands came out.
+Each player has a session and a lasting memory. The session lives in Redis for 24 hours after the last question. It keeps whole exchanges: the question, the tool calls with their results, whole as the model saw them, and the answer, so a follow-up like “how many were in that chest?” needs no second call. Everything but the newest 12 000 tokens (at least 2 exchanges, at most 30) folds into a summary of up to 3000 characters after an answer, once the session passes about 32 000 tokens or 100 exchanges, so the player doesn't wait for it. Only a session that somehow passed 42 000 tokens folds before the answer. A player who left gets no summary: the session simply expires. Between folds the session only grows at the end, so the provider's prompt cache keeps it. `/askx` requests land in the session as one line: what was asked and which commands came out.
 
 Public questions have their own thread, one per server, apart from players' sessions. Each question there starts with the asker's name, so when a friend follows up on someone else's question, the agent knows what it's about. It keeps the answers but not the tool results, which only the asker may see. The thread lives 2 hours after the last question. Each automation agent has a thread of its own too, apart from the player's session, for 2 hours after its last wake.
 
@@ -125,9 +125,6 @@ Send your own key with `-H "X-Provider-Key: sk-or-..."`, or a license with `-H "
 | `CHAT_FOLD_TOKENS` | A session folds into its summary past this many tokens | `32000` |
 | `CHAT_KEEP_TOKENS` | About how many tokens of the newest exchanges stay verbatim after a fold | `12000` |
 | `CHAT_MAX_TOKENS` | Past this many tokens, a session folds before the answer | `42000` |
-| `CHAT_IDLE_FOLD` | `0` turns folding quiet sessions off | on |
-| `CHAT_IDLE_FOLD_SECONDS` | How long a session stays quiet before it folds | `1500` |
-| `CHAT_IDLE_FOLD_TOKENS` | A quiet session folds only past this many tokens | `20000` |
 | `TRACE_SAMPLE` | The share of runs traced, 0 turns tracing off | `1` self-hosted, `0.1` hosted |
 | `TRACE_DAYS` | How long traces stay | `7` |
 | `CALC_TIMEOUT_MS` | How long `exact_calculations` gives one expression | `1000` |

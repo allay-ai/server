@@ -10,7 +10,7 @@ import { handleLicense } from "../src/features/billing/license.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { finish, reasoning, readSse, scripted, testDeps, text, toolCall } from "./helpers";
 import { MAX_MEMORIES } from "../src/infrastructure/memory/memory";
-import { type HistoryMessage, IDLE_FOLD_TOKENS, MAX_EXCHANGES, MAX_TOKENS } from "../src/infrastructure/history/history";
+import { type HistoryMessage, MAX_EXCHANGES, MAX_TOKENS } from "../src/infrastructure/history/history";
 
 const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram };
 let server: Server | undefined;
@@ -330,28 +330,6 @@ describe("POST /api/v2/chat", () => {
     { role: "tool", content: [{ type: "tool-result", toolCallId: `c${i}`, toolName: "inventory", output: { type: "text", value: "x".repeat(tokens * 3) } }] },
     { role: "assistant", content: `a${i}` },
   ];
-
-  test("a quiet session folds down once its cache would have gone cold", async () => {
-    const { model } = scripted([[...text("Sure."), finish()], [...text("The player sorted chests."), finish()]]);
-    const deps = testDeps(model);
-    deps.idleFoldMs = 20;
-    for (let i = 0; i < 6; i++) await deps.history.append("player-1", ...bulky(i, (IDLE_FOLD_TOKENS + 4_000) / 6));
-    await readSse(await chat(start(deps), { message: "thanks" }));
-    // Below the fold after an answer, so only the quiet period folds it.
-    expect((await deps.history.load("player-1")).summary).toBeUndefined();
-    await Bun.sleep(100);
-    expect((await deps.history.load("player-1")).summary).toBe("The player sorted chests.");
-  });
-
-  test("with idle folding off, a quiet session stays whole", async () => {
-    const { model } = scripted([[...text("Sure."), finish()], [...text("never"), finish()]]);
-    const deps = testDeps(model);
-    deps.idleFoldMs = 0;
-    for (let i = 0; i < 6; i++) await deps.history.append("player-1", ...bulky(i, (IDLE_FOLD_TOKENS + 4_000) / 6));
-    await readSse(await chat(start(deps), { message: "thanks" }));
-    await Bun.sleep(50);
-    expect((await deps.history.load("player-1")).summary).toBeUndefined();
-  });
 
   test("a session past the cap folds before the answer", async () => {
     const { model, prompts } = scripted([[...text("The player built a beacon."), finish()], [...text("Yes."), finish()]]);

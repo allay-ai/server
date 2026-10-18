@@ -31,15 +31,6 @@ export interface HistoryStore {
 export const FOLD_TOKENS = Number(process.env.CHAT_FOLD_TOKENS || 32_000);
 /** Past this many, the session folds before the next question is answered, not after: the player waits for the summary. */
 export const MAX_TOKENS = Number(process.env.CHAT_MAX_TOKENS || 42_000);
-/** CHAT_IDLE_FOLD=0 turns folding quiet sessions off. */
-export const IDLE_FOLD = process.env.CHAT_IDLE_FOLD !== "0";
-/**
- * A session left this long folds down if it holds more than IDLE_FOLD_TOKENS. OpenAI keeps a prefix 30 minutes
- * after its last use for GPT-5.6 and later, Luna included; after that the next question would read it all at
- * full price. 25 minutes has the fold done by then, while a short break in the game still keeps the session whole.
- */
-export const IDLE_FOLD_SECONDS = Number(process.env.CHAT_IDLE_FOLD_SECONDS || 1500);
-export const IDLE_FOLD_TOKENS = Number(process.env.CHAT_IDLE_FOLD_TOKENS || 20_000);
 /** About this many tokens of the newest exchanges stay verbatim after a fold. */
 export const KEEP_TOKENS = Number(process.env.CHAT_KEEP_TOKENS || 12_000);
 /** A fold keeps at least this many exchanges, however long they are. */

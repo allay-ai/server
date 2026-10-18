@@ -8,7 +8,7 @@ import { exactCalculationsTool } from "../features/tools/exact-calculations.tool
 import { gameTools, offeredTools } from "../features/tools/game.tools";
 import { memoryTools } from "../features/tools/memory.tools";
 import { type PerplexitySearch, searchWebTool } from "../features/tools/search-web.tool";
-import { estimateTokens, type HistoryStore, IDLE_FOLD, IDLE_FOLD_SECONDS, IDLE_FOLD_TOKENS, MAX_TOKENS, threadOf } from "../infrastructure/history/history";
+import { estimateTokens, type HistoryStore, MAX_TOKENS, threadOf } from "../infrastructure/history/history";
 import type { Memory, MemoryStore } from "../infrastructure/memory/memory";
 import { type ByokProvider, type ModelFactory, costOf } from "../infrastructure/providers/openrouter/openrouter.client";
 import { redact } from "../shared/lib/redact";
@@ -18,7 +18,6 @@ import type { CommandsResult, RunContext, RunResult, Usage } from "./agent.types
 import { commandsFromText, commandsSchema, validateCommands } from "./commands";
 import { systemPrompt } from "./prompts";
 import { Exchange } from "./exchange";
-import { cancelIdleFold, foldWhenIdle } from "./idle";
 import { localStamp } from "./time";
 import { summarizeWith } from "./summary";
 
@@ -32,8 +31,6 @@ export interface AllayDeps {
   perplexity?: PerplexitySearch;
   /** Where runs are traced; none in tests. */
   mastra?: Mastra;
-  /** How long a session stays quiet before it folds: IDLE_FOLD_SECONDS by default, shorter in tests; 0 never. */
-  idleFoldMs?: number;
 }
 
 export interface RunOptions {
@@ -133,7 +130,6 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     cost += usd;
     options.spend?.(usd);
   };
-  cancelIdleFold(thread(context));
   try {
     const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
     const tools = offeredTools(context.tools, context.player?.op === true, context.mode, context.visibility, context.task?.depth ?? 0);
@@ -258,8 +254,6 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     logger.info(`Run ${runId} (${context.mode}/${context.platform}) done in ${result.durationMs} ms, ${usage.output_tokens} tokens`);
     // After done: the player has the answer, and the summary can take its time.
     void compact(context, deps, options.spend);
-    const quiet = deps.idleFoldMs ?? (IDLE_FOLD ? IDLE_FOLD_SECONDS * 1000 : 0);
-    if (quiet > 0) foldWhenIdle(thread(context), quiet, () => compact(context, deps, options.spend, IDLE_FOLD_TOKENS));
     return result;
   } catch (error) {
     const failure = classify(error, signal, context.provider);
