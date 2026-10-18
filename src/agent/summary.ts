@@ -35,7 +35,7 @@ export const transcriptOf = (messages: HistoryMessage[]) =>
 
 /** Folds messages that leave the verbatim window into the session summary. */
 export const summarizeWith =
-  (model: LanguageModelV4, spend?: (usd: number) => void) =>
+  (model: LanguageModelV4, spend?: (usd: number) => void, onUsage?: (usage: { input: number; output: number }) => void) =>
   async (summary: string | undefined, older: HistoryMessage[]): Promise<string> => {
     const transcript = transcriptOf(older);
     const result = await generateText({
@@ -45,5 +45,6 @@ export const summarizeWith =
       maxRetries: 1,
     });
     spend?.(costOf(result.providerMetadata));
+    onUsage?.({ input: result.usage.inputTokens ?? 0, output: result.usage.outputTokens ?? 0 });
     return result.text;
   };

@@ -34,7 +34,7 @@ export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Ser
   return sseResponse(async (emit, signal) => {
     deps.bridge.open(runId, emit);
     try {
-      await runAllay(context, deps, { runId, emit, signal, spend: admission.spend });
+      await runAllay(context, deps, { runId, emit, signal, spend: admission.spend, payer: admission.payer });
     } finally {
       deps.bridge.close(runId);
       admission.release();

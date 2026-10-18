@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { AccountStore, AdminAccount, Role } from "../../infrastructure/admin/accounts";
 import type { AuditEntry, AuditStore } from "../../infrastructure/admin/audit";
 import type { SessionStore } from "../../infrastructure/admin/sessions";
+import type { TraceStore } from "../../infrastructure/observability/traces";
 import { logger } from "../../shared/logging/logger";
 import type { Settings } from "../settings/settings";
 
@@ -22,6 +23,8 @@ export interface AdminDeps {
   /** SELFHOSTED: setup takes a code from /allay init instead of the log's. */
   selfHosted: boolean;
   limiter: LoginLimiter;
+  /** Mastra's traces, read as shapes only; none without tracing. */
+  traces?: TraceStore;
   now: () => Date;
 }
 

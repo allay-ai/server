@@ -13,6 +13,8 @@ import { LoginLimiter, SetupCodes, envAdminOf } from "../features/admin/admin";
 import { mongoAccounts } from "../infrastructure/admin/accounts";
 import { mongoAudit } from "../infrastructure/admin/audit";
 import { redisSessions } from "../infrastructure/admin/sessions";
+import { mongoRuns } from "../infrastructure/runs/runs";
+import { mongoTraces } from "../infrastructure/observability/traces";
 
 const admins = () =>
   (settings.get("TELEGRAM_ADMIN_IDS") ?? "")
@@ -24,40 +26,45 @@ const admins = () =>
  * The real services; tests build their own with a mock model, in-memory stores, and a fake network.
  * Built once the stored settings are loaded, since tracing reads them at start.
  */
-export const productionDeps = (): AllayDeps => ({
-  models: openrouterModels,
-  history: redisHistory,
-  memories: mongoMemories,
-  bridge,
-  get perplexity() {
-    const apiKey = settings.get("PERPLEXITY_API_KEY");
-    return apiKey ? { apiKey } : undefined;
-  },
-  mastra: tracing(MONGODB_URI, MONGODB_DATABASE),
-  billing: {
-    enabled: !selfHosted(),
-    licenses: mongoLicenses,
-    net: {
-      fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(10_000) }),
-      resolve: async (host) => (await lookup(host, { all: true })).map((a) => a.address),
+export const productionDeps = (): AllayDeps => {
+  const mastra = tracing(MONGODB_URI, MONGODB_DATABASE);
+  return {
+    models: openrouterModels,
+    history: redisHistory,
+    memories: mongoMemories,
+    bridge,
+    runs: mongoRuns,
+    get perplexity() {
+      const apiKey = settings.get("PERPLEXITY_API_KEY");
+      return apiKey ? { apiKey } : undefined;
     },
-    bot: {
-      get admins() {
-        return admins();
+    mastra,
+    billing: {
+      enabled: !selfHosted(),
+      licenses: mongoLicenses,
+      net: {
+        fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(10_000) }),
+        resolve: async (host) => (await lookup(host, { all: true })).map((a) => a.address),
       },
+      bot: {
+        get admins() {
+          return admins();
+        },
+      },
+      limits: newLimits(),
+      now: () => new Date(),
     },
-    limits: newLimits(),
-    now: () => new Date(),
-  },
-  admin: {
-    accounts: mongoAccounts,
-    sessions: redisSessions,
-    audit: mongoAudit,
-    settings,
-    setup: new SetupCodes(),
-    envAdmin: envAdminOf(),
-    selfHosted: selfHosted(),
-    limiter: new LoginLimiter(),
-    now: () => new Date(),
-  },
-});
+    admin: {
+      accounts: mongoAccounts,
+      sessions: redisSessions,
+      audit: mongoAudit,
+      settings,
+      setup: new SetupCodes(),
+      envAdmin: envAdminOf(),
+      selfHosted: selfHosted(),
+      limiter: new LoginLimiter(),
+      traces: mastra ? mongoTraces : undefined,
+      now: () => new Date(),
+    },
+  };
+};

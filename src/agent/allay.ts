@@ -10,6 +10,7 @@ import { exactCalculationsTool } from "../features/tools/exact-calculations.tool
 import { gameTools, offeredTools } from "../features/tools/game.tools";
 import { memoryTools } from "../features/tools/memory.tools";
 import { type PerplexitySearch, searchWebTool } from "../features/tools/search-web.tool";
+import type { RunKind, RunRecord, RunStore } from "../infrastructure/runs/runs";
 import { estimateTokens, type HistoryStore, maxTokens, threadOf } from "../infrastructure/history/history";
 import type { Memory, MemoryStore } from "../infrastructure/memory/memory";
 import { type ByokProvider, type ModelFactory, costOf } from "../infrastructure/providers/openrouter/openrouter.client";
@@ -35,6 +36,15 @@ export interface AllayDeps {
   mastra?: Mastra;
   /** The admin panel's accounts and sessions; tests that don't touch the panel leave it out. */
   admin?: AdminDeps;
+  /** Where each run's numbers go for the panel's statistics. */
+  runs?: RunStore;
+}
+
+/** Who pays for a run, as the statistics name it; never a key or a license secret. */
+export interface RunPayer {
+  kind: RunRecord["payer"];
+  /** The license id, or a fingerprint of a server's own key. */
+  id?: string;
 }
 
 export interface RunOptions {
@@ -43,6 +53,7 @@ export interface RunOptions {
   signal?: AbortSignal;
   /** Called with every cost the run incurs, as it happens: model steps, web searches, the session summary after it. */
   spend?: (usd: number) => void;
+  payer?: RunPayer;
 }
 
 /** What a task's thread records for a wake that ended with tool calls only. */
@@ -109,10 +120,52 @@ const thread = (context: RunContext) => threadOf(context.userId, context.visibil
 const record = (context: RunContext, deps: AllayDeps, asked: string, said: ModelMessage[]) =>
   deps.history.append(thread(context), { role: "user", content: context.mode === "askx" ? `/askx ${context.message}` : asked }, ...said);
 
-const compact = async (context: RunContext, deps: AllayDeps, spend?: (usd: number) => void, foldAt?: number) => {
+const kindOf = (context: RunContext): RunKind => {
+  if (context.platform === "telegram") return "telegram";
+  if (context.mode === "ask") return context.visibility === "public" ? "askall" : "ask";
+  return context.mode;
+};
+
+const serverOf = (payer?: RunPayer) => (payer?.kind === "license" || payer?.kind === "byok" ? `${payer.kind}:${payer.id}` : "self");
+
+/** Hands a run's numbers to the statistics; they never hold a word of the question or the answer. */
+const report = (deps: AllayDeps, context: RunContext, options: Pick<RunOptions, "runId" | "payer">, run: Omit<RunRecord, "id" | "kind" | "payer" | "server" | "server_id" | "user_id" | "player" | "language">, kind = kindOf(context)) => {
+  if (!deps.runs) return;
+  const record: RunRecord = {
+    id: options.runId,
+    kind,
+    payer: options.payer?.kind ?? "self",
+    server: serverOf(options.payer),
+    ...(context.server?.id ? { server_id: context.server.id } : {}),
+    user_id: context.userId,
+    ...(context.player?.name ? { player: context.player.name } : {}),
+    ...(context.locale ? { language: context.locale } : {}),
+    ...run,
+  };
+  deps.runs.add(record).catch((error) => logger.warn(`Couldn't keep the numbers of run ${options.runId}: ${String(error)}`));
+};
+
+const compact = async (context: RunContext, deps: AllayDeps, spend?: (usd: number) => void, foldAt?: number, options?: Pick<RunOptions, "runId" | "payer">) => {
+  const started = Date.now();
+  let cost = 0;
+  let usage = { input: 0, output: 0 };
+  const charge = (usd: number) => {
+    cost += usd;
+    spend?.(usd);
+  };
   try {
     const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
-    if (await deps.history.compact(thread(context), summarizeWith(model, spend), foldAt)) logger.info(`Folded the session of ${thread(context)}`);
+    const folded = await deps.history.compact(thread(context), summarizeWith(model, charge, (u) => (usage = u)), foldAt);
+    if (folded) {
+      logger.info(`Folded the session of ${thread(context)}`);
+      report(
+        deps,
+        context,
+        { runId: crypto.randomUUID(), payer: options?.payer },
+        { at: new Date(started), model: model.modelId, input_tokens: usage.input, output_tokens: usage.output, reasoning_tokens: 0, cost, steps: 1, tools: [], searches: 0, duration_ms: Date.now() - started, result: "ok" },
+        "summary",
+      );
+    }
   } catch (error) {
     logger.warn(`Couldn't fold the session of ${thread(context)}: ${redact(String(error), context.provider?.apiKey)}`);
   }
@@ -126,6 +179,10 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
   const started = Date.now();
   const { runId, emit, signal } = options;
   let cost = 0;
+  let modelId = context.model ?? "unknown";
+  let steps = 0;
+  const called = new Map<string, { name: string; ok: boolean }>();
+  const sofar: Usage = { input_tokens: 0, output_tokens: 0, reasoning_tokens: 0, cost: 0 };
   const spend = (usd: number) => {
     if (usd <= 0) return;
     cost += usd;
@@ -133,16 +190,17 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
   };
   try {
     const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
-    const tools = offeredTools(context.tools, context.player?.op === true, context.mode, context.visibility, context.task?.depth ?? 0);
+    modelId = model.modelId;
+    const offered = offeredTools(context.tools, context.player?.op === true, context.mode, context.visibility, context.task?.depth ?? 0);
     const memories = await loadMemories(deps, context.userId);
     // askx turns one request into commands; earlier chat would only confuse it, as in v1. A task reads its own thread.
     let session = context.mode === "askx" ? { messages: [] } : await deps.history.load(thread(context));
     // Folding after answers keeps a session well below this; a fold that failed, or one huge exchange, may not.
     if (estimateTokens(session.messages) > maxTokens()) {
-      await compact(context, deps, spend, maxTokens());
+      await compact(context, deps, spend, maxTokens(), options);
       session = await deps.history.load(thread(context));
     }
-    const instructions = systemPrompt({ ...context, tools }, { memories, summary: session.summary });
+    const instructions = systemPrompt({ ...context, tools: offered }, { memories, summary: session.summary });
     const agent = new Agent({ id: "allay", name: "Allay", instructions, model });
     if (deps.mastra) agent.__registerMastra(deps.mastra);
     const asked = question(context);
@@ -157,7 +215,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       maxSteps: context.mode === "task" ? settings.get("MAX_TASK_STEPS") : settings.get("MAX_AGENT_STEPS"),
       modelSettings: { maxRetries: 2 },
       toolsets: {
-        game: gameTools(tools, runId, deps.bridge, { offered: context.tools, readOnly: context.mode === "askx" }),
+        game: gameTools(offered, runId, deps.bridge, { offered: context.tools, readOnly: context.mode === "askx" }),
         // A server that brought its own key without a search model gets no web search, and an automation agent never does.
         ...(context.mode === "task" || (context.provider && !context.provider.searchModel)
           ? {}
@@ -177,7 +235,6 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     let text = "";
     const exchange = new Exchange();
     // Per-step usage, summed, so the plugin's counter moves while the agent works.
-    const sofar: Usage = { input_tokens: 0, output_tokens: 0, reasoning_tokens: 0, cost: 0 };
     for await (const chunk of stream.fullStream) {
       const payload = chunk.payload ?? {};
       switch (chunk.type) {
@@ -194,14 +251,24 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
           break;
         case "tool-call":
           exchange.call(payload);
+          called.set(String(payload.toolCallId), { name: String(payload.toolName), ok: true });
           break;
-        case "tool-result":
+        case "tool-result": {
           exchange.result(payload);
+          // Game tools answer a failure as { error }, server tools too; it counts as failed either way.
+          const result = payload.result as { error?: unknown } | null | undefined;
+          const call = called.get(String(payload.toolCallId));
+          if (call && result && typeof result === "object" && "error" in result) call.ok = false;
           break;
-        case "tool-error":
+        }
+        case "tool-error": {
           exchange.error(payload);
+          const call = called.get(String(payload.toolCallId));
+          if (call) call.ok = false;
           break;
+        }
         case "step-finish": {
+          steps++;
           exchange.endStep();
           spend(costOf((payload.metadata as { providerMetadata?: unknown } | undefined)?.providerMetadata));
           const step = (payload.output as { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } | undefined)?.usage;
@@ -254,12 +321,39 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     emit({ event: "usage", data: usage });
     emit({ event: "done", data: { answer: result.answer, duration_ms: result.durationMs } });
     logger.info(`Run ${runId} (${context.mode}/${context.platform}) done in ${result.durationMs} ms, ${usage.output_tokens} tokens`);
+    report(deps, context, options, {
+      at: new Date(started),
+      model: modelId,
+      input_tokens: usage.input_tokens,
+      output_tokens: usage.output_tokens,
+      reasoning_tokens: usage.reasoning_tokens,
+      cost: usage.cost,
+      steps,
+      tools: [...called.values()],
+      searches: [...called.values()].filter((t) => t.name === "search_web").length,
+      duration_ms: result.durationMs,
+      result: "ok",
+    });
     // After done: the player has the answer, and the summary can take its time.
-    void compact(context, deps, options.spend);
+    void compact(context, deps, options.spend, undefined, options);
     return result;
   } catch (error) {
     const failure = classify(error, signal, context.provider);
     logger.warn(`Run ${runId} failed: ${failure.code} ${failure.message}`);
+    report(deps, context, options, {
+      at: new Date(started),
+      model: modelId,
+      input_tokens: sofar.input_tokens,
+      output_tokens: sofar.output_tokens,
+      reasoning_tokens: sofar.reasoning_tokens,
+      cost: Math.round(cost * 1_000_000) / 1_000_000,
+      steps,
+      tools: [...called.values()],
+      searches: [...called.values()].filter((t) => t.name === "search_web").length,
+      duration_ms: Date.now() - started,
+      result: failure.code === API_ERRORS.CANCELLED.code ? "cancelled" : "error",
+      error_code: failure.code,
+    });
     emit({ event: "error", data: { code: failure.code, message: failure.message } });
     throw failure;
   }

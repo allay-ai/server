@@ -49,7 +49,7 @@ export const handleAsk = (deps: AllayDeps) => async (req: Request, server?: Serv
         provider: admission.provider,
       },
       deps,
-      { runId: crypto.randomUUID(), emit: silent, signal: req.signal, spend: admission.spend },
+      { runId: crypto.randomUUID(), emit: silent, signal: req.signal, spend: admission.spend, payer: admission.payer },
     );
     return Response.json({
       answer: result.answer,

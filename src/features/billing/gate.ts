@@ -1,5 +1,6 @@
 import { type ByokProvider, OPENROUTER_URL, openrouterToken } from "../../infrastructure/providers/openrouter/openrouter.client";
 import { API_ERRORS, ApiFailure, apierror } from "../../shared/types/errors";
+import type { RunPayer } from "../../agent/allay";
 import { type Billing, charge, quotaFor, refusal, verifyLicense } from "./billing";
 import { checkUrl, preflight } from "./byok";
 import type { Take } from "./limits";
@@ -18,9 +19,14 @@ export interface Admission {
   model?: string;
   spend?: (usd: number) => void;
   release: () => void;
+  /** Who pays, as the statistics name it. */
+  payer: RunPayer;
 }
 
 const nothing = () => {};
+
+/** Names a server's own key in the statistics without keeping the key: a digest of where it goes and the key. */
+const fingerprint = (provider: ByokProvider) => new Bun.CryptoHasher("sha256").update(`${provider.baseURL}\n${provider.apiKey}`).digest("hex").slice(0, 12);
 
 const limited = (take: Take): ApiFailure | undefined =>
   take.ok ? undefined : new ApiFailure({ ...apierror(API_ERRORS.RATE_LIMITED), retry_after: take.retryAfter });
@@ -67,10 +73,10 @@ export const admit = async (
       release();
       return { ok: false, error: failure };
     }
-    return { ok: true, admission: { provider: byok, release } };
+    return { ok: true, admission: { provider: byok, release, payer: { kind: "byok", id: fingerprint(byok) } } };
   }
   // A self-hosted backend serves its own servers, so their plugin may pick a model per player; a hosted one keeps its own.
-  if (!billing.enabled) return { ok: true, admission: { release: nothing, ...(block?.model?.trim() ? { model: block.model.trim() } : {}) } };
+  if (!billing.enabled) return { ok: true, admission: { release: nothing, payer: { kind: "self" }, ...(block?.model?.trim() ? { model: block.model.trim() } : {}) } };
 
   const license = await verifyLicense(billing, headers.get("Authorization"));
   if (license instanceof ApiFailure) return { ok: false, error: license };
@@ -82,6 +88,7 @@ export const admit = async (
     ok: true,
     admission: {
       release: take.release,
+      payer: { kind: "license", id: license.id },
       spend: (usd) => {
         if (usd > 0) void charge(billing, license.id, usd);
       },
