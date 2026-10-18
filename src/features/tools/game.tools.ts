@@ -230,9 +230,9 @@ const definitions = {
   },
   sort_inventory: {
     description:
-      "Merges stacks and sorts the asking player's main inventory at once. The hotbar and offhand stay unless the player asks to sort them too («и хотбар тоже»); pins work without that and leave the rest of the hotbar alone. pins put items in slots first, the best candidate winning (material, enchantments, durability; food by what it fills): “sword first, golden carrot last” is [{slot: 1, item: \"sword\"}, {slot: 9, item: \"golden_carrot\"}]. Armor never moves. Only when asked.",
+      "Merges stacks and sorts the asking player's main inventory at once. The hotbar and offhand stay unless the player asks to sort them too («и хотбар тоже»); pins work without that and leave the rest of the hotbar alone. pins put items in slots first, the best candidate winning (material, enchantments, durability; food by what it fills; the fullest stack of equals): “sword first, golden carrot last” is [{slot: 1, item: \"sword\"}, {slot: 9, item: \"golden_carrot\"}]. With hotbar and pins, the hotbar holds just the pins: every other item goes into the main inventory, and a hotbar slot fills only when that's full, so slots between pins stay empty. With hotbar and no pins, the hotbar keeps the weapons, tools, food, torches, buckets, and pearls it had, weapons first. The result's hotbar (slots 1–9) and offhand say what's really there: tell the player from them. Armor never moves. Only when asked.",
     input: z.object({
-      hotbar: z.boolean().optional().describe("Also sort the hotbar slots no pin takes"),
+      hotbar: z.boolean().optional().describe("Also sort the hotbar slots no pin takes, moving what isn't held in hand into the main inventory"),
       offhand: z.boolean().optional(),
       pins: z
         .array(

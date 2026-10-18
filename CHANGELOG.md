@@ -2,6 +2,10 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.5.1
+
+- 🧹 **`sort_inventory`** tells the model how a sorted hotbar works since plugin 5.7.1: with pins it holds just them, slots between pins stay empty, and the result's `hotbar` and `offhand` say what's really there, so the answer matches the game.
+
 ## 5.5.0
 
 For Allay 5.7; older plugins keep working.
