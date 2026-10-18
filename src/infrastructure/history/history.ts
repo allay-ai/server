@@ -1,10 +1,9 @@
+import type { ModelMessage } from "ai";
 import { redis } from "bun";
 import { logger } from "../../shared/logging/logger";
 
-export interface HistoryMessage {
-  role: "user" | "assistant";
-  content: string;
-}
+/** A message as the model reads it: the question, the answer, and the tool calls and results between them. */
+export type HistoryMessage = ModelMessage;
 
 /** A player's conversation: recent messages verbatim and a summary of what came before them. */
 export interface Session {
@@ -18,16 +17,36 @@ export type Summarize = (summary: string | undefined, older: HistoryMessage[]) =
 /** Sessions per user, shared by v1 and v2 so a conversation carries over between them. */
 export interface HistoryStore {
   load(userId: string): Promise<Session>;
+  /** Adds one exchange: the question and everything the run said and called for it. */
   append(userId: string, ...messages: HistoryMessage[]): Promise<void>;
-  /** Once FOLD_AT exchanges pile up, folds all but the last KEEP into the summary. True when it folded. */
-  compact(userId: string, summarize: Summarize): Promise<boolean>;
+  /** Once the session outgrows foldAt tokens (FOLD_TOKENS by default) or MAX_EXCHANGES, folds all but about KEEP_TOKENS of it into the summary. True when it folded. */
+  compact(userId: string, summarize: Summarize, foldAt?: number): Promise<boolean>;
   clear(userId: string): Promise<void>;
 }
 
-/** Exchanges kept verbatim after a fold. */
-export const KEEP_EXCHANGES = 8;
-/** Exchanges that trigger a fold; between the two the model sees them all, so a fold runs every few questions. */
-export const FOLD_AT_EXCHANGES = 12;
+/**
+ * The session folds once its messages pass this many tokens. Each step reads them again, mostly from the
+ * provider's cache, so a long verbatim window is cheap until a question comes after the cache has gone cold.
+ */
+export const FOLD_TOKENS = Number(process.env.CHAT_FOLD_TOKENS || 32_000);
+/** Past this many, the session folds before the next question is answered, not after: the player waits for the summary. */
+export const MAX_TOKENS = Number(process.env.CHAT_MAX_TOKENS || 42_000);
+/** CHAT_IDLE_FOLD=0 turns folding quiet sessions off. */
+export const IDLE_FOLD = process.env.CHAT_IDLE_FOLD !== "0";
+/**
+ * A session left this long folds down if it holds more than IDLE_FOLD_TOKENS. OpenAI keeps a prefix 30 minutes
+ * after its last use for GPT-5.6 and later, Luna included; after that the next question would read it all at
+ * full price. 25 minutes has the fold done by then, while a short break in the game still keeps the session whole.
+ */
+export const IDLE_FOLD_SECONDS = Number(process.env.CHAT_IDLE_FOLD_SECONDS || 1500);
+export const IDLE_FOLD_TOKENS = Number(process.env.CHAT_IDLE_FOLD_TOKENS || 20_000);
+/** About this many tokens of the newest exchanges stay verbatim after a fold. */
+export const KEEP_TOKENS = Number(process.env.CHAT_KEEP_TOKENS || 12_000);
+/** A fold keeps at least this many exchanges, however long they are. */
+export const MIN_KEEP_EXCHANGES = 2;
+/** Short exchanges fold too, once there are this many, down to at most KEEP_EXCHANGES. */
+export const MAX_EXCHANGES = 100;
+export const KEEP_EXCHANGES = 30;
 export const SESSION_TTL_SECONDS = Number(process.env.CHAT_TTL_SECONDS || 24 * 3600);
 /** A server's thread of public questions is a passing talk, so it lives shorter than a player's session. */
 export const PUBLIC_TTL_SECONDS = Number(process.env.PUBLIC_CHAT_TTL_SECONDS || 2 * 3600);
@@ -49,21 +68,29 @@ export const ttlOf = (thread: string) => {
   if (thread.startsWith(TASK_PREFIX)) return TASK_TTL_SECONDS;
   return thread.startsWith(PUBLIC_PREFIX) ? PUBLIC_TTL_SECONDS : SESSION_TTL_SECONDS;
 };
-const KEEP = KEEP_EXCHANGES * 2;
-const FOLD_AT = FOLD_AT_EXCHANGES * 2;
-// If folding keeps failing, the oldest messages simply fall off here.
-const CAP = FOLD_AT + 16;
+// If folding keeps failing, the oldest exchanges simply fall off here.
+const CAP = MAX_EXCHANGES + 20;
 const MAX_CONTENT = 4000;
-export const MAX_SUMMARY = 1500;
+export const MAX_SUMMARY = 3000;
+
+/** A rough count that errs high: about three characters a token for English, Russian, and JSON alike. */
+export const estimateTokens = (messages: HistoryMessage[]) => Math.ceil(JSON.stringify(messages).length / 3);
 
 const key = (userId: string) => `chat_history:${userId}`;
 const summaryKey = (userId: string) => `chat_summary:${userId}`;
 
-const parse = (raw: string): HistoryMessage | undefined => {
+const isMessage = (value: unknown): value is HistoryMessage => {
+  const message = value as { role?: unknown; content?: unknown };
+  return ["user", "assistant", "tool"].includes(message?.role as string) && (typeof message.content === "string" || Array.isArray(message.content));
+};
+
+/** One exchange per entry; entries from before 5.5 hold a single text message each. */
+const parse = (raw: string): HistoryMessage[] | undefined => {
   try {
     const value = JSON.parse(raw);
+    if (Array.isArray(value.messages)) return value.messages.filter(isMessage);
     if ((value.role === "user" || value.role === "assistant") && typeof value.content === "string") {
-      return { role: value.role, content: value.content };
+      return [{ role: value.role, content: value.content }];
     }
   } catch {
     // A broken entry is skipped; the rest of the history still helps.
@@ -71,22 +98,33 @@ const parse = (raw: string): HistoryMessage | undefined => {
   return undefined;
 };
 
-const entries = (messages: HistoryMessage[]) =>
+const entry = (messages: HistoryMessage[]): HistoryMessage[] =>
   messages
-    .map((m) => ({ role: m.role, content: m.content.trim().slice(0, MAX_CONTENT) }))
-    .filter((m) => m.content)
-    .map((m) => JSON.stringify({ id: crypto.randomUUID(), ...m }));
+    .map((m) => (typeof m.content === "string" ? ({ ...m, content: m.content.trim().slice(0, MAX_CONTENT) } as HistoryMessage) : m))
+    .filter((m) => m.content.length > 0);
 
-/** Newest first in a Redis list (the v1 layout), the summary next to it; both expire together. */
+/** How many of the newest exchanges stay verbatim, or undefined when nothing needs to fold. Exchanges come newest first. */
+const keepOf = (exchanges: HistoryMessage[][], foldAt: number): number | undefined => {
+  const sizes = exchanges.map(estimateTokens);
+  const total = sizes.reduce((sum, size) => sum + size, 0);
+  if (total <= foldAt && exchanges.length <= MAX_EXCHANGES) return undefined;
+  let kept = 0;
+  let tokens = 0;
+  while (kept < exchanges.length && (kept < MIN_KEEP_EXCHANGES || (kept < KEEP_EXCHANGES && tokens + sizes[kept] <= KEEP_TOKENS))) tokens += sizes[kept++];
+  return kept < exchanges.length ? kept : undefined;
+};
+
+const exchangesOf = (raw: string[]) => raw.map(parse).filter((m): m is HistoryMessage[] => !!m);
+
+/** Newest exchange first in a Redis list (the v1 key), the summary next to it; both expire together. */
 export const redisHistory: HistoryStore = {
   async load(userId) {
     try {
       const [raw, summary] = await Promise.all([
-        redis.send("LRANGE", [key(userId), "0", String(FOLD_AT - 1)]) as Promise<string[]>,
+        redis.send("LRANGE", [key(userId), "0", String(CAP - 1)]) as Promise<string[]>,
         redis.get(summaryKey(userId)),
       ]);
-      const messages = (raw ?? []).map(parse).filter((m): m is HistoryMessage => !!m).reverse();
-      return { messages, ...(summary ? { summary } : {}) };
+      return { messages: exchangesOf(raw ?? []).reverse().flat(), ...(summary ? { summary } : {}) };
     } catch (error) {
       // History is a nicety: answer without it rather than fail the question.
       logger.warn(`History unavailable for ${userId}: ${String(error)}`);
@@ -94,10 +132,10 @@ export const redisHistory: HistoryStore = {
     }
   },
   async append(userId, ...messages) {
-    const values = entries(messages);
-    if (values.length === 0) return;
+    const kept = entry(messages);
+    if (kept.length === 0) return;
     try {
-      await redis.send("LPUSH", [key(userId), ...values]);
+      await redis.send("LPUSH", [key(userId), JSON.stringify({ id: crypto.randomUUID(), messages: kept })]);
       await redis.send("LTRIM", [key(userId), "0", String(CAP - 1)]);
       await redis.expire(key(userId), ttlOf(userId));
       await redis.expire(summaryKey(userId), ttlOf(userId));
@@ -105,13 +143,17 @@ export const redisHistory: HistoryStore = {
       logger.warn(`Couldn't save history for ${userId}: ${String(error)}`);
     }
   },
-  async compact(userId, summarize) {
-    if (Number(await redis.send("LLEN", [key(userId)])) <= FOLD_AT) return false;
-    const raw = (await redis.send("LRANGE", [key(userId), String(KEEP), "-1"])) as string[];
-    const older = raw.map(parse).filter((m): m is HistoryMessage => !!m).reverse();
+  async compact(userId, summarize, foldAt = FOLD_TOKENS) {
+    const raw = (await redis.send("LRANGE", [key(userId), "0", "-1"])) as string[];
+    const exchanges = exchangesOf(raw);
+    const kept = keepOf(exchanges, foldAt);
+    if (kept === undefined) return false;
+    const older = exchanges.slice(kept).reverse().flat();
     const summary = (await summarize((await redis.get(summaryKey(userId))) ?? undefined, older)).trim().slice(0, MAX_SUMMARY);
     if (summary) await redis.set(summaryKey(userId), summary, "EX", ttlOf(userId));
-    await redis.send("LTRIM", [key(userId), "0", String(KEEP - 1)]);
+    // Exchanges appended while the summary was written sit at the head, so they stay too.
+    const added = Number(await redis.send("LLEN", [key(userId)])) - raw.length;
+    await redis.send("LTRIM", [key(userId), "0", String(kept + Math.max(added, 0) - 1)]);
     return true;
   },
   async clear(userId) {
@@ -121,23 +163,27 @@ export const redisHistory: HistoryStore = {
 
 /** For tests and local runs without Redis; same windows, no expiry. */
 export const memoryHistory = (): HistoryStore => {
-  const store = new Map<string, Session>();
-  const of = (userId: string): Session => store.get(userId) ?? { messages: [] };
+  const store = new Map<string, { summary?: string; exchanges: HistoryMessage[][] }>();
+  const of = (userId: string) => store.get(userId) ?? { exchanges: [] };
   return {
     async load(userId) {
       const session = of(userId);
-      return { ...session, messages: session.messages.slice(-FOLD_AT) };
+      return { ...(session.summary ? { summary: session.summary } : {}), messages: session.exchanges.flat() };
     },
     async append(userId, ...messages) {
+      const kept = entry(messages);
+      if (kept.length === 0) return;
       const session = of(userId);
-      store.set(userId, { ...session, messages: [...session.messages, ...messages].slice(-CAP) });
+      store.set(userId, { ...session, exchanges: [...session.exchanges, kept].slice(-CAP) });
     },
-    async compact(userId, summarize) {
+    async compact(userId, summarize, foldAt = FOLD_TOKENS) {
       const session = of(userId);
-      if (session.messages.length <= FOLD_AT) return false;
-      const older = session.messages.slice(0, -KEEP);
+      const newest = [...session.exchanges].reverse();
+      const kept = keepOf(newest, foldAt);
+      if (kept === undefined) return false;
+      const older = newest.slice(kept).reverse().flat();
       const summary = (await summarize(session.summary, older)).trim().slice(0, MAX_SUMMARY);
-      store.set(userId, { summary: summary || session.summary, messages: session.messages.slice(-KEEP) });
+      store.set(userId, { summary: summary || session.summary, exchanges: session.exchanges.slice(-kept) });
       return true;
     },
     async clear(userId) {

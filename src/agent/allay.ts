@@ -7,7 +7,7 @@ import { exactCalculationsTool } from "../features/tools/exact-calculations.tool
 import { gameTools, offeredTools } from "../features/tools/game.tools";
 import { memoryTools } from "../features/tools/memory.tools";
 import { searchWebTool } from "../features/tools/search-web.tool";
-import { type HistoryStore, threadOf } from "../infrastructure/history/history";
+import { estimateTokens, type HistoryStore, IDLE_FOLD, IDLE_FOLD_SECONDS, IDLE_FOLD_TOKENS, MAX_TOKENS, threadOf } from "../infrastructure/history/history";
 import type { Memory, MemoryStore } from "../infrastructure/memory/memory";
 import { type ByokProvider, type ModelFactory, costOf } from "../infrastructure/providers/openrouter/openrouter.client";
 import { redact } from "../shared/lib/redact";
@@ -16,6 +16,8 @@ import { API_ERRORS, ApiFailure, apierror } from "../shared/types/errors";
 import type { CommandsResult, RunContext, RunResult, Usage } from "./agent.types";
 import { commandsFromText, commandsSchema, validateCommands } from "./commands";
 import { systemPrompt } from "./prompts";
+import { Exchange } from "./exchange";
+import { cancelIdleFold, foldWhenIdle } from "./idle";
 import { localStamp } from "./time";
 import { summarizeWith } from "./summary";
 
@@ -25,6 +27,8 @@ export interface AllayDeps {
   memories: MemoryStore;
   bridge: ToolBridge;
   billing: Billing;
+  /** How long a session stays quiet before it folds: IDLE_FOLD_SECONDS by default, shorter in tests; 0 never. */
+  idleFoldMs?: number;
 }
 
 export interface RunOptions {
@@ -99,17 +103,13 @@ const question = (context: RunContext): string => {
 const thread = (context: RunContext) => threadOf(context.userId, context.visibility, context.server?.id, context.task?.id);
 
 /** Adds this exchange to the session; askx requests go in with a slash so later answers know what was run. */
-const record = (context: RunContext, deps: AllayDeps, answer: string, asked: string) =>
-  deps.history.append(
-    thread(context),
-    { role: "user", content: context.mode === "askx" ? `/askx ${context.message}` : asked },
-    { role: "assistant", content: answer },
-  );
+const record = (context: RunContext, deps: AllayDeps, asked: string, said: ModelMessage[]) =>
+  deps.history.append(thread(context), { role: "user", content: context.mode === "askx" ? `/askx ${context.message}` : asked }, ...said);
 
-const compact = async (context: RunContext, deps: AllayDeps, spend?: (usd: number) => void) => {
+const compact = async (context: RunContext, deps: AllayDeps, spend?: (usd: number) => void, foldAt?: number) => {
   try {
     const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
-    if (await deps.history.compact(thread(context), summarizeWith(model, spend))) logger.info(`Folded the session of ${thread(context)}`);
+    if (await deps.history.compact(thread(context), summarizeWith(model, spend), foldAt)) logger.info(`Folded the session of ${thread(context)}`);
   } catch (error) {
     logger.warn(`Couldn't fold the session of ${thread(context)}: ${redact(String(error), context.provider?.apiKey)}`);
   }
@@ -128,12 +128,18 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     cost += usd;
     options.spend?.(usd);
   };
+  cancelIdleFold(thread(context));
   try {
     const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
     const tools = offeredTools(context.tools, context.player?.op === true, context.mode, context.visibility, context.task?.depth ?? 0);
     const memories = await loadMemories(deps, context.userId);
     // askx turns one request into commands; earlier chat would only confuse it, as in v1. A task reads its own thread.
-    const session = context.mode === "askx" ? { messages: [] } : await deps.history.load(thread(context));
+    let session = context.mode === "askx" ? { messages: [] } : await deps.history.load(thread(context));
+    // Folding after answers keeps a session well below this; a fold that failed, or one huge exchange, may not.
+    if (estimateTokens(session.messages) > MAX_TOKENS) {
+      await compact(context, deps, spend, MAX_TOKENS);
+      session = await deps.history.load(thread(context));
+    }
     const instructions = systemPrompt({ ...context, tools }, { memories, summary: session.summary });
     const agent = new Agent({ id: "allay", name: "Allay", instructions, model });
     const asked = question(context);
@@ -165,6 +171,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     ) as unknown as AgentStream;
 
     let text = "";
+    const exchange = new Exchange();
     // Per-step usage, summed, so the plugin's counter moves while the agent works.
     const sofar: Usage = { input_tokens: 0, output_tokens: 0, reasoning_tokens: 0, cost: 0 };
     for await (const chunk of stream.fullStream) {
@@ -176,11 +183,22 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
         case "text-delta":
           if (typeof payload.text === "string") {
             text += payload.text;
+            exchange.text(payload.text);
             // askx text is the JSON result, not something to show; a task's is its note, which the plugin keeps to itself.
             if (context.mode !== "askx") emit({ event: "text", data: { delta: payload.text } });
           }
           break;
+        case "tool-call":
+          exchange.call(payload);
+          break;
+        case "tool-result":
+          exchange.result(payload);
+          break;
+        case "tool-error":
+          exchange.error(payload);
+          break;
         case "step-finish": {
+          exchange.endStep();
           spend(costOf((payload.metadata as { providerMetadata?: unknown } | undefined)?.providerMetadata));
           const step = (payload.output as { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } | undefined)?.usage;
           sofar.input_tokens += step?.inputTokens ?? 0;
@@ -212,18 +230,21 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
         commands = validateCommands(object);
       } catch (error) {
         if (error instanceof ApiFailure && error.code === API_ERRORS.AI_ERROR.code) {
-          await record(context, deps, `Refused: ${error.message.replace(/^AI returned an error: /, "")}`, asked);
+          await record(context, deps, asked, [{ role: "assistant", content: `Refused: ${error.message.replace(/^AI returned an error: /, "")}` }]);
         }
         throw error;
       }
-      await record(context, deps, `Commands: ${commands.commands.join("; ")}`, asked);
+      await record(context, deps, asked, [{ role: "assistant", content: `Commands: ${commands.commands.join("; ")}` }]);
       emit({ event: "commands", data: commands });
       result = { answer: "", commands, usage, durationMs: Date.now() - started };
     } else {
       const answer = text.trim();
       // A wake may end with wait or finish and no words; that's done, not a failure.
       if (!answer && context.mode !== "task") throw new ApiFailure(apierror(API_ERRORS.NO_AI_RESPONSE));
-      await record(context, deps, answer || TASK_WAITING, asked);
+      // The tool calls and results go in too, so a later question can refer to what they found. Not in a
+      // server's public thread: there they'd hand the asker's inventory and places to whoever asks next.
+      const said = context.visibility === "public" ? (answer ? [{ role: "assistant" as const, content: answer }] : []) : exchange.messages();
+      await record(context, deps, asked, answer ? said : [...said, { role: "assistant", content: TASK_WAITING }]);
       result = { answer, usage, durationMs: Date.now() - started };
     }
     emit({ event: "usage", data: usage });
@@ -231,6 +252,8 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     logger.info(`Run ${runId} (${context.mode}/${context.platform}) done in ${result.durationMs} ms, ${usage.output_tokens} tokens`);
     // After done: the player has the answer, and the summary can take its time.
     void compact(context, deps, options.spend);
+    const quiet = deps.idleFoldMs ?? (IDLE_FOLD ? IDLE_FOLD_SECONDS * 1000 : 0);
+    if (quiet > 0) foldWhenIdle(thread(context), quiet, () => compact(context, deps, options.spend, IDLE_FOLD_TOKENS));
     return result;
   } catch (error) {
     const failure = classify(error, signal, context.provider);

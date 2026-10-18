@@ -10,6 +10,7 @@ import { handleLicense } from "../src/features/billing/license.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { finish, reasoning, readSse, scripted, testDeps, text, toolCall } from "./helpers";
 import { MAX_MEMORIES } from "../src/infrastructure/memory/memory";
+import { type HistoryMessage, IDLE_FOLD_TOKENS, MAX_EXCHANGES, MAX_TOKENS } from "../src/infrastructure/history/history";
 
 const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram };
 let server: Server | undefined;
@@ -244,7 +245,7 @@ describe("POST /api/v2/chat", () => {
     ]);
     const deps = testDeps(model);
     // Fill the session past the fold point and fold it, as a long chat would.
-    for (let i = 0; i <= 12; i++) {
+    for (let i = 0; i <= MAX_EXCHANGES; i++) {
       await deps.history.append("player-1", { role: "user", content: `q${i}` }, { role: "assistant", content: `a${i}` });
     }
     await deps.history.compact("player-1", async () => "The player is building a beacon.");
@@ -263,6 +264,79 @@ describe("POST /api/v2/chat", () => {
     const base = start(testDeps(model));
     await readSse(await chat(base, { message: "is it late?", timezone: "Asia/Yekaterinburg" }));
     expect(JSON.stringify(prompts[0])).toMatch(/\[\w{3}, \d{1,2} \w{3} \d{4}, \d{2}:\d{2} Asia\/Yekaterinburg\] is it late\?/);
+  });
+
+  test("tool calls and their results carry over to the next question", async () => {
+    const { model, prompts } = scripted([
+      [toolCall("find_item", { item: "diamond" }), finish("tool-calls")],
+      [...text("12 diamonds."), finish()],
+      [...text("In the chest."), finish()],
+    ]);
+    const deps = testDeps(model);
+    const base = start(deps);
+    await readSse(
+      await chat(base, { message: "how many diamonds?", tools: ["find_item"] }),
+      answerTools(base, { find_item: { total: 12, places: [{ x: 4, y: 64, z: 9, count: 12 }] } }),
+    );
+    const session = await deps.history.load("player-1");
+    expect(session.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"]);
+    await readSse(await chat(base, { message: "where exactly?" }));
+    // The second question sees the first one's call and what it found, without calling again.
+    expect(JSON.stringify(prompts[2])).toContain("find_item");
+    expect(JSON.stringify(prompts[2])).toContain("places");
+  });
+
+  test("a public thread keeps the answers, not the asker's tool results", async () => {
+    const { model } = scripted([[toolCall("inventory", {}), finish("tool-calls")], [...text("Some diamonds."), finish()]]);
+    const deps = testDeps(model);
+    const base = start(deps);
+    await readSse(
+      await chat(base, { message: "what do I have?", visibility: "public", server: { id: "srv-1" }, tools: ["get_inventory"] }),
+      answerTools(base, { get_inventory: { main: [{ id: "diamond", count: 12 }] } }),
+    );
+    const thread = await deps.history.load("public:srv-1");
+    expect(thread.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(JSON.stringify(thread.messages)).not.toContain("diamond\"");
+  });
+
+  /** An exchange of about this many tokens, most of it a tool's result. */
+  const bulky = (i: number, tokens: number): HistoryMessage[] => [
+    { role: "user", content: `q${i}` },
+    { role: "assistant", content: [{ type: "tool-call", toolCallId: `c${i}`, toolName: "inventory", input: {} }] },
+    { role: "tool", content: [{ type: "tool-result", toolCallId: `c${i}`, toolName: "inventory", output: { type: "text", value: "x".repeat(tokens * 3) } }] },
+    { role: "assistant", content: `a${i}` },
+  ];
+
+  test("a quiet session folds down once its cache would have gone cold", async () => {
+    const { model } = scripted([[...text("Sure."), finish()], [...text("The player sorted chests."), finish()]]);
+    const deps = testDeps(model);
+    deps.idleFoldMs = 20;
+    for (let i = 0; i < 6; i++) await deps.history.append("player-1", ...bulky(i, (IDLE_FOLD_TOKENS + 4_000) / 6));
+    await readSse(await chat(start(deps), { message: "thanks" }));
+    // Below the fold after an answer, so only the quiet period folds it.
+    expect((await deps.history.load("player-1")).summary).toBeUndefined();
+    await Bun.sleep(100);
+    expect((await deps.history.load("player-1")).summary).toBe("The player sorted chests.");
+  });
+
+  test("with idle folding off, a quiet session stays whole", async () => {
+    const { model } = scripted([[...text("Sure."), finish()], [...text("never"), finish()]]);
+    const deps = testDeps(model);
+    deps.idleFoldMs = 0;
+    for (let i = 0; i < 6; i++) await deps.history.append("player-1", ...bulky(i, (IDLE_FOLD_TOKENS + 4_000) / 6));
+    await readSse(await chat(start(deps), { message: "thanks" }));
+    await Bun.sleep(50);
+    expect((await deps.history.load("player-1")).summary).toBeUndefined();
+  });
+
+  test("a session past the cap folds before the answer", async () => {
+    const { model, prompts } = scripted([[...text("The player built a beacon."), finish()], [...text("Yes."), finish()]]);
+    const deps = testDeps(model);
+    for (let i = 0; i < 6; i++) await deps.history.append("player-1", ...bulky(i, (MAX_TOKENS + 6_000) / 6));
+    await readSse(await chat(start(deps), { message: "still there?" }));
+    // The summary came first, and the answer's prompt read it instead of the whole session.
+    expect(JSON.stringify(prompts[1])).toContain("The player built a beacon.");
+    expect(JSON.stringify(prompts[1])).not.toContain('"q0"');
   });
 
   test("history carries over between questions", async () => {
