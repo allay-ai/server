@@ -63,3 +63,6 @@ scripts/
 **/tsconfig.json
 **/postman.json
 **/configurations
+
+# The admin panel builds with its own tsconfig
+!admin/tsconfig.json

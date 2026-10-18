@@ -120,6 +120,8 @@ services:
     volumes:
       - allay-server-redis-data-dev:/data
 volumes:
+  allay-server-data-dev:
+    driver: local
   allay-server-mongo-data-dev:
     driver: local
   allay-server-redis-data-dev:

@@ -88,3 +88,6 @@ build/
 
 # Bun
 bun.lockb 
+# The admin panel
+admin/dist/
+*.tsbuildinfo

@@ -59,6 +59,9 @@ services:
     ports:
       - ${PORT}:3000
     restart: unless-stopped
+    # The key that seals secrets saved in the admin panel.
+    volumes:
+      - allay-server-data:/data
   allay-server-mongo:
     command: ["--wiredTigerCacheSizeGB", "0.25"]
     container_name: allay-server-mongo
@@ -121,6 +124,8 @@ services:
     volumes:
       - allay-server-redis-data:/data
 volumes:
+  allay-server-data:
+    driver: local
   allay-server-mongo-data:
     driver: local
   allay-server-redis-data:
