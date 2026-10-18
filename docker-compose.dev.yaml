@@ -58,6 +58,9 @@ services:
       - ${PORT}:3000
     restart: unless-stopped
     security_opt: [ "seccomp:unconfined" ]
+    # The key that seals secrets saved in the admin panel.
+    volumes:
+      - allay-server-data-dev:/data
   allay-server-mongo:
     command: ["--wiredTigerCacheSizeGB", "0.25"]
     container_name: allay-server-mongo-dev
