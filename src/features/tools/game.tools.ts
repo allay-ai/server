@@ -265,7 +265,11 @@ const definitions = {
         .array(
           z.object({
             slot: z.union([z.number().int().min(1).max(9), z.literal("offhand")]).describe("1–9 for the hotbar from the left, or offhand"),
-            item: z.string().min(1).max(64).describe("An item id, or a group: sword, pickaxe, axe, shovel, hoe, spear, bow, crossbow, trident, mace, shield, totem, torch, bucket, pearl, rocket, arrow, block, food"),
+            item: z
+              .string()
+              .min(1)
+              .max(64)
+              .describe("An item id (golden_apple, enchanted_golden_apple), a potion as bottle:potion (potion:healing, splash_potion:fire_resistance, tipped_arrow:slowness; the strongest of that kind wins), or a group: sword, pickaxe, axe, shovel, hoe, spear, bow, crossbow, trident, mace, shield, totem, torch, bucket, pearl, rocket, arrow, block, food"),
           }),
         )
         .max(10)
@@ -468,11 +472,17 @@ const automationDefinitions = {
   },
   smelt: {
     description:
-      "Smelting in furnaces, blast furnaces, and smokers near the player, each by what it can cook. action scan: the free and busy ones around, and what the player has to smelt and burn. start: spreads count of item evenly over furnaces (or the free ones around), with exactly the fuel it needs; coal blocks are split into coal, and leftovers go back where they came from. status: how far it is. collect: takes the output to to. You wake when the smelting ends.",
+      "Smelting in furnaces, blast furnaces, and smokers near the player, each by what it can cook. action scan: the free and busy ones around, and what the player has to smelt and burn. start: smelts count of item, or several items at once with items (“the iron and the gold”: one call, never one after the other), over furnaces (or the free ones around); each furnace takes one item, and the split weighs speed (a blast furnace cooks ores twice as fast) so all finish about together. Exactly the fuel it needs; coal blocks are split into coal, and leftovers go back where they came from. status: how far it is. collect: takes the output to to. You wake when the smelting ends.",
     input: z.object({
       action: z.enum(["scan", "start", "status", "collect"]),
       item: itemId.optional().describe("start: what to smelt, like raw_gold"),
       count: z.number().int().min(1).max(4096).optional().describe("start: how many; leave it out for all the player has"),
+      items: z
+        .array(z.object({ item: itemId, count: z.number().int().min(1).max(4096).optional().describe("Leave it out for all the player has") }))
+        .min(1)
+        .max(8)
+        .optional()
+        .describe("start: several items at once instead of item and count"),
       furnaces: z.array(spot).max(16).optional(),
       fuel: itemId.optional().describe("start: the fuel to use, like coal; leave it out to pick the cheapest at hand"),
       to: output,

@@ -39,8 +39,8 @@ You work only with the tools of your kind: a furnaces agent smelts, a chests age
 # Furnaces
 1. smelt action scan: the free and busy furnaces, blast furnaces, and smokers around the player, and what they have to smelt and burn. Each kind cooks only what it can: blast furnaces ores and metal, smokers food.
 2. Use the furnaces the brief names; or the free ones around; or, when the player wants to pick, pick_blocks kind furnaces and wait.
-3. smelt action start with item and count (all of it when the player said all), spread evenly; the plugin takes exactly the fuel needed. Say in one line how long it takes, then wait.
-4. When the [job] says it's done: collect to where the brief says. When it doesn't say, ask once: the inventory, a chest by name, or a chest they pick; keep that choice for the rest of the task. Then finish, or offer the next step if the brief has one.
+3. smelt action start with item and count (all of it when the player said all), or with items for several at once (“the iron and the gold” is one start, never two in a row); the plugin splits by each furnace's speed and takes exactly the fuel needed. Say in one line how long it takes, then wait.
+4. When the [job] says it's done: collect to where the brief says. When it doesn't say, ask once: the inventory, a chest by name, or a chest they pick; keep that choice for the rest of the task. Then finish, or go on with the brief's next step. A next step of another kind (“then make iron blocks of the ingots”) goes to a sub-agent: start_task kind crafting with the item, how many (9 ingots a block: all the blocks the collected ingots make, unless the brief says how many), where the ingots are, and the language; then finish with what you did and that it took over.
 
 # Brewing
 1. brew action scan: the stands that suit (the right base already in them, water bottles there) and the ingredients and blaze powder at hand.
