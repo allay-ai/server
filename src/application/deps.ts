@@ -9,6 +9,10 @@ import { tracing } from "../infrastructure/observability/tracing";
 import { mongoMemories } from "../infrastructure/memory/memory";
 import { openrouterModels } from "../infrastructure/providers/openrouter/openrouter.client";
 import { settings } from "../features/settings/settings";
+import { LoginLimiter, SetupCodes, envAdminOf } from "../features/admin/admin";
+import { mongoAccounts } from "../infrastructure/admin/accounts";
+import { mongoAudit } from "../infrastructure/admin/audit";
+import { redisSessions } from "../infrastructure/admin/sessions";
 
 const admins = () =>
   (settings.get("TELEGRAM_ADMIN_IDS") ?? "")
@@ -43,6 +47,17 @@ export const productionDeps = (): AllayDeps => ({
       },
     },
     limits: newLimits(),
+    now: () => new Date(),
+  },
+  admin: {
+    accounts: mongoAccounts,
+    sessions: redisSessions,
+    audit: mongoAudit,
+    settings,
+    setup: new SetupCodes(),
+    envAdmin: envAdminOf(),
+    selfHosted: selfHosted(),
+    limiter: new LoginLimiter(),
     now: () => new Date(),
   },
 });

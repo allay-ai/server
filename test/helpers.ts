@@ -8,6 +8,13 @@ import type { ModelFactory } from "../src/infrastructure/providers/openrouter/op
 import { type Billing, newLimits } from "../src/features/billing/billing";
 import type { Net } from "../src/features/billing/byok";
 import { memoryLicenses } from "../src/infrastructure/billing/licenses";
+import { type AdminDeps, type EnvAdmin, LoginLimiter, SetupCodes } from "../src/features/admin/admin";
+import { Settings } from "../src/features/settings/settings";
+import { memoryAccounts } from "../src/infrastructure/admin/accounts";
+import { memoryAudit } from "../src/infrastructure/admin/audit";
+import { memorySessions } from "../src/infrastructure/admin/sessions";
+import { testVault } from "../src/infrastructure/settings/secrets";
+import { memorySettings } from "../src/infrastructure/settings/store";
 
 const usage = {
   inputTokens: { total: 12, noCache: 12, cacheRead: 0, cacheWrite: 0 },
@@ -151,4 +158,23 @@ export const readSse = async (response: Response, onEvent?: (event: SseEvent) =>
     }
   }
   return events;
+};
+
+/** The admin panel's services in memory, with a clock tests can move. */
+export const testAdmin = (options: { selfHosted?: boolean; envAdmin?: EnvAdmin; env?: Record<string, string> } = {}) => {
+  let now = Date.parse("2026-10-18T12:00:00Z");
+  const clock = () => now;
+  const audit = memoryAudit();
+  const admin: AdminDeps = {
+    accounts: memoryAccounts(),
+    sessions: memorySessions(clock),
+    audit,
+    settings: new Settings(memorySettings(), testVault(), options.env ?? {}),
+    setup: new SetupCodes(clock),
+    envAdmin: options.envAdmin,
+    selfHosted: options.selfHosted ?? true,
+    limiter: new LoginLimiter(clock),
+    now: () => new Date(now),
+  };
+  return { admin, audit, advance: (ms: number) => (now += ms) };
 };

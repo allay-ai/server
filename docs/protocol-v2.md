@@ -305,6 +305,18 @@ The status:
 
 A payment while a period runs adds its budget at once and moves `paid_until` further.
 
+## Admin panel setup
+
+Since server 5.7 and plugin 5.9. The backend has a web admin panel at `<PUBLIC_URL>/admin`. On a self-hosted backend (`SELFHOSTED=1`), an operator creates its first account from the game with `/allay init`, which calls:
+
+| Request | Answer |
+|---|---|
+| `POST /api/v2/admin/init`, no body | `200 { "url": "<PUBLIC_URL>/admin/setup?code=<code>", "expires_at" }` while the panel has no admin. The code works once and for 30 minutes; a new call replaces a pending one |
+| the same once an admin exists (made through setup or defined in the environment) | `409 { "error": { "code": "ADMIN_EXISTS", … }, "url": "<PUBLIC_URL>/admin" }` |
+| the same on a backend with billing on | `404 { "error": { "code": "NOT_SELFHOSTED", … } }`: its first admin comes from a code in its own log |
+
+The plugin shows the link only to whoever ran the command, as a clickable chat line, and never logs it; from the console it prints it to the console. Older backends answer `404` without that code: the plugin then says the backend has no panel.
+
 ## Compatibility
 
 `POST /api/ask` and `POST /api/askx` keep their v1 request and response shapes. They run the same agent without client tools, so the Telegram bot and older plugins keep working.

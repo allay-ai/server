@@ -1,4 +1,6 @@
 import type { AllayDeps } from "../agent/allay";
+import type { handleAdmin } from "../features/admin/admin.controller";
+import type { handleAdminInit } from "../features/admin/init.controller";
 import type { handleAsk } from "../features/ask/ask.controller";
 import type { handleAskX } from "../features/askx/askx.controller";
 import type { handleChat, handleToolResult } from "../features/chat/chat.controller";
@@ -18,6 +20,10 @@ interface Handlers {
   handleMemory: typeof handleMemory;
   handleLicense: typeof handleLicense;
   handleTelegram: typeof handleTelegram;
+  handleAdminInit?: typeof handleAdminInit;
+  handleAdmin?: typeof handleAdmin;
+  /** The panel's built pages, served at /admin. */
+  adminPages?: (req: Request) => Promise<Response>;
 }
 
 /** The HTTP routes, built from injected services so tests can serve them with fakes. */
@@ -32,4 +38,7 @@ export const routes = (deps: AllayDeps, h: Handlers) => ({
   "/api/v2/users/:userId/memories/:memoryId": h.handleMemory(deps),
   "/api/v2/license": h.handleLicense(deps),
   "/api/telegram/webhook": h.handleTelegram(deps),
+  ...(h.handleAdminInit ? { "/api/v2/admin/init": h.handleAdminInit(deps) } : {}),
+  ...(h.handleAdmin ? { "/api/admin/*": h.handleAdmin(deps) } : {}),
+  ...(h.adminPages ? { "/admin": h.adminPages, "/admin/*": h.adminPages } : {}),
 });

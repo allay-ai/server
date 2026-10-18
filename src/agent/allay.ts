@@ -1,6 +1,7 @@
 import type { Mastra } from "@mastra/core";
 import { Agent } from "@mastra/core/agent";
 import { APICallError, type ModelMessage } from "ai";
+import type { AdminDeps } from "../features/admin/admin";
 import type { Billing } from "../features/billing/billing";
 import type { ToolBridge } from "../features/chat/chat.bridge";
 import type { Emit } from "../features/chat/chat.events";
@@ -32,6 +33,8 @@ export interface AllayDeps {
   perplexity?: PerplexitySearch;
   /** Where runs are traced; none in tests. */
   mastra?: Mastra;
+  /** The admin panel's accounts and sessions; tests that don't touch the panel leave it out. */
+  admin?: AdminDeps;
 }
 
 export interface RunOptions {

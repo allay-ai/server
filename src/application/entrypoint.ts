@@ -1,4 +1,8 @@
 import { redis, serve } from "bun";
+import { needsSetup } from "../features/admin/admin";
+import { handleAdmin } from "../features/admin/admin.controller";
+import { adminPages } from "../features/admin/admin.pages";
+import { handleAdminInit, panelUrl } from "../features/admin/init.controller";
 import { handleAsk } from "../features/ask/ask.controller";
 import { handleAskX } from "../features/askx/askx.controller";
 import { handleChat, handleToolResult } from "../features/chat/chat.controller";
@@ -26,7 +30,7 @@ const server = serve({
   hostname: "0.0.0.0",
   routes: routes(deps, {
     handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory,
-    handleLicense, handleTelegram,
+    handleLicense, handleTelegram, handleAdminInit, handleAdmin, adminPages: adminPages(),
   }),
   error: (error: Error) => {
     logger.error("Server error:", error);
@@ -37,6 +41,12 @@ const server = serve({
 logger.info(deps.billing.enabled ? "Billing is on: servers pay with a subscription or bring their own key" : "Billing is off (SELFHOSTED): everyone runs on this backend's key");
 await startTelegram(deps.billing).catch((error) => logger.error(`The Telegram bot didn't start: ${String(error)}`));
 watchTelegram(deps.billing);
+
+// A hosted backend has no /allay init: its first admin comes from a code only the operator sees, in this log.
+if (deps.admin && !deps.admin.selfHosted && (await needsSetup(deps.admin))) {
+  const { code } = deps.admin.setup.issue(null);
+  logger.info(`No admin yet: open ${panelUrl(settings.get("PUBLIC_URL"))}/setup and enter the setup code ${code}`);
+}
 
 const shutdown = (signal: string) => async () => {
   logger.info(`Graceful shutdown: received ${signal}, closing connections...`);

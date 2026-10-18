@@ -74,6 +74,19 @@ const openrouterCatalog = async (baseURL: string, net: Net): Promise<Map<string,
   return catalog.models;
 };
 
+/** What OpenRouter's catalog says of a model; unknown when the catalog can't be read. */
+export const catalogCheck = async (baseURL: string, model: string, net: Net): Promise<"ok" | "missing" | "no_tools" | "unknown"> => {
+  try {
+    const models = await openrouterCatalog(baseURL.replace(/\/$/, ""), net);
+    if (!models) return "unknown";
+    const found = models.get(model);
+    if (!found) return "missing";
+    return found.supported_parameters && !found.supported_parameters.includes("tools") ? "no_tools" : "ok";
+  } catch {
+    return "unknown";
+  }
+};
+
 const auth = (provider: ByokProvider) => ({ headers: { Authorization: `Bearer ${provider.apiKey}` } });
 
 const refused = (status: number) => status === 401 || status === 403;
