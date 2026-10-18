@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.4.0
+
+For Allay 5.6; older plugins keep working.
+
+- 🏗️ **Drafts.** `show_draft` (plugin 5.6) draws any build up to 20×15×20 as ghosts the player builds into, layer by layer. The prompt writes it facing north, layers bottom up and rows far to near, spells out only the states that matter, and warns that a repeater's facing is where its signal comes from. Bigger builds go in parts instead of a refusal. For a redstone machine or an automatic farm the agent looks up a proven design first and traces the signal through its layers before drawing.
+- 🔌 **Redstone.** `inspect_redstone` (plugin 5.6) reads the machine under the crosshair and the faults the plugin found by the game's rules; the agent explains the fault and its fix first, then marks it in red with `show_marks`.
+
 ## 5.3.0
 
 For Allay 5.5; older plugins keep working.

@@ -142,6 +142,14 @@ const definitions = {
       slots: z.array(z.number().int().min(0).max(35)).max(8).optional().describe("Inventory slots (0–35, from get_inventory) to use; all fitting books and items when left out"),
     }),
   },
+  inspect_redstone: {
+    description:
+      "The redstone machine under the asking player's crosshair (or around them with around player), within radius: every part with its state (dust power and where it connects, repeater delay with input_from and outputs, comparator mode, torches lit, pistons extended and where they push, observers, levers, buttons, lamps, doors, hoppers, and what each mechanism receives), and issues the plugin found by the game's rules: a dot of dust, a burned-out torch, a jammed piston, a locked hopper or repeater, dust running past a mechanism. Only where the player may build. Use it for “why doesn't my machine work?” and to explain a machine.",
+    input: z.object({
+      radius: z.number().int().min(1).max(10).optional().describe("6 by default"),
+      around: z.enum(["look", "player"]).optional().describe("look (default): the block under the crosshair; player: where they stand"),
+    }),
+  },
   get_light_spawn_check: {
     description:
       "Spots around the asking player where hostile mobs can spawn (block light 0 on a solid top): the count and the nearest ten with x, y, z, distance, and direction. Tells where to place torches.",
@@ -207,6 +215,40 @@ const definitions = {
         .optional(),
       seconds: z.number().int().min(1).max(3600).optional().describe("How long they stay: the player's number, otherwise leave it out (the server picks about two minutes, caps at ten)"),
       clear: z.boolean().optional().describe("Remove the player's marks instead"),
+    }),
+  },
+  show_draft: {
+    description:
+      "Draws a build for the asking player as glowing ghosts only they see, one layer at a time from the bottom, and checks it against the world every half second: placed blocks go out, a wrong block gets a red box naming what belongs there, and the next layer lights up once one is done, with a boss bar counting. Up to 20 wide × 15 high × 20 deep; bigger builds come in parts with action add. Use it whenever the player asks how to build something: a house, a farm, a portal, a redstone machine. action show (title, palette, layers) starts a draft two blocks in front of the player, centered where they look; add puts more layers or a wing at offset; layer switches the shown layer (a number from 1, next, prev, or all for small drafts); move shifts it by offset; rotate turns it clockwise by turns quarters; check counts what's in place and lists wrong blocks; clear removes it. Only where the player may build.",
+    input: z.object({
+      action: z.enum(["show", "add", "layer", "move", "rotate", "check", "clear"]).optional(),
+      title: z.string().max(32).optional().describe("show: a short name in the player's language"),
+      palette: z
+        .array(
+          z.object({
+            char: z.string().length(1).describe("The character used in layers; not . or a space"),
+            block: z.string().max(96).describe("An id with the states that matter, like oak_planks or repeater[facing=south,delay=2]; air for a cell that must stay empty"),
+            label: z.string().max(32).optional().describe("A few words over it, in the player's language; shows for blocks used at most 6 times"),
+          }),
+        )
+        .max(40)
+        .optional()
+        .describe("show and add: one entry per character in layers; required with layers"),
+      layers: z
+        .array(z.array(z.string().max(20)).max(20))
+        .max(15)
+        .optional()
+        .describe("From the bottom up. Each layer is rows from the far one to the near one, like a map with forward at the top; each row runs left to right. . or a space leaves a cell as it is"),
+      offset: z
+        .object({ right: z.number().int().min(-40).max(40).optional(), up: z.number().int().min(-40).max(40).optional(), forward: z.number().int().min(-40).max(40).optional() })
+        .optional()
+        .describe("add: where the part starts inside the draft (not negative); move: how far to shift it"),
+      x: z.number().int().optional().describe("show: the near left bottom corner, instead of in front of the player"),
+      y: z.number().int().optional(),
+      z: z.number().int().optional(),
+      y_offset: z.number().int().min(-5).max(5).optional().describe("show: start this many blocks below (−) or above the player's feet, like −1 for a foundation"),
+      layer: z.union([z.number().int().min(1).max(15), z.enum(["next", "prev", "all"])]).optional(),
+      turns: z.number().int().min(1).max(3).optional(),
     }),
   },
   ping_me: {
@@ -388,7 +430,7 @@ const isOperatorTool = (name: string) => name in operatorDefinitions;
 
 /** Tools that do something for the player rather than read the game; askx only writes commands, so it gets none of them. */
 const ACTION_TOOLS: ReadonlySet<string> = new Set([
-  "point_to", "show_marks", "ping_me", "sort_inventory", "reminders", "goals", "add_note", "delete_note", "add_buttons", "write_book", "set_timezone",
+  "point_to", "show_marks", "show_draft", "ping_me", "sort_inventory", "reminders", "goals", "add_note", "delete_note", "add_buttons", "write_book", "set_timezone",
   "allay_settings",
 ]);
 

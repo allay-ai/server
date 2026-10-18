@@ -16,8 +16,8 @@ describe("offered game tools", () => {
   });
 
   test("askx gets only tools that read the game", () => {
-    const names = ["get_inventory", "look_at", "find_item", "point_to", "show_marks", "reminders", "goals", "add_buttons", "give_item"];
-    expect(offeredTools(names, true, "askx")).toEqual(["get_inventory", "look_at", "find_item"]);
+    const names = ["get_inventory", "look_at", "find_item", "inspect_redstone", "point_to", "show_marks", "show_draft", "reminders", "goals", "add_buttons", "give_item"];
+    expect(offeredTools(names, true, "askx")).toEqual(["get_inventory", "look_at", "find_item", "inspect_redstone"]);
   });
 
   test("player and operator tools don't overlap", () => {
@@ -51,7 +51,7 @@ describe("offered game tools", () => {
         "get_player_status", "get_inventory", "get_surroundings", "look_at", "get_world", "get_statistics", "get_advancements", "get_recipes",
         "locate_structure", "locate_biome", "get_server", "get_locations", "get_nearby_players", "get_death_info", "find_villagers", "scan_nearby_containers", "find_item",
         "inspect_item", "get_item_durability", "get_xp_info", "get_food_options", "get_anvil_plan", "get_light_spawn_check", "get_brewing_items", "get_brewing_recipe",
-        "scan_farm", "point_to", "show_marks", "ping_me", "sort_inventory", "reminders", "goals", "add_note", "find_notes", "delete_note", "add_buttons",
+        "scan_farm", "point_to", "show_marks", "show_draft", "inspect_redstone", "ping_me", "sort_inventory", "reminders", "goals", "add_note", "find_notes", "delete_note", "add_buttons",
         "write_book", "get_allay_guide", "allay_settings", "set_timezone",
       ].sort(),
     );
@@ -137,6 +137,25 @@ describe("mark arguments", () => {
     expect(valid({ clear: true })).toBe(true);
     expect(valid({ marks: [{ x: 1, z: 2 }] })).toBe(false);
     expect(valid({ marks: [{ x: 1, y: 64, z: 2, color: "pink" }] })).toBe(false);
+  });
+});
+
+describe("draft arguments", () => {
+  const tools = gameTools(["show_draft"], "run", {} as ToolBridge);
+  const valid = (input: unknown) => {
+    const result = tools.show_draft.inputSchema!["~standard"].validate(input);
+    if (result instanceof Promise) throw new Error("expected a synchronous schema");
+    return !result.issues;
+  };
+
+  test("a build as layers over a palette, within the size limit", () => {
+    const palette = [{ char: "p", block: "oak_planks" }, { char: "r", block: "repeater[facing=south,delay=2]", label: "2 тика" }, { char: "a", block: "air" }];
+    expect(valid({ title: "Дом", palette, layers: [["ppp", "p.p", "ppp"], ["rar"]] })).toBe(true);
+    expect(valid({ action: "layer", layer: "next" })).toBe(true);
+    expect(valid({ action: "move", offset: { right: -2 } })).toBe(true);
+    expect(valid({ title: "Дом", palette: [{ char: "pp", block: "oak_planks" }], layers: [["pp"]] })).toBe(false);
+    expect(valid({ title: "Башня", palette, layers: Array.from({ length: 16 }, () => ["p"]) })).toBe(false);
+    expect(valid({ title: "Стена", palette, layers: [["p".repeat(21)]] })).toBe(false);
   });
 });
 
