@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.11.2
+
+For Allay 5.13.1; older plugins work too.
+
+- 📦 **The chat knows chests go both ways.** After a cancelled or failed chests agent, the chat no longer says it can't move things into the inventory: it starts a new agent with what went wrong.
+- 🧪 **Potions by name.** The chests agent takes “my infestation potions” as `potion:infestation`, which plugin 5.13.1 matches in every form.
+
 ## 5.11.1
 
 For the same plugins as 5.11.0, with nothing new to configure.
