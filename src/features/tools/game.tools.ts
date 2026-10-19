@@ -118,14 +118,14 @@ const definitions = {
   scan_nearby_containers: {
     description:
       "Containers around the asking player with x, y, z, distance, direction, custom name, used slots, the top items, and what boxes and bundles inside hold: “what's in the chests around me?”. To look for one item, find_item.",
-    input: z.object({ radius: z.number().int().min(1).max(12).optional() }),
+    input: z.object({ radius: z.number().int().min(1).max(24).optional() }),
   },
   find_item: {
     description:
       "Where an item is and how many: the asking player's inventory, armor, offhand, ender chest, and the containers around, inside boxes and bundles too. Returns total and places (where, slot or x, y, z with distance and direction, count, the box). An exact id finds that item; a part finds every match (log finds all logs) and lists matched_ids. The containers found glow for the player with a label, and a way button goes under your answer when the nearest is far, so add neither yourself.",
     input: z.object({
       item: z.string().min(1).max(64).describe("Item id or a part of one, such as diamond or log"),
-      radius: z.number().int().min(1).max(12).optional().describe("How far to search containers; 8 by default"),
+      radius: z.number().int().min(1).max(24).optional().describe("How far to search containers; 16 by default, as far as automation agents reach"),
     }),
   },
   inspect_item: {

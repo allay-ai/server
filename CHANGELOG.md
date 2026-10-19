@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.12.1
+
+For Allay 5.14.1; older plugins clamp the new radius.
+
+- 🛡️ **“Craft me a shield” just works.** The chat starts a crafting agent at once with the item and the count, instead of searching 8 blocks itself and saying the iron isn't there, or writing the agent a recipe and a chest list. The crafting agent starts with a dry run, which takes from the inventory and the chests around and makes planks from logs and ingots from iron blocks on the way; it never sends a chests agent for ingredients, and a recipe that makes two blaze powders for one is fine.
+- 🔎 **find_item and scan_nearby_containers reach 16 blocks** by default, up to 24, as far as automation agents do.
+
 ## 5.12.0
 
 For Allay 5.14.0; older plugins work too.
