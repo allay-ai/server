@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.12.3
+
+For Allay 5.14.3; older plugins work too.
+
+- 🧪 **Brewing agents tell the player why a stand is skipped** (a reagent left in its top slot, finished potions to collect), say why water bottles are still missing in the plugin's own words, and know that stands of water bottles kept ready brew only what was asked.
+
 ## 5.12.2
 
 For Allay 5.14.2; older plugins clamp the new radius.
