@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.10.1
+
+For Allay 5.12.1, which wakes an agent when its sub-agent ends; older plugins send nothing new.
+
+- 🔗 **An agent hears its sub-agents.** A wake that starts with `[sub-agent] …` carries how a sub-agent ended, and the agent goes on with its next step or tells the player what failed. Task wakes take `tasks`, the agent's running sub-agents, and its prompt lists them, so it never says a helper works after it ended. A sub-agent's outcome in the chat says it's a sub-agent's, and the chat passes the player's words to the agent that started it instead of starting the step again.
+- 🔥 **Out of reach isn't busy.** When a scan finds no furnaces or stands near the player, the agent asks them to come closer to the nearest one instead of saying there are none free.
+
 ## 5.10.0
 
 For Allay 5.12.0, which tells a recovery link from a setup link; older plugins call it a setup link.

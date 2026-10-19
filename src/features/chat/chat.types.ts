@@ -28,7 +28,7 @@ export const chatRequestSchema = z.object({
   task: z
     .object({ id: taskId, name: z.string().min(1).max(40), depth: z.union([z.literal(1), z.literal(2)]), kind: z.enum(TASK_KINDS) })
     .optional(),
-  // Since 5.5, ask mode: the asker's running automations.
+  // Since 5.5, ask mode: the asker's running automations. Since 5.10.1, task mode: the waking agent's own sub-agents.
   tasks: z
     .array(z.object({ id: taskId, name: z.string().min(1).max(40), state: z.enum(TASK_STATES), question: text(200) }))
     .max(4)
@@ -74,7 +74,7 @@ export const parseChatRequest = (
       server: request.server,
       tools: [...new Set(request.tools)],
       ...(request.mode === "task" ? { task: request.task } : {}),
-      ...(request.mode === "ask" && request.tasks?.length ? { tasks: request.tasks } : {}),
+      ...(request.mode !== "askx" && request.tasks?.length ? { tasks: request.tasks } : {}),
     },
     provider: request.provider,
   };

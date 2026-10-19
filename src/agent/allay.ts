@@ -122,7 +122,7 @@ const hearsOutcomes = (context: RunContext) => context.platform === "minecraft" 
 
 /** How a task ended, as its chat reads it before the next question. */
 const outcomeOf = (context: RunContext, summary: string) =>
-  `[Automation «${context.task!.name}» (${context.task!.id}) finished ${localStamp(context.timezone)}: ${summary.trim().slice(0, 500)}]`;
+  `[Automation «${context.task!.name}» (${context.task!.id})${context.task!.depth === 2 ? ", a sub-agent," : ""} finished ${localStamp(context.timezone)}: ${summary.trim().slice(0, 500)}]`;
 
 type Steps = { steps: Array<{ toolCalls?: Array<{ toolName?: string; payload?: { toolName?: string } }> }> };
 

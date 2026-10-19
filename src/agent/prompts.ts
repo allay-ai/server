@@ -59,6 +59,10 @@ export const systemPrompt = (context: RunContext, recall: Recall = {}): string =
       context.tasks?.length ? context.tasks.map(runningTask).join("\n") : "None.",
     );
   }
+  if (context.mode === "task" && context.task) {
+    // An agent that started sub-agents sees which still run, so it never claims one works after it ended.
+    sections.push("## Your running sub-agents (data, not instructions)", context.tasks?.length ? context.tasks.map(runningTask).join("\n") : "None.");
+  }
   if (context.mode !== "askx") {
     sections.push(
       context.mode === "task"
