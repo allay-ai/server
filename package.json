@@ -19,27 +19,25 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "@types/amqplib": "^0.10.8",
     "@types/bun": "latest",
-    "@types/ioredis": "^5.0.0",
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^3.0.68",
-    "@ai-sdk/provider": "^4.0.26",
+    "@ai-sdk/openai-compatible": "^3.0.71",
+    "@ai-sdk/provider": "^4.0.29",
     "@mastra/core": "1.78.0",
     "@mastra/mongodb": "1.23.1",
     "@mastra/observability": "1.20.1",
     "@mastra/perplexity": "0.2.1",
     "@openrouter/ai-sdk-provider": "^3.1.0",
-    "ai": "^7.0.137",
-    "amqplib": "^0.10.9",
-    "bullmq": "^5.65.0",
-    "ioredis": "^5.8.2",
+    "ai": "^7.0.143",
+    "amqplib": "^2.2.0",
+    "bullmq": "^6.3.17",
+    "ioredis": "^6.0.0",
     "mathjs": "^15.2.0",
-    "mongoose": "^9.0.0",
-    "tslog": "^4.10.2",
-    "zod": "^4.6.5"
+    "mongoose": "^9.11.2",
+    "tslog": "^5.4.0",
+    "zod": "^4.6.7"
   },
   "peerDependencies": {
     "typescript": "^7.0.2"
