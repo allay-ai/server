@@ -1,7 +1,7 @@
 /**
  * Every setting the backend reads besides where MongoDB and Redis live. Each one keeps the name of the
  * environment variable it came from: a variable that is set wins and locks the field in the admin panel.
- * Descriptions are the README's “Environment” table; the panel shows them next to each field.
+ * Descriptions match the wiki's “Admin panel and settings” table; the panel shows them next to each field.
  */
 
 export type SettingGroup = "model" | "search" | "limits" | "sessions" | "tracing" | "billing" | "telegram" | "address";

@@ -1,11 +1,11 @@
 # Allay Server: notes for AI agents
 
-The backend of Allay, an AI helper for Minecraft players and a Telegram bot. A Mastra agent on Bun answers questions through OpenRouter, looks up the player's game state through tools the Minecraft plugin runs, searches the web when it needs fresh facts, computes exactly, and remembers each player. README.md explains it for humans, README.RU.md is its Russian copy; read README.md first.
+The backend of Allay, an AI helper for Minecraft players and a Telegram bot. A Mastra agent on Bun answers questions through OpenRouter, looks up the player's game state through tools the Minecraft plugin runs, searches the web when it needs fresh facts, computes exactly, and remembers each player. README.md is the shop window for humans, README.RU.md its Russian copy. The manual lives in the GitHub wiki (`https://github.com/allay-ai/server.wiki.git`): self-hosting, environment, settings, billing, memory, the HTTP API, architecture, building, and releasing.
 
 ## Talking to the owner
 
 - Reply in Russian, address the owner as «вы». Quotes «ёлочки», an em dash with spaces « — ».
-- Code, comments, commit messages, and docs/protocol-v2.md are in English. README.md is English; README.RU.md follows Russian typography. Change both together.
+- Code, comments, commit messages, and docs/protocol-v2.md are in English. README.md is English; README.RU.md follows Russian typography. Change both together. The wiki is English only; when a change alters what a wiki page says (a setting, a variable, an endpoint, a default), update that page in the same piece of work.
 
 ## How it fits together
 
@@ -51,7 +51,7 @@ The owner settled these on 2026-10-14; change them only when the owner asks.
 The owner settled these on 2026-10-18 (task file `~/c/personal/minecraft/AGENT_ALLAY_ADMIN_TASK.txt`, section 9); change them only when the owner asks.
 
 - **No texts, ever.** The panel never shows what players asked, what Allay answered, tool arguments or results, or memories' text, in any role. `runs` holds numbers only; `traces.ts` reads Mastra's spans through a field whitelist, so the rest never leaves MongoDB. Tests check both.
-- **Settings.** A new setting goes into `settings.definitions.ts` with the env name it would have had; read it with `settings.get(...)` where it's used, so a save applies to the next run. Only what the backend needs to start (MongoDB, Redis, `SELFHOSTED`, `PORT`, `SECRETS_KEY`, `ADMIN_*`, `APP_VERSION`) reads `process.env` directly. Something read once at start gets `restart: true`.
+- **Settings.** A new setting goes into `settings.definitions.ts` with the env name it would have had, and into the wiki's “Admin panel and settings” table; read it with `settings.get(...)` where it's used, so a save applies to the next run. Only what the backend needs to start (MongoDB, Redis, `SELFHOSTED`, `PORT`, `SECRETS_KEY`, `ADMIN_*`, `APP_VERSION`) reads `process.env` directly. Something read once at start gets `restart: true`.
 - **The first admin.** Self-hosted: `/allay init` → `POST /api/v2/admin/init`, a code for 30 minutes, never logged. Hosted: a code in the log at start, the one place a code is logged. `ADMIN_*` turns setup off. No “first visitor wins”.
 - **A forgotten password.** Self-hosted, once an account exists: `/allay init` hands out a recovery code instead (`mode: "recover"`), under the setup code's rules but kept apart from it (`AdminDeps.recovery`). `POST /api/admin/recover` sets a new password for an account in MongoDB, ends its sessions, audits `recover`, and signs in; never for the environment's admin, whose password lives in the environment. Hosted backends have no recovery from the game: an owner resets others on the Accounts page, and `ADMIN_*` is the last resort.
 - **Secrets** are sealed with AES-GCM (`SECRETS_KEY`, or `/data/secrets.key` on a volume); the API shows only the last four characters and the audit log masks them.
