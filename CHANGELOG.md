@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.11.1
+
+For the same plugins as 5.11.0, with nothing new to configure.
+
+- 💸 **Claude models cache their prompt.** With an Anthropic model in `OPENROUTER_API_MODEL` (like `anthropic/claude-haiku-5.5`), each request asks OpenRouter for Anthropic's automatic prompt caching, so the steps of a run read the system prompt, tools, and history from the cache. A furnace task measured $0.0021 without it and $0.00035 with it. OpenAI's and other models cache by themselves and send nothing new.
+
 ## 5.11.0
 
 For Allay 5.13.0; older plugins work too.

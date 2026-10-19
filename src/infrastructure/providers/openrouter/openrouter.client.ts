@@ -40,12 +40,19 @@ const headers = (platform: string) => {
   return { "HTTP-Referer": env.apiUrl, "X-Title": `${env.apiName}/${platform}` };
 };
 
+/**
+ * Anthropic's models cache a prompt only when asked; OpenAI's and most others do it by themselves. Each step of a run
+ * sends the same system prompt, tools, and history again, so without caching a Claude model costs several times more.
+ */
+export const cachingOf = (modelId: string): { cache_control?: { type: "ephemeral" } } =>
+  /(^|[~/])anthropic\//.test(modelId) ? { cache_control: { type: "ephemeral" } } : {};
+
 /** OpenRouter's own client for OpenRouter, a plain OpenAI-compatible one for any other API. */
 const byokModel = (provider: ByokProvider, platform: string, search: boolean): LanguageModelV4 => {
   const modelId = (search ? provider.searchModel : provider.model) || openrouterEnv().model;
   if (isOpenRouter(provider.baseURL)) {
     const client = createOpenRouter({ apiKey: provider.apiKey, baseURL: provider.baseURL, headers: headers(platform) });
-    return client.chat(modelId, { usage: { include: true } });
+    return client.chat(modelId, { usage: { include: true }, ...(search ? {} : cachingOf(modelId)) });
   }
   // Other APIs reject OpenRouter's extra fields, so they get the standard request only.
   return createOpenAICompatible({ name: "byok", baseURL: provider.baseURL, apiKey: provider.apiKey, includeUsage: true })(modelId);
@@ -65,6 +72,7 @@ export const openrouterModels: ModelFactory = ({ provider, platform, search, mod
   }
   return client.chat(model || env.model, {
     usage: { include: true },
+    ...cachingOf(model || env.model),
     ...(env.reasoningEffort ? { reasoning: { effort: env.reasoningEffort } } : {}),
   });
 };
