@@ -13,6 +13,7 @@ import { LoginPage } from "@/pages/login";
 import { PaymentsPage } from "@/pages/payments";
 import { PlayerPage, PlayersPage } from "@/pages/players";
 import { ProfilePage } from "@/pages/profile";
+import { RecoverPage } from "@/pages/recover";
 import { RevenuePage } from "@/pages/revenue";
 import { RunPage, RunsPage } from "@/pages/runs";
 import { ServersPage } from "@/pages/servers";
@@ -35,6 +36,20 @@ const setup = createRoute({
     if (!state.setup) throw redirect({ to: state.me ? "/" : "/login" });
   },
   component: SetupPage,
+});
+
+/** A forgotten password, with a code from /allay init; it opens even for someone signed in, who may be fixing another account. */
+const recover = createRoute({
+  getParentRoute: () => root,
+  path: "/recover",
+  validateSearch: z.object({ code: z.string().optional() }),
+  beforeLoad: async ({ context }) => {
+    const state = await context.queryClient.ensureQueryData(stateQuery);
+    if (state.setup) throw redirect({ to: "/setup" });
+    // Only /allay init on a self-hosted backend hands out recovery codes.
+    if (!state.selfhosted) throw redirect({ to: state.me ? "/" : "/login" });
+  },
+  component: RecoverPage,
 });
 
 const login = createRoute({
@@ -109,6 +124,7 @@ const profile = page("/profile", ProfilePage);
 
 const tree = root.addChildren([
   setup,
+  recover,
   login,
   app.addChildren([dashboard, players, player, runs, run, servers, traces, trace, revenue, licenses, license, payments, settings, accounts, audit, profile]),
 ]);

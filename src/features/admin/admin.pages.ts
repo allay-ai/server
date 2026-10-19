@@ -7,7 +7,7 @@ const pagesDir = () =>
   [join(import.meta.dir, "../admin"), join(import.meta.dir, "../../../admin/dist")].find((dir) => existsSync(join(dir, "index.html")));
 
 const HEADERS = {
-  // The setup link carries its code in the query; no page it links to may see it.
+  // The setup and recovery links carry their codes in the query; no page they link to may see them.
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",

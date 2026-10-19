@@ -19,6 +19,8 @@ export interface AdminDeps {
   audit: AuditStore;
   settings: Settings;
   setup: SetupCodes;
+  /** Recovery codes from /allay init once an account exists; kept apart from setup's. */
+  recovery: SetupCodes;
   envAdmin?: EnvAdmin;
   /** SELFHOSTED: setup takes a code from /allay init instead of the log's. */
   selfHosted: boolean;
@@ -76,8 +78,9 @@ export const needsSetup = async (deps: AdminDeps) => !deps.envAdmin && (await de
 const CODE_TTL = 30 * 60_000;
 
 /**
- * One-time codes that let someone create the first account. A self-hosted backend hands them out through
- * /allay init, one at a time for 30 minutes; a hosted one prints one to its log at start.
+ * One-time codes: one instance lets someone create the first account, another set a new password for an
+ * existing one. A self-hosted backend hands them out through /allay init, one at a time for 30 minutes; a
+ * hosted one prints a setup code to its log at start and has no recovery codes.
  */
 export class SetupCodes {
   private pending?: { hash: string; until: number };
@@ -98,7 +101,7 @@ export class SetupCodes {
     return timingSafeEqual(Buffer.from(sha256(code)), Buffer.from(this.pending.hash));
   }
 
-  /** Spends the pending code once it has made an account. */
+  /** Spends the pending code once it has done its job. */
   spend() {
     this.pending = undefined;
   }

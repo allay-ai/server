@@ -56,12 +56,38 @@
       "repeat": "The passwords don't match."
     }
   },
+  "recover": {
+    "title": "Set a new password",
+    "fromGame": "Open this page from the link <code>/allay init</code> gave you in the game. The new password signs you out everywhere else.",
+    "code": "Recovery code",
+    "codeHint": "From the link <code>/allay init</code> gave you. It works once, for 30 minutes.",
+    "username": "Your name",
+    "password": "New password",
+    "passwordHint": "At least 10 characters.",
+    "repeat": "New password again",
+    "submit": "Set and sign in",
+    "back": "Back to sign-in",
+    "errors": {
+      "code": "Enter the recovery code.",
+      "badCode": "The code is wrong or expired. Run /allay init again for a new one.",
+      "username": "Enter your name.",
+      "noAccount": "No account has that name.",
+      "envAdmin": "This account is defined by the backend's environment; change ADMIN_PASSWORD there.",
+      "password": "The password needs at least 10 characters.",
+      "repeat": "The passwords don't match.",
+      "limited": "Too many wrong codes. Wait a few minutes and try again."
+    }
+  },
   "login": {
     "title": "Sign in",
     "description": "Sign in to manage this Allay backend.",
     "username": "Name",
     "password": "Password",
     "submit": "Sign in",
+    "forgot": "Forgot your password?",
+    "forgotGame": "Run <code>/allay init</code> in the game as an operator: it gives you a link that sets a new password, good for 30 minutes. Or ask another owner to set one on the Accounts page.",
+    "forgotHosted": "Ask another owner to set a new one on the Accounts page. The admin from the backend's environment changes ADMIN_PASSWORD there.",
+    "haveCode": "I have a recovery code",
     "errors": {
       "username": "Enter your name.",
       "password": "Enter your password.",
@@ -401,6 +427,7 @@
     "none": "Nothing logged yet.",
     "actions": {
       "setup": "created the first account",
+      "recover": "set a new password through /allay init",
       "sign_in": "signed in",
       "password": "changed their password",
       "account.create": "added the account",

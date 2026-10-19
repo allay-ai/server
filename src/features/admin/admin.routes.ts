@@ -47,6 +47,7 @@ const otherOwners = async (admin: AdminDeps, username: string) =>
 
 const setupSchema = z.object({ code: z.string().min(1).max(100), username, password });
 const loginSchema = z.object({ username: z.string().trim().toLowerCase().min(1).max(64), password: z.string().min(1).max(MAX_PASSWORD) });
+const recoverSchema = z.object({ code: z.string().min(1).max(100), username: z.string().trim().toLowerCase().min(1).max(64), password });
 
 export const accessRoutes: Route[] = [
   {
@@ -95,6 +96,34 @@ export const accessRoutes: Route[] = [
       logger.info(`Admin ${input.data.username} created through setup`);
       await record(admin, { actor: input.data.username, action: "setup", target: input.data.username, ip: ctx.ip });
       return signIn(ctx, input.data.username, 201);
+    },
+  },
+  {
+    method: "POST",
+    path: "/recover",
+    access: "public",
+    async handle(ctx) {
+      const { admin } = ctx;
+      if (!admin.selfHosted) return error(404, "NOT_SELFHOSTED", "This backend has no recovery from the game; ask another owner to reset your password");
+      const wait = admin.limiter.blocked(ctx.ip, "(recover)");
+      if (wait) return error(429, "RATE_LIMITED", "Too many tries; wait a little", { retry_after: wait });
+      const input = await parse(ctx, recoverSchema);
+      if (!input.ok) return input.response;
+      if (!admin.recovery.check(input.data.code)) {
+        admin.limiter.fail(ctx.ip, "(recover)");
+        return error(400, "BAD_CODE", "The code is wrong or expired; run /allay init again");
+      }
+      const name = input.data.username;
+      // The code stays alive for these two, so whoever holds it can fix the name and try again.
+      if (admin.envAdmin?.username === name) return error(409, "ENV_ADMIN", "This account is defined by the environment; change ADMIN_PASSWORD or ADMIN_PASSWORD_HASH there");
+      if (!(await admin.accounts.get(name))) return error(404, "NO_ACCOUNT", "No account has that name");
+      await admin.accounts.update(name, { password_hash: await hashPassword(input.data.password), last_login_at: admin.now() });
+      admin.recovery.spend();
+      await admin.sessions.removeAll(name);
+      admin.limiter.succeed(name);
+      logger.info(`Admin ${name} set a new password through recovery`);
+      await record(admin, { actor: name, action: "recover", target: name, ip: ctx.ip });
+      return signIn(ctx, name);
     },
   },
   {

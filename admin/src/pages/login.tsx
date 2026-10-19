@@ -1,8 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { z } from "zod";
 import { AuthFrame } from "@/components/auth-frame";
 import { FormField } from "@/components/form-field";
@@ -10,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError, ROUTER_BASE, post } from "@/lib/api";
 import { showErrors } from "@/lib/forms";
-import { resetSession } from "@/lib/session";
+import { resetSession, useAppState } from "@/lib/session";
 
 const schema = z.object({ username: z.string().trim().min(1, "login.errors.username"), password: z.string().min(1, "login.errors.password") });
 type Values = z.infer<typeof schema>;
@@ -20,6 +21,8 @@ export const LoginPage = () => {
   const { next } = useSearch({ from: "/login" });
   const navigate = useNavigate();
   const client = useQueryClient();
+  const state = useAppState();
+  const [forgot, setForgot] = useState(false);
   const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { username: "", password: "" } });
   const { errors, isSubmitting } = form.formState;
   const submit = form.handleSubmit(async (values) => {
@@ -47,6 +50,20 @@ export const LoginPage = () => {
         <Button type="submit" disabled={isSubmitting}>
           {t("login.submit")}
         </Button>
+        {forgot ? (
+          <div className="flex flex-col gap-2 text-sm text-muted-foreground" role="status">
+            <p>{state?.selfhosted ? <Trans i18nKey="login.forgotGame" components={{ code: <code className="font-mono text-foreground" /> }} /> : t("login.forgotHosted")}</p>
+            {state?.selfhosted && (
+              <Link to="/recover" className="text-foreground underline underline-offset-4">
+                {t("login.haveCode")}
+              </Link>
+            )}
+          </div>
+        ) : (
+          <Button type="button" variant="link" className="self-center" onClick={() => setForgot(true)}>
+            {t("login.forgot")}
+          </Button>
+        )}
       </form>
     </AuthFrame>
   );

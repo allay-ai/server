@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.10.0
+
+For Allay 5.12.0, which tells a recovery link from a setup link; older plugins call it a setup link.
+
+- 🔑 **A way back after a forgotten password.** Once the panel has an account, `/allay init` on a self-hosted backend hands out a recovery link instead of “the panel has an admin already”. It works once, for 30 minutes, and opens a page where you enter your name and a new password; the account's other sessions end, and the audit log notes it. The sign-in page has a “Forgot your password?” link that explains both ways back: `/allay init`, or another owner. The environment's admin keeps its password in the environment.
+
 ## 5.9.2
 
 For the same plugins as 5.9.1, with nothing new to configure.

@@ -109,6 +109,8 @@ The backend serves a web admin panel at `/admin`. There you change every setting
 
 **The first account.** On a self-hosted backend (`SELFHOSTED=1`), an operator types `/allay init` in the game. The plugin shows a link that works once, for 30 minutes; it opens the panel's setup page, where the operator becomes its owner. A backend with billing on prints a setup code to its log at start instead. With `ADMIN_USERNAME` and `ADMIN_PASSWORD` (or `ADMIN_PASSWORD_HASH`, an argon2id hash from `Bun.password`) in the environment, that account is the owner, setup is off, and the panel goes straight to sign-in.
 
+**A forgotten password.** Once the panel has an account, `/allay init` on a self-hosted backend gives a recovery link instead, with the same rules: once, for 30 minutes. It opens a page where you enter your name and a new password; every other session of that account ends, and the audit log notes it. An owner can also set a new password for anyone on the Accounts page. On a backend with billing on, that's the only way back, and the environment's admin is the last resort: its password lives in `ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH`, never in the panel.
+
 **Roles.** Owners do everything, other accounts included. Admins change settings, players' memories and sessions, and billing. Viewers only read. Every change lands in the audit log with its old and new value, secrets masked.
 
 **Sessions** last 7 days from the last use, in an HttpOnly, SameSite=Strict cookie. Sign-in locks for 15 minutes after 5 wrong passwords for one name or 10 from one address.

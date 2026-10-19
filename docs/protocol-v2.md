@@ -311,11 +311,14 @@ Since server 5.7 and plugin 5.9. The backend has a web admin panel at `<PUBLIC_U
 
 | Request | Answer |
 |---|---|
-| `POST /api/v2/admin/init`, no body | `200 { "url": "<PUBLIC_URL>/admin/setup?code=<code>", "expires_at" }` while the panel has no admin. The code works once and for 30 minutes; a new call replaces a pending one |
-| the same once an admin exists (made through setup or defined in the environment) | `409 { "error": { "code": "ADMIN_EXISTS", … }, "url": "<PUBLIC_URL>/admin" }` |
+| `POST /api/v2/admin/init`, no body | `200 { "url": "<PUBLIC_URL>/admin/setup?code=<code>", "expires_at", "mode": "setup" }` while the panel has no admin. The code works once and for 30 minutes; a new call replaces a pending one |
+| the same once an account exists (since server 5.10) | `200 { "url": "<PUBLIC_URL>/admin/recover?code=<code>", "expires_at", "mode": "recover" }`: a recovery link that sets a new password for any account the panel keeps. Same rules: once, 30 minutes, a new call replaces a pending one. Setup and recovery codes never stand in for each other |
+| the same when the only admin is defined in the environment, or on servers before 5.10 once an admin exists | `409 { "error": { "code": "ADMIN_EXISTS", … }, "url": "<PUBLIC_URL>/admin" }` |
 | the same on a backend with billing on | `404 { "error": { "code": "NOT_SELFHOSTED", … } }`: its first admin comes from a code in its own log |
 
-The plugin shows the link only to whoever ran the command, as a clickable chat line, and never logs it; from the console it prints it to the console. Older backends answer `404` without that code: the plugin then says the backend has no panel.
+The plugin shows the link only to whoever ran the command, as a clickable chat line, and never logs it; from the console it prints it to the console. It reads `mode` to say which link it is; an answer without `mode` is a setup link. Older backends answer `404` without that code: the plugin then says the backend has no panel.
+
+The recovery page posts `{ code, username, password }` to the panel's `POST /api/admin/recover`. It sets the new password, ends every session of that account, writes `recover` to the audit log, and signs in. A wrong or spent code answers `400 BAD_CODE`, and five of them from one address lock recovery for 15 minutes. The environment's admin (`ENV_ADMIN`) and an unknown name (`NO_ACCOUNT`) keep the code alive.
 
 ## Compatibility
 

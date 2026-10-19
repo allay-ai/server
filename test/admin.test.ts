@@ -42,7 +42,7 @@ const start = (options: Parameters<typeof testAdmin>[0] & { billing?: boolean } 
   };
   const init = () => fetch(`${base}/api/v2/admin/init`, { method: "POST" }).then(async (r) => ({ status: r.status, body: (await r.json()) as any }));
   const codeOf = (url: string) => new URL(url).searchParams.get("code")!;
-  return { admin, audit, advance, call, init, codeOf, signOut: () => (cookie = ""), deps };
+  return { admin, audit, advance, call, init, codeOf, signOut: () => (cookie = ""), session: () => cookie, deps };
 };
 
 describe("setup", () => {
@@ -62,9 +62,10 @@ describe("setup", () => {
     expect(made.headers.get("Set-Cookie")).toContain("SameSite=Strict");
     expect((await call("GET", "/api/admin/me")).body.me.username).toBe("mairwunnx");
 
-    // The code is spent, and the backend now only points to the panel.
+    // The code is spent, and /allay init now hands out recovery links instead.
     expect((await call("POST", "/api/admin/setup", { code, username: "other", password: PASSWORD })).status).toBe(409);
-    expect(await init()).toEqual({ status: 409, body: { error: { code: "ADMIN_EXISTS", message: expect.any(String) }, url: "https://mc.example/allay/admin" } });
+    expect(link.body.mode).toBe("setup");
+    expect(await init()).toMatchObject({ status: 200, body: { url: expect.stringMatching(/^https:\/\/mc\.example\/allay\/admin\/recover\?code=/), mode: "recover" } });
     expect(audit.entries.map((e) => e.action)).toContain("setup");
     expect(JSON.stringify(audit.entries)).not.toContain(code);
   });
@@ -117,6 +118,103 @@ const withOwner = async (options: Parameters<typeof start>[0] = {}) => {
   await ctx.call("POST", "/api/admin/setup", { code, username: "owner", password: PASSWORD });
   return ctx;
 };
+
+describe("recovery", () => {
+  const NEW = "a brand new password";
+
+  test("/allay init gives a single-use link that sets a new password and signs in", async () => {
+    const { call, init, codeOf, audit, signOut, admin } = await withOwner({ env: { PUBLIC_URL: "https://mc.example/allay" } });
+    const link = await init();
+    expect(link).toMatchObject({ status: 200, body: { mode: "recover", expires_at: "2026-10-18T12:30:00.000Z" } });
+    expect(link.body.url).toStartWith("https://mc.example/allay/admin/recover?code=");
+    const code = codeOf(link.body.url);
+    // Recovery and setup codes are apart: this one makes no account.
+    expect((await call("POST", "/api/admin/setup", { code, username: "intruder", password: NEW })).status).toBe(409);
+
+    signOut();
+    const done = await call("POST", "/api/admin/recover", { code, username: "Owner", password: NEW });
+    expect(done.status).toBe(200);
+    expect(done.body.me).toEqual({ username: "owner", role: "owner", env: false });
+    expect(done.headers.get("Set-Cookie")).toContain("HttpOnly");
+    expect((await call("GET", "/api/admin/me")).body.me.username).toBe("owner");
+
+    signOut();
+    expect((await call("POST", "/api/admin/login", { username: "owner", password: PASSWORD })).status).toBe(401);
+    expect((await call("POST", "/api/admin/login", { username: "owner", password: NEW })).status).toBe(200);
+
+    // Spent: the same code doesn't work twice.
+    expect((await call("POST", "/api/admin/recover", { code, username: "owner", password: PASSWORD })).body.error.code).toBe("BAD_CODE");
+    expect(audit.entries.find((e) => e.action === "recover")).toMatchObject({ actor: "owner", target: "owner" });
+    expect(JSON.stringify(audit.entries)).not.toContain(code);
+    expect(admin.setup.check(code)).toBe(false);
+  });
+
+  test("a new password ends every session of the account", async () => {
+    const { call, init, codeOf, signOut, session } = await withOwner();
+    const old = session();
+    expect((await call("GET", "/api/admin/me")).status).toBe(200);
+    const code = codeOf((await init()).body.url);
+    // Recover from another browser, then come back with the first one's cookie.
+    signOut();
+    expect((await call("POST", "/api/admin/recover", { code, username: "owner", password: NEW })).status).toBe(200);
+    const fresh = session();
+    signOut();
+    expect((await call("GET", "/api/admin/me", undefined, { Cookie: old })).status).toBe(401);
+    expect((await call("GET", "/api/admin/me", undefined, { Cookie: fresh })).status).toBe(200);
+  });
+
+  test("a wrong code is refused, and five lock recovery for a while", async () => {
+    const { call, init, codeOf, advance } = await withOwner();
+    const code = codeOf((await init()).body.url);
+    for (let i = 0; i < 5; i++) {
+      const wrong = await call("POST", "/api/admin/recover", { code: `x${i}`, username: "owner", password: NEW });
+      expect(wrong).toMatchObject({ status: 400, body: { error: { code: "BAD_CODE" } } });
+    }
+    // Locked now, even with the right code.
+    const locked = await call("POST", "/api/admin/recover", { code, username: "owner", password: NEW });
+    expect(locked.status).toBe(429);
+    expect(locked.body.retry_after).toBeGreaterThan(0);
+    advance(16 * 60_000);
+    const fresh = codeOf((await init()).body.url);
+    expect((await call("POST", "/api/admin/recover", { code: fresh, username: "owner", password: NEW })).status).toBe(200);
+  });
+
+  test("a code dies after 30 minutes, and a new one replaces the old", async () => {
+    const { call, init, codeOf, advance } = await withOwner();
+    const first = codeOf((await init()).body.url);
+    const second = codeOf((await init()).body.url);
+    expect((await call("POST", "/api/admin/recover", { code: first, username: "owner", password: NEW })).body.error.code).toBe("BAD_CODE");
+    advance(31 * 60_000);
+    expect((await call("POST", "/api/admin/recover", { code: second, username: "owner", password: NEW })).body.error.code).toBe("BAD_CODE");
+  });
+
+  test("an unknown name keeps the code alive", async () => {
+    const { call, init, codeOf } = await withOwner();
+    const code = codeOf((await init()).body.url);
+    expect((await call("POST", "/api/admin/recover", { code, username: "nobody", password: NEW })).body.error.code).toBe("NO_ACCOUNT");
+    expect((await call("POST", "/api/admin/recover", { code, username: "owner", password: NEW })).status).toBe(200);
+  });
+
+  test("the environment's admin isn't recovered here, and a weak password is refused", async () => {
+    const envAdmin = envAdminOf({ ADMIN_USERNAME: "root", ADMIN_PASSWORD: PASSWORD });
+    const { call, init, codeOf } = start({ envAdmin });
+    // Only the environment's admin: nothing to recover from the game.
+    expect(await init()).toMatchObject({ status: 409, body: { error: { code: "ADMIN_EXISTS" } } });
+    await call("POST", "/api/admin/login", { username: "root", password: PASSWORD });
+    await call("POST", "/api/admin/accounts", { username: "helper", password: PASSWORD, role: "admin" });
+    const code = codeOf((await init()).body.url);
+    expect((await call("POST", "/api/admin/recover", { code, username: "root", password: NEW })).body.error.code).toBe("ENV_ADMIN");
+    expect((await call("POST", "/api/admin/recover", { code, username: "helper", password: "short" })).body.fields.password).toBeDefined();
+    expect((await call("POST", "/api/admin/login", { username: "root", password: PASSWORD })).status).toBe(200);
+  });
+
+  test("a hosted backend has no recovery from the game", async () => {
+    const { call, init, admin } = await withOwner({ selfHosted: false, billing: true });
+    expect(await init()).toMatchObject({ status: 404, body: { error: { code: "NOT_SELFHOSTED" } } });
+    const { code } = admin.recovery.issue();
+    expect((await call("POST", "/api/admin/recover", { code, username: "owner", password: NEW })).body.error.code).toBe("NOT_SELFHOSTED");
+  });
+});
 
 describe("sign-in", () => {
   test("wrong passwords lock the name for a while", async () => {

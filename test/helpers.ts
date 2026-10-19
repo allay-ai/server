@@ -171,6 +171,7 @@ export const testAdmin = (options: { selfHosted?: boolean; envAdmin?: EnvAdmin; 
     audit,
     settings: new Settings(memorySettings(), testVault(), options.env ?? {}),
     setup: new SetupCodes(clock),
+    recovery: new SetupCodes(clock),
     envAdmin: options.envAdmin,
     selfHosted: options.selfHosted ?? true,
     limiter: new LoginLimiter(clock),

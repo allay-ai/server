@@ -60,6 +60,7 @@ export const productionDeps = (): AllayDeps => {
       audit: mongoAudit,
       settings,
       setup: new SetupCodes(),
+      recovery: new SetupCodes(),
       envAdmin: envAdminOf(),
       selfHosted: selfHosted(),
       limiter: new LoginLimiter(),
