@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.9.2
+
+For the same plugins as 5.9.1, with nothing new to configure.
+
+- 📦 **Fresh dependencies.** TypeScript 7.0.2, tslog 5.4.0, the AI SDK 7.0.143, Mongoose 9.11.2, zod 4.6.7, and Recharts 3.10.1 in the admin panel. The compose files run MongoDB 8.0.34 and Redis 8.10.
+
 ## 5.9.1
 
 For Allay 5.11.1.
