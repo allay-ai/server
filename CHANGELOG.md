@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.12.2
+
+For Allay 5.14.2; older plugins clamp the new radius.
+
+- 🔎 **find_item and scan_nearby_containers reach 32 blocks** by default, up to 52, as far as automation agents now do.
+- 🏷️ **Names forgive.** find_item says plurals work and that a name nothing matches comes back with close ids; smelt takes what a furnace makes (iron_ingot, glass) for everything that cooks into it.
+
 ## 5.12.1
 
 For Allay 5.14.1; older plugins clamp the new radius.

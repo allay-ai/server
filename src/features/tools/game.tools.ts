@@ -118,14 +118,14 @@ const definitions = {
   scan_nearby_containers: {
     description:
       "Containers around the asking player with x, y, z, distance, direction, custom name, used slots, the top items, and what boxes and bundles inside hold: “what's in the chests around me?”. To look for one item, find_item.",
-    input: z.object({ radius: z.number().int().min(1).max(24).optional() }),
+    input: z.object({ radius: z.number().int().min(1).max(52).optional().describe("32 by default") }),
   },
   find_item: {
     description:
       "Where an item is and how many: the asking player's inventory, armor, offhand, ender chest, and the containers around, inside boxes and bundles too. Returns total and places (where, slot or x, y, z with distance and direction, count, the box). An exact id finds that item; a part finds every match (log finds all logs) and lists matched_ids. The containers found glow for the player with a label, and a way button goes under your answer when the nearest is far, so add neither yourself.",
     input: z.object({
-      item: z.string().min(1).max(64).describe("Item id or a part of one, such as diamond or log"),
-      radius: z.number().int().min(1).max(24).optional().describe("How far to search containers; 16 by default, as far as automation agents reach"),
+      item: z.string().min(1).max(64).describe("Item id or a part of one, such as diamond or log; plurals work. A name nothing matches returns an error with close ids"),
+      radius: z.number().int().min(1).max(52).optional().describe("How far to search containers; 32 by default, as far as automation agents reach"),
     }),
   },
   inspect_item: {
@@ -589,7 +589,7 @@ const automationDefinitions = {
       "Smelting in furnaces, blast furnaces, and smokers near the player, each by what it can cook. action scan: the free and busy ones around, what the player has to smelt (to_smelt_at_hand) and to burn; no need to search the inventory yourself. start: smelts count of item, or several items at once with items (“the iron and the gold”: one call, never one after the other), over furnaces (or the free ones around); each furnace takes one item, and the split weighs speed (a blast furnace cooks ores twice as fast) so all finish about together. Items the player has none of are skipped and listed in not_at_hand. Exactly the fuel it needs; coal blocks are split into coal, and leftovers go back where they came from. fuel: only puts fuel into the fuel slots, nothing to cook (“put the coal in the furnaces”); how much with exactly one of count (in all, spread evenly), each (added to every furnace), up_to (the level every fuel slot should reach, 64 is full), or need (just what each furnace needs for what it's cooking now); into furnaces, or every usable one around of types; the fuel asked, else what the furnaces already burn, else the cheapest at hand; coal blocks split into coal when coal runs short. status: how far it is. collect: takes the output to to. With to on start (plugin 5.11+), full furnaces empty themselves there and everything goes there at the end, so no collect is needed; collect and the end pay the player the furnace's experience, as taking the output does. add: more of an item the running job cooks («докинь ещё 20 руды»), spread over its furnaces with the fuel it needs; another item needs a new task. Fuel besides coal: planks, sticks, and bamboo at hand when nothing better is there, logs or a bucket of lava (one to a furnace, cooks 100, the empty bucket comes back) when asked; nether wood doesn't burn. Furnaces burning another fuel are left out and listed in skipped. A furnace with output waiting takes only what makes the same. You wake when the smelting ends.",
     input: z.object({
       action: z.enum(["scan", "start", "add", "fuel", "status", "collect"]),
-      item: itemId.optional().describe("start and add: what to smelt, like raw_gold"),
+      item: itemId.optional().describe("start and add: what to smelt, like raw_gold; what a furnace makes, like iron_ingot or glass, means everything that cooks into it (plugin 5.14.2+)"),
       count: z.number().int().min(1).max(4096).optional().describe("start: how many to smelt, left out for all the player has; fuel: how much fuel in all, spread evenly"),
       items: z
         .array(z.object({ item: itemId, count: z.number().int().min(1).max(4096).optional().describe("Leave it out for all the player has") }))
