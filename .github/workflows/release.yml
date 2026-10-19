@@ -10,6 +10,10 @@ on:
       changelog:
         description: "Changelog in Markdown; leave empty to take the version's section from CHANGELOG.md"
         required: false
+      moonlands:
+        description: "Ship the release to Moonlands (needs the FAMILY_ACTIONS_TOKEN secret)"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -76,3 +80,15 @@ jobs:
         run: gh release create "v$VERSION" --target "$GITHUB_SHA" --title "Allay Server $VERSION" --notes-file "$NOTES"
         env:
           GH_TOKEN: ${{ github.token }}
+
+  deploy:
+    needs: release
+    if: inputs.moonlands
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ship to Moonlands
+        # Moonlands' “Ship a release” workflow builds the new backend on the server.
+        run: gh workflow run ship-plugin.yml -R MairwunNx/minecraft -f repo="$GITHUB_REPOSITORY" -f version="$VERSION"
+        env:
+          GH_TOKEN: ${{ secrets.FAMILY_ACTIONS_TOKEN }}
+          VERSION: ${{ inputs.version }}

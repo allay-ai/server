@@ -62,7 +62,7 @@ The owner settled these on 2026-10-18 (task file `~/c/personal/minecraft/AGENT_A
 
 - Every push to `master` that touches the server tests it and builds `ghcr.io/allay-ai/server:sha-<commit>`. There is no `latest`, and nothing deploys by itself: servers pin a released version, as Moonlands does.
 - After a change that reaches what the project ships, add it to CHANGELOG.md in the same push: under the topmost “## X.Y.Z” section while that version isn't released (`gh release view vX.Y.Z` fails), or under a new section with the next version: patch for fixes, minor for features, major for breaking changes. A release then needs only the workflow, and the workflow runs only when the owner asks.
-- Releases are made by hand, only when the owner asks. Add a “## X.Y.Z” section to CHANGELOG.md, push, then run `gh workflow run release.yml -R allay-ai/server -f version=X.Y.Z` (its `changelog` field overrides the section; one of the two must be there). It tests, pushes `ghcr.io/allay-ai/server:X.Y.Z`, tags `vX.Y.Z`, and creates the GitHub release. Nothing in the repo holds the version: the image gets it as the `APP_VERSION` build argument, which `/api/health` reports (`dev` when nobody passed one). Never delete or re-tag a published release.
+- Releases are made by hand when the owner asks, or by the autopilot (below). Add a “## X.Y.Z” section to CHANGELOG.md, push, then run `gh workflow run release.yml -R allay-ai/server -f version=X.Y.Z` (its `changelog` field overrides the section; one of the two must be there). It tests, pushes `ghcr.io/allay-ai/server:X.Y.Z`, tags `vX.Y.Z`, and creates the GitHub release. Nothing in the repo holds the version: the image gets it as the `APP_VERSION` build argument, which `/api/health` reports (`dev` when nobody passed one). Never delete or re-tag a published release.
 - Production needs a tool-capable model in `OPENROUTER_API_MODEL` (not `perplexity/sonar*`; that one is `SEARCH_MODEL`).
 
 ## Moonlands
@@ -80,6 +80,10 @@ The owner's server, Moonlands, runs its own instance of this backend, built from
 1. `bun test` and `bun run typecheck`.
 2. `docker build -t allay-server:check .`, since the image is what ships. Start it with Redis and MongoDB from `docker-compose.dev.yaml` and `GET /api/health`: it answers with the version.
 3. A change to the agent or its tools: one real question through the plugin's protocol, with `OPENROUTER_API_KEY` from `~/.secrets/cloud.env`. After a release reaches Moonlands, the owner asks `/ask` once.
+
+## Autopilot
+
+`.github/workflows/autopilot.yml` runs Claude every Monday at 03:00 UTC: `/update-deps`, then `/update-minecraft`, a fix for whatever they break, a push to `master`, and the “Release” workflow when what the project ships changed. The release's `deploy` job then starts Moonlands' `ship-plugin.yml` with the `FAMILY_ACTIONS_TOKEN` secret, and Claude puts the new version on the server there. The run itself needs the `CLAUDE_CODE_OAUTH_TOKEN` secret. “Autopilot” in `~/c/personal/minecraft/CLAUDE.md` explains the family's runs.
 
 ## Versions
 
