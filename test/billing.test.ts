@@ -21,7 +21,7 @@ import { fakeNet, finish, readSse, scripted, testBilling, testDeps, text, toolCa
 const handlers = {
   handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram,
 };
-let server: Server | undefined;
+let server: Server<undefined> | undefined;
 
 /** Response bodies as the tests read them. */
 const body = async (response: Response | Promise<Response>): Promise<any> => (await response).json();

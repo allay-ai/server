@@ -17,7 +17,7 @@ const handlers = {
   handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram,
   handleAdminInit, handleAdmin,
 };
-let server: Server | undefined;
+let server: Server<undefined> | undefined;
 
 afterEach(() => server?.stop(true));
 

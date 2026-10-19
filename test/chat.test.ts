@@ -13,7 +13,7 @@ import { MAX_MEMORIES } from "../src/infrastructure/memory/memory";
 import { type HistoryMessage, MAX_EXCHANGES, maxTokens } from "../src/infrastructure/history/history";
 
 const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram };
-let server: Server | undefined;
+let server: Server<undefined> | undefined;
 
 afterEach(() => server?.stop(true));
 

@@ -12,7 +12,7 @@ export const prefixOf = (req: Request) => {
 };
 
 /** The browser's address: behind a proxy on a private address, the one it forwards; otherwise the peer's. */
-export const clientAddress = (req: Request, server?: Server) => {
+export const clientAddress = (req: Request, server?: Server<undefined>) => {
   const peer = server?.requestIP(req)?.address ?? "unknown";
   if (peer !== "unknown" && !isPrivateAddress(peer)) return peer;
   const forwarded = req.headers.get("X-Real-IP") ?? req.headers.get("X-Forwarded-For")?.split(",")[0];
@@ -101,7 +101,7 @@ export const body = async (req: Request): Promise<unknown> => req.json().catch((
 export const adminRouter = (routes: Route[]) => {
   const table = routes.map(compile);
   return (deps: AllayDeps) =>
-    async (req: Request, server?: Server): Promise<Response> => {
+    async (req: Request, server?: Server<undefined>): Promise<Response> => {
       const admin = deps.admin;
       if (!admin) return notFound();
       const url = new URL(req.url);

@@ -17,7 +17,7 @@ import { taskTtl, threadOf, ttlOf } from "../src/infrastructure/history/history"
 import { finish, readSse, scripted, testDeps, text, toolCall } from "./helpers";
 
 const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram };
-let server: Server | undefined;
+let server: Server<undefined> | undefined;
 
 afterEach(() => server?.stop(true));
 

@@ -18,7 +18,7 @@ const error = (e: ApiError): Response => {
 };
 
 /** POST /api/askx, v1: commands for older plugins. Same agent, no game tools. */
-export const handleAskX = (deps: AllayDeps) => async (req: Request, server?: Server): Promise<Response> => {
+export const handleAskX = (deps: AllayDeps) => async (req: Request, server?: Server<undefined>): Promise<Response> => {
   if (req.method !== "POST") return error(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
   const json = await readJson(req);
   if (!json.ok) return error(json.error);

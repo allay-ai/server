@@ -1,3 +1,4 @@
+import type { Server } from "bun";
 import type { AllayDeps } from "../agent/allay";
 import type { handleAdmin } from "../features/admin/admin.controller";
 import type { handleAdminInit } from "../features/admin/init.controller";
@@ -26,8 +27,10 @@ interface Handlers {
   adminPages?: (req: Request) => Promise<Response>;
 }
 
+type Route = (req: Request, server: Server<undefined>) => Promise<Response>;
+
 /** The HTTP routes, built from injected services so tests can serve them with fakes. */
-export const routes = (deps: AllayDeps, h: Handlers) => ({
+export const routes = (deps: AllayDeps, h: Handlers): Record<string, Route> => ({
   "/api/health": h.handleHealth(deps),
   "/api/ask": h.handleAsk(deps),
   "/api/askx": h.handleAskX(deps),

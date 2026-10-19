@@ -9,7 +9,7 @@ import { parseChatRequest, toolAnswerSchema } from "./chat.types";
 import { sseResponse } from "./chat.sse";
 
 /** POST /api/v2/chat: one question, streamed back as events while the agent works. */
-export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Server): Promise<Response> => {
+export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Server<undefined>): Promise<Response> => {
   if (req.method !== "POST") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
   const json = await readJson(req);
   if (!json.ok) return jsonError(json.error);

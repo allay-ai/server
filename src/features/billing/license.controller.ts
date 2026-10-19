@@ -14,7 +14,7 @@ const nameOf = (name?: string) => name?.replace(/§./g, "").replace(/\s+/g, " ")
  * POST /api/v2/license makes a license, or a fresh claim code for the one in `Authorization`;
  * GET answers its status. With billing off both say so, and the plugin needs neither.
  */
-export const handleLicense = (deps: AllayDeps) => async (req: Request, server?: Server): Promise<Response> => {
+export const handleLicense = (deps: AllayDeps) => async (req: Request, server?: Server<undefined>): Promise<Response> => {
   const { billing } = deps;
   if (req.method !== "GET" && req.method !== "POST") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
   if (!billing.enabled) return Response.json({ billing: false });
