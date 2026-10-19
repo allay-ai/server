@@ -37,7 +37,8 @@ export const chatRequestSchema = z.object({
 
 export const toolAnswerSchema = z.union([
   z.object({ ok: z.literal(true), result: z.unknown() }),
-  z.object({ ok: z.literal(false), error: z.string().max(2000) }),
+  // A longer error is cut, not refused: a refused answer left the model waiting out the tool timeout.
+  z.object({ ok: z.literal(false), error: z.string().transform((error) => error.slice(0, 2000)) }),
 ]);
 
 const LIMITS = { ask: 1000, askx: 500, task: 2000 } as const;

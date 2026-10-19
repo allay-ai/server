@@ -2,6 +2,15 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.12.0
+
+For Allay 5.14.0; older plugins work too.
+
+- 🔗 **Agents work with sub-agents the way they should.** The task prompt teaches a self-contained brief with the coordinates already known, one sub-agent per step that can start now (bottles only after the glass is done), waiting for each report, acting on what its tools reported, and never asking the player for what a report or the brief already says.
+- 🗣️ **Agents steer their own sub-agents.** A depth-1 agent gets `message_task` and `cancel_task`; plugin 5.14 lets them reach only its own sub-agents.
+- ⏳ **`finish` takes `handoff`.** Plugin 5.14 refuses `finish` while a sub-agent runs, so the agent hears the report it needs; `handoff: true` leaves the rest to the sub-agent on purpose (“the crafting agent makes the blocks”).
+- ✂️ An agent that can't start sub-agents no longer gets an empty “running sub-agents” section. A tool error over 2000 characters from the plugin is cut instead of refused, so the model no longer waits out the tool timeout.
+
 ## 5.11.2
 
 For Allay 5.13.1; older plugins work too.

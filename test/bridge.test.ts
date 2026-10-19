@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ChatEvent } from "../src/features/chat/chat.events";
 import { ToolBridge } from "../src/features/chat/chat.bridge";
+import { toolAnswerSchema } from "../src/features/chat/chat.types";
 
 const collect = () => {
   const events: ChatEvent[] = [];
@@ -64,5 +65,10 @@ describe("tool bridge", () => {
     const pending = bridge.call("run", "get_world", {}, abort.signal);
     abort.abort();
     expect(await pending).toEqual({ ok: false, error: "Cancelled" });
+  });
+
+  test("a long error from the plugin is cut, not refused, so the model hears it at once", () => {
+    const parsed = toolAnswerSchema.parse({ ok: false, error: "x".repeat(2500) });
+    expect(parsed).toEqual({ ok: false, error: "x".repeat(2000) });
   });
 });

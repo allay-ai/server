@@ -500,11 +500,12 @@ const automationDefinitions = {
   },
   message_task: {
     description:
-      "Passes the player's words on to a running automation agent: the answer to the question it asked, or a change of plans («положи всё в нижний сундук»). Pass what the player said, complete, in their words; the agent wakes with it.",
+      "Passes the player's words on to a running automation agent: the answer to the question it asked, or a change of plans («положи всё в нижний сундук»). Pass what the player said, complete, in their words; the agent wakes with it. An agent may message only its own sub-agents, which wake with “[parent «name»] text”.",
     input: z.object({ id: taskRef, text: z.string().min(1).max(500) }),
   },
   cancel_task: {
-    description: "Stops a running automation agent by id when the player asks. What it already moved stays where it is.",
+    description:
+      "Stops a running automation agent by id when the player asks. What it already moved stays where it is. An agent may stop only its own sub-agents, when the player called that step off or the brief changed; it isn't woken with the news.",
     input: z.object({ id: taskRef }),
   },
   say: {
@@ -529,8 +530,12 @@ const automationDefinitions = {
     input: z.object({ seconds: z.number().int().min(1).max(600).optional().describe("Wake by this time at the latest; leave it out to wait only for the player or the job") }),
   },
   finish: {
-    description: "Ends the task for good. summary is the one line the player sees: what was done, or why it stopped. Call it last, then write your note.",
-    input: z.object({ summary: z.string().min(1).max(500).describe("In the player's language, with the numbers that matter") }),
+    description:
+      "Ends the task for good. summary is the one line the player sees: what was done, or why it stopped; for a sub-agent, also the report the agent that started it acts on. Call it last, then write your note. While a sub-agent of yours runs, the plugin refuses it (plugin 5.14+): wait for its report, unless the sub-agent does the rest of the brief by itself.",
+    input: z.object({
+      summary: z.string().min(1).max(500).describe("In the player's language, with the numbers that matter"),
+      handoff: z.boolean().optional().describe("true: your running sub-agents do the rest of the brief and report to the player themselves; you leave them running"),
+    }),
   },
   pick_blocks: {
     description:
@@ -719,8 +724,11 @@ const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book", "get_nearby_pl
 /** What only an automation agent gets: it talks to the player, waits, and does the work the chat hands it. */
 const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil"]);
 
-/** What an automation agent never gets: it talks through say, and only the chat steers other tasks. */
-const NOT_IN_TASKS: ReadonlySet<string> = new Set(["add_buttons", "write_book", "get_nearby_players", "message_task", "cancel_task"]);
+/** What an automation agent never gets: it talks through say. */
+const NOT_IN_TASKS: ReadonlySet<string> = new Set(["add_buttons", "write_book", "get_nearby_players"]);
+
+/** What starts and steers sub-agents: an agent gets these only while it may start one, and steers only its own. */
+const SUB_AGENT_TOOLS: ReadonlySet<string> = new Set(["start_task", "message_task", "cancel_task"]);
 
 /**
  * What an automation agent reads the game with: only what its work needs. Every other tool would cost a wake its
@@ -745,7 +753,7 @@ export const MAX_TASK_DEPTH = 2;
 
 const fitsTask = (name: string, depth: number, kind?: TaskKind) => {
   if (isOperatorTool(name) || NOT_IN_TASKS.has(name)) return false;
-  if (name === "start_task") return depth < MAX_TASK_DEPTH;
+  if (SUB_AGENT_TOOLS.has(name)) return depth < MAX_TASK_DEPTH;
   // An old wake without a kind keeps every work tool, as before.
   if (WORK_TOOLS.has(name)) return !kind || KIND_TOOLS[kind].includes(name);
   return TASK_ONLY_TOOLS.has(name) || TASK_READS.has(name);
