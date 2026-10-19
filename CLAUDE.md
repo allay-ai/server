@@ -83,7 +83,7 @@ The owner's server, Moonlands, runs its own instance of this backend, built from
 
 ## Versions
 
-Where the versions live, for `/update-deps` (in `.claude/skills/`, the same file in every project of the family). This project has no Minecraft version to move.
+Where the versions live, for `/update-deps` and `/update-minecraft` (both in `.claude/skills/`, the same files in every project of the family). This project has no Minecraft version to move, so `/update-minecraft` stops at once.
 
 - Bun: the `FROM oven/bun:…-alpine` line of `Dockerfile` and `bun-version` in `.github/workflows/`, always the same. Never below 1.4.3: older Bun crashes on bson from Mongoose 9.
 - Packages: `package.json`, locked in `bun.lock`, which the image installs from with `--frozen-lockfile`. `bun outdated` lists what's behind. The panel has its own `admin/package.json` and `admin/bun.lock`; update both.
