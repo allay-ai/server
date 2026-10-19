@@ -2,6 +2,14 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 5.11.0
+
+For Allay 5.13.0; older plugins work too.
+
+- ⚡ **Leaner, faster agents.** An automation agent gets only its own kind's work tool (a brewing agent `brew`, not `craft` it can't use) and the reads its work needs, not structures, statistics, reminders, or redstone. Each step sends fewer tool schemas, so a wake costs fewer tokens and answers sooner.
+- 🔗 **Results a parent can use.** A sub-agent's summary says what it made, how many, and where it lies, or what was missing, since the agent that started it acts on it.
+- ✂️ **No lessons for tools that are off.** The prompt drops its drafts and redstone sections when the plugin doesn't offer `show_draft` or `inspect_redstone`.
+
 ## 5.10.1
 
 For Allay 5.12.1, which wakes an agent when its sub-agent ends; older plugins send nothing new.

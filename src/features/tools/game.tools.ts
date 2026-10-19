@@ -1,6 +1,6 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
-import type { Mode, Visibility } from "../../agent/agent.types";
+import type { Mode, TaskKind, Visibility } from "../../agent/agent.types";
 import type { ToolAnswer, ToolBridge } from "../chat/chat.bridge";
 import { forModel } from "./schema";
 
@@ -722,12 +722,38 @@ const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "
 /** What an automation agent never gets: it talks through say, and only the chat steers other tasks. */
 const NOT_IN_TASKS: ReadonlySet<string> = new Set(["add_buttons", "write_book", "get_nearby_players", "message_task", "cancel_task"]);
 
+/**
+ * What an automation agent reads the game with: only what its work needs. Every other tool would cost a wake its
+ * schema in tokens on every step and tempt it off the brief.
+ */
+const TASK_READS: ReadonlySet<string> = new Set([
+  "get_player_status", "inventory", "get_surroundings", "look_at", "get_recipes", "scan_nearby_containers", "find_item", "inspect_item", "get_anvil_plan",
+  "point_to", "show_marks", "start_task",
+]);
+
+/** The work tool each kind of agent uses beside chests, which any agent may read; another kind's goes to a sub-agent. */
+const KIND_TOOLS: Readonly<Record<TaskKind, readonly string[]>> = {
+  chests: [],
+  furnaces: ["smelt"],
+  brewing: ["brew"],
+  crafting: ["craft", "anvil"],
+};
+const WORK_TOOLS: ReadonlySet<string> = new Set(Object.values(KIND_TOOLS).flat());
+
 /** The chat is depth 0; an agent it starts is 1 and may start one more at 2, which may not. */
 export const MAX_TASK_DEPTH = 2;
 
-const fitsMode = (name: string, mode: Mode, depth: number) => {
+const fitsTask = (name: string, depth: number, kind?: TaskKind) => {
+  if (isOperatorTool(name) || NOT_IN_TASKS.has(name)) return false;
+  if (name === "start_task") return depth < MAX_TASK_DEPTH;
+  // An old wake without a kind keeps every work tool, as before.
+  if (WORK_TOOLS.has(name)) return !kind || KIND_TOOLS[kind].includes(name);
+  return TASK_ONLY_TOOLS.has(name) || TASK_READS.has(name);
+};
+
+const fitsMode = (name: string, mode: Mode, depth: number, kind?: TaskKind) => {
   if (mode === "askx") return !isOperatorTool(name) && !ACTION_TOOLS.has(name);
-  if (mode === "task") return !isOperatorTool(name) && !NOT_IN_TASKS.has(name) && (name !== "start_task" || depth < MAX_TASK_DEPTH);
+  if (mode === "task") return fitsTask(name, depth, kind);
   return !TASK_ONLY_TOOLS.has(name);
 };
 
@@ -745,13 +771,14 @@ export const offeredTools = (
   mode: Mode = "ask",
   visibility: Visibility = "private",
   depth = 0,
+  kind?: TaskKind,
 ): GameToolName[] => {
   const offered = new Set(names.map(canonical));
   return (Object.keys(allDefinitions) as GameToolName[]).filter(
     (name) =>
       usesOf(name).some((tool) => offered.has(tool)) &&
       (operator || !isOperatorTool(name)) &&
-      fitsMode(name, mode, depth) &&
+      fitsMode(name, mode, depth, kind) &&
       (visibility === "private" || !PRIVATE_TOOLS.has(name)),
   );
 };

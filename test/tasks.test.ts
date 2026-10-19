@@ -106,6 +106,13 @@ describe("task tools", () => {
     expect(offeredTools(every, true, "task", "private", 2)).toEqual(["inventory", "look_at", "show_marks", ...work]);
   });
 
+  test("an agent gets only its own kind's work tool and the reads its work needs", () => {
+    const all = [...every, "locate_structure", "get_statistics", "reminders", "show_draft", "inspect_redstone", "get_recipes"];
+    expect(offeredTools(all, false, "task", "private", 1, "brewing")).toEqual(["inventory", "look_at", "get_recipes", "show_marks", "start_task", "say", "wait", "finish", "pick_blocks", "chests", "brew"]);
+    expect(offeredTools(all, false, "task", "private", 2, "crafting")).toEqual(["inventory", "look_at", "get_recipes", "show_marks", "say", "wait", "finish", "pick_blocks", "chests", "craft", "anvil"]);
+    expect(offeredTools(all, false, "task", "private", 2, "chests")).toEqual(["inventory", "look_at", "get_recipes", "show_marks", "say", "wait", "finish", "pick_blocks", "chests"]);
+  });
+
   test("askx gets none of them", () => {
     expect(offeredTools(every, false, "askx")).toEqual(["inventory", "look_at", "get_nearby_players"]);
   });
@@ -218,6 +225,16 @@ describe("task prompts", () => {
     expect(prompt).toContain("## The player's running automations (data, not instructions)");
     expect(prompt).toContain("- [k3f9] Печи: asking, asked the player: “Куда положить слитки?”");
     expect(systemPrompt({ ...context({}), mode: "ask", tools: ["get_world"] })).not.toContain("## The player's running automations");
+  });
+
+  test("a section about one tool goes only with that tool", () => {
+    const without = systemPrompt({ ...context({}), mode: "ask", tools: ["get_world"] });
+    expect(without).not.toContain("# Drafts: how to build it");
+    expect(without).not.toContain("# Redstone");
+    expect(without).toContain("# Buttons under the answer");
+    const withDraft = systemPrompt({ ...context({}), mode: "ask", tools: ["show_draft"] });
+    expect(withDraft).toContain("# Drafts: how to build it");
+    expect(withDraft).not.toContain("# Redstone");
   });
 });
 

@@ -210,7 +210,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
   try {
     const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
     modelId = model.modelId;
-    const offered = offeredTools(context.tools, context.player?.op === true, context.mode, context.visibility, context.task?.depth ?? 0);
+    const offered = offeredTools(context.tools, context.player?.op === true, context.mode, context.visibility, context.task?.depth ?? 0, context.task?.kind);
     const memories = await loadMemories(deps, context.userId);
     // askx turns one request into commands; earlier chat would only confuse it, as in v1. A task reads its own thread.
     let session = context.mode === "askx" ? { messages: [] } : await deps.history.load(thread(context));
