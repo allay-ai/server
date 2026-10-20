@@ -9,7 +9,7 @@ import { FormField } from "@/components/form-field";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api } from "@/lib/api";
+import { api, post } from "@/lib/api";
 import { dateTime, number, relative, usd } from "@/lib/format";
 import { showErrors } from "@/lib/forms";
 import { useCan } from "@/lib/session";
@@ -101,7 +101,7 @@ const EraseCard = () => {
   const [server, setServer] = useState("self");
   const [userId, setUserId] = useState("");
   const erase = useMutation({
-    mutationFn: () => api<{ memories: number; runs: number }>("/players/erase", { method: "POST", body: JSON.stringify({ server: server.trim(), user_id: userId.trim() }) }),
+    mutationFn: () => post<{ memories: number; runs: number }>("/players/erase", { server: server.trim(), user_id: userId.trim() }),
     onSuccess: async (result) => {
       toast.success(t("players.erase.done", { memories: result.memories, runs: result.runs }));
       setUserId("");
