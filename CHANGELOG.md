@@ -2,6 +2,10 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.1.1
+
+- 🌐 **Buttons speak the answer's language.** An English question got an English answer with Russian buttons under it: the tools asked for labels “in the player's language”, which the model read as the game locale, and the prompt's examples are Russian. Now labels, button questions, mark titles, and task names follow the language of the answer, and the prompt says its Russian examples show the form only.
+
 ## 6.1.0
 
 For Allay 6.1, which asks each player before their first question; older plugins work as before.

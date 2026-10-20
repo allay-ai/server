@@ -209,7 +209,7 @@ const definitions = {
             y: z.number().int(),
             z: z.number().int(),
             block: z.string().max(64).optional().describe("A ghost of this block, like torch; leave it out to box what stands there"),
-            label: z.string().max(48).optional().describe("A few words in the player's language: what's inside, a step number"),
+            label: z.string().max(48).optional().describe("A few words in the language you answer in: what's inside, a step number"),
             color: z.enum(["yellow", "green", "red", "blue", "aqua", "purple", "orange", "white"]).optional().describe("Yellow boxes and aqua ghosts by default; one color per kind of thing"),
           }),
         )
@@ -224,13 +224,13 @@ const definitions = {
       "Draws a build as glowing ghosts only the asking player sees, one layer at a time from the bottom, and checks it against the world: placed blocks go out, a wrong one gets a red box naming what belongs there, and the next layer lights up when one is done, with a boss bar counting. Up to 20 wide × 15 high × 20 deep. action show (title, palette, layers) starts it two blocks in front of the player, centered where they look; add puts more layers or a wing at offset; layer switches the shown layer; move shifts it by offset; rotate turns it clockwise by turns; check counts what's in place and lists wrong blocks; clear removes it. Only where the player may build.",
     input: z.object({
       action: z.enum(["show", "add", "layer", "move", "rotate", "check", "clear"]).optional(),
-      title: z.string().max(32).optional().describe("show: a short name in the player's language"),
+      title: z.string().max(32).optional().describe("show: a short name in the language you answer in"),
       palette: z
         .array(
           z.object({
             char: z.string().length(1).describe("Not . or a space"),
             block: z.string().max(96).describe("An id with the states that matter, like repeater[facing=south,delay=2]; air for a cell that must stay empty"),
-            label: z.string().max(32).optional().describe("A few words in the player's language; shows for blocks used at most 6 times"),
+            label: z.string().max(32).optional().describe("A few words in the language you answer in; shows for blocks used at most 6 times"),
           }),
         )
         .max(40)
@@ -341,8 +341,8 @@ const definitions = {
         .array(
           z.object({
             type: z.enum(["ask", "point", "note", "copy", "recipe", "brewing", "anvil", "enchants", "villagers"]),
-            label: z.string().min(1).max(24).describe("A word or two in the player's language"),
-            question: z.string().max(200).optional().describe("ask: the full question"),
+            label: z.string().min(1).max(24).describe("A word or two in the language you answer in, never the game locale's when they differ"),
+            question: z.string().max(200).optional().describe("ask: the full question, in the language you answer in"),
             x: z.number().int().optional(),
             y: z.number().int().optional(),
             z: z.number().int().optional(),
@@ -494,7 +494,7 @@ const automationDefinitions = {
       "Starts an automation agent that works in the background while the player's chat stays free: kind chests (sort, group, or move items between chests), furnaces (smelting), brewing (brewing potions for the player), or crafting. The agent starts with no history and knows only brief, so write everything into it: what to do, step by step for chains, every detail and preference the player said (items, counts, chests, where the output goes), the coordinates tools gave you, and the language the player writes in. name is a few words in that language, shown to the player as “Automation agent: name”. Returns id and name, or an error: the player's task limit, no rights, or automation switched off; say that plainly.",
     input: z.object({
       kind: z.enum(["chests", "furnaces", "brewing", "crafting"]),
-      name: z.string().min(1).max(40).describe("A few words in the player's language, like «Сортировка сундуков»"),
+      name: z.string().min(1).max(40).describe("A few words in the language you answer in, like «Сортировка сундуков»"),
       brief: z.string().min(1).max(2000).describe("The full task for an agent that knows nothing else"),
     }),
   },
