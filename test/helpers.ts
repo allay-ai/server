@@ -2,7 +2,9 @@ import type { LanguageModelV4, LanguageModelV4StreamPart } from "@ai-sdk/provide
 import { MockLanguageModelV4, convertArrayToReadableStream } from "ai/test";
 import type { AllayDeps } from "../src/agent/allay";
 import { ToolBridge } from "../src/features/chat/chat.bridge";
-import { memoryHistory } from "../src/infrastructure/history/history";
+import { memoryHistory, threadOf } from "../src/infrastructure/history/history";
+import { pseudonymsWith } from "../src/infrastructure/privacy/pseudonyms";
+import type { Owner } from "../src/shared/types/owner";
 import { memoryMemories } from "../src/infrastructure/memory/memory";
 import type { ModelFactory } from "../src/infrastructure/providers/openrouter/openrouter.client";
 import { type Billing, newLimits } from "../src/features/billing/billing";
@@ -15,6 +17,20 @@ import { memoryAudit } from "../src/infrastructure/admin/audit";
 import { memorySessions } from "../src/infrastructure/admin/sessions";
 import { testVault } from "../src/infrastructure/settings/secrets";
 import { memorySettings } from "../src/infrastructure/settings/store";
+
+/** The self-hosted backend's PLUGIN_TOKEN in tests; the global settings read it from the environment. */
+export const TOKEN = "test-plugin-token-0123456789abcdef";
+process.env.PLUGIN_TOKEN = TOKEN;
+
+/** What a self-hosted plugin sends with every request. */
+export const AUTH = { Authorization: `Bearer ${TOKEN}` };
+
+/** A player of a tenant, `self` unless a test says otherwise. */
+export const owner = (userId: string, tenant = "self"): Owner => ({ tenant, userId });
+
+/** A thread as runs address it, for tests that look inside the store. */
+export const thread = (userId: string, options: { tenant?: string; visibility?: string; server?: string; task?: string } = {}) =>
+  threadOf(owner(userId, options.tenant), options.visibility, options.server, options.task);
 
 const usage = {
   inputTokens: { total: 12, noCache: 12, cacheRead: 0, cacheWrite: 0 },
@@ -117,6 +133,7 @@ export const testDeps = (
     memories: memoryMemories(),
     bridge: new ToolBridge(options.toolTimeoutMs ?? 2_000),
     billing: options.billing ?? testBilling(),
+    pseudonyms: pseudonymsWith("test"),
     models: (({ search, provider, model }) => {
       deps.lastProvider = provider;
       if (search) {

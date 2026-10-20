@@ -180,7 +180,7 @@ export const statsOfDays = (range: Exclude<Range, "24h">, days: DayRollup[], now
     for (const [i, n] of Object.entries(day.durations ?? {})) histogram[Number(i)] += n;
     for (const p of day.players ?? []) players.add(p);
     for (const s of day.servers ?? []) servers.add(s);
-    return { t: `${key}T00:00:00.000Z`, questions: day.questions ?? 0, errors: day.errors ?? 0, cost: round(day.cost ?? 0), players: day.players?.length ?? 0 };
+    return { t: `${key}T00:00:00.000Z`, questions: day.questions ?? 0, errors: day.errors ?? 0, cost: round(day.cost ?? 0), players: day.player_count ?? day.players?.length ?? 0 };
   });
   return {
     range,

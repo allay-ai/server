@@ -5,14 +5,18 @@ import { handleAsk } from "../src/features/ask/ask.controller";
 import { handleAskX } from "../src/features/askx/askx.controller";
 import { handleChat, handleToolResult } from "../src/features/chat/chat.controller";
 import { handleHealth } from "../src/features/health/health.controller";
-import { handleMemories, handleMemory, handleSession } from "../src/features/users/users.controller";
+import { handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
 import { handleLicense } from "../src/features/billing/license.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { finish, reasoning, readSse, scripted, testDeps, text, toolCall } from "./helpers";
+import { AUTH, owner, thread } from "./helpers";
 import { MAX_MEMORIES } from "../src/infrastructure/memory/memory";
 import { type HistoryMessage, MAX_EXCHANGES, maxTokens } from "../src/infrastructure/history/history";
 
-const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram };
+/** Every request here comes from the tenant's own plugin; test/access.test.ts covers the ones that don't. */
+const fetch = (url: string, init: RequestInit = {}): Promise<Response> => globalThis.fetch(url, { ...init, headers: { ...AUTH, ...(init.headers as Record<string, string> | undefined) } });
+
+const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram };
 let server: Server<undefined> | undefined;
 
 afterEach(() => server?.stop(true));
@@ -61,10 +65,10 @@ describe("POST /api/v2/chat", () => {
     expect(second).toContain("[Steve]");
     expect(second).toContain("how do I find netherite?");
     expect(second).toContain("Visibility: public");
-    const thread = await deps.history.load("public:srv-1");
-    expect(thread.messages.map((m) => m.role)).toEqual(["user", "assistant", "user", "assistant"]);
-    expect(thread.messages[2].content).toStartWith("[Alex] ");
-    expect((await deps.history.load("player-1")).messages).toEqual([]);
+    const kept = await deps.history.load(thread("player-1", { visibility: "public", server: "srv-1" }));
+    expect(kept.messages.map((m) => m.role)).toEqual(["user", "assistant", "user", "assistant"]);
+    expect(kept.messages[2].content).toStartWith("[Alex] ");
+    expect((await deps.history.load(thread("player-1"))).messages).toEqual([]);
   });
 
   test("streams reasoning, a client tool round trip, the answer, usage, and done", async () => {
@@ -201,7 +205,7 @@ describe("POST /api/v2/chat", () => {
       fetch: (async (url: string, init: RequestInit) => {
         requests.push({ url, body: JSON.parse(String(init.body)), auth: (init.headers as Record<string, string>).Authorization });
         return Response.json({ results: [{ title: "Java Edition 26.3", url: "https://minecraft.wiki/w/26.3", snippet: "Adds copper golems." }] });
-      }) as typeof fetch,
+      }) as typeof globalThis.fetch,
     };
     const events = await readSse(await chat(start(deps), { message: "what's new?" }));
     expect(requests).toEqual([
@@ -259,7 +263,7 @@ describe("POST /api/v2/chat", () => {
     ]);
     await readSse(await chat(base, { message: "where is my base?" }));
     expect(JSON.stringify(prompts[2])).toContain("Base at 120 64 -300");
-    expect((await deps.memories.list("player-1")).map((m) => m.text)).toEqual(["Base at 120 64 -300"]);
+    expect((await deps.memories.list(owner("player-1"))).map((m) => m.text)).toEqual(["Base at 120 64 -300"]);
   });
 
   test("the session summary reaches the prompt, and askx requests land in the session", async () => {
@@ -270,9 +274,9 @@ describe("POST /api/v2/chat", () => {
     const deps = testDeps(model);
     // Fill the session past the fold point and fold it, as a long chat would.
     for (let i = 0; i <= MAX_EXCHANGES; i++) {
-      await deps.history.append("player-1", { role: "user", content: `q${i}` }, { role: "assistant", content: `a${i}` });
+      await deps.history.append(thread("player-1"), { role: "user", content: `q${i}` }, { role: "assistant", content: `a${i}` });
     }
-    await deps.history.compact("player-1", async () => "The player is building a beacon.");
+    await deps.history.compact(thread("player-1"), async () => "The player is building a beacon.");
     const base = start(deps);
     await readSse(await chat(base, { mode: "askx", message: "give me bread" }));
     await readSse(await chat(base, { message: "what did you just give me?" }));
@@ -302,7 +306,7 @@ describe("POST /api/v2/chat", () => {
       await chat(base, { message: "how many diamonds?", tools: ["find_item"] }),
       answerTools(base, { find_item: { total: 12, places: [{ x: 4, y: 64, z: 9, count: 12 }] } }),
     );
-    const session = await deps.history.load("player-1");
+    const session = await deps.history.load(thread("player-1"));
     expect(session.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"]);
     await readSse(await chat(base, { message: "where exactly?" }));
     // The second question sees the first one's call and what it found, without calling again.
@@ -318,9 +322,9 @@ describe("POST /api/v2/chat", () => {
       await chat(base, { message: "what do I have?", visibility: "public", server: { id: "srv-1" }, tools: ["get_inventory"] }),
       answerTools(base, { get_inventory: { main: [{ id: "diamond", count: 12 }] } }),
     );
-    const thread = await deps.history.load("public:srv-1");
-    expect(thread.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
-    expect(JSON.stringify(thread.messages)).not.toContain("diamond\"");
+    const kept = await deps.history.load(thread("player-1", { visibility: "public", server: "srv-1" }));
+    expect(kept.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(JSON.stringify(kept.messages)).not.toContain("diamond\"");
   });
 
   /** An exchange of about this many tokens, most of it a tool's result. */
@@ -334,7 +338,7 @@ describe("POST /api/v2/chat", () => {
   test("a session past the cap folds before the answer", async () => {
     const { model, prompts } = scripted([[...text("The player built a beacon."), finish()], [...text("Yes."), finish()]]);
     const deps = testDeps(model);
-    for (let i = 0; i < 6; i++) await deps.history.append("player-1", ...bulky(i, (maxTokens() + 6_000) / 6));
+    for (let i = 0; i < 6; i++) await deps.history.append(thread("player-1"), ...bulky(i, (maxTokens() + 6_000) / 6));
     await readSse(await chat(start(deps), { message: "still there?" }));
     // The summary came first, and the answer's prompt read it instead of the whole session.
     expect(JSON.stringify(prompts[1])).toContain("The player built a beacon.");
@@ -393,7 +397,7 @@ describe("session and memory endpoints", () => {
     const { model, prompts } = scripted([[...text("Ender pearls."), finish()], [...text("Hi again."), finish()]]);
     const deps = testDeps(model);
     const base = start(deps);
-    await deps.memories.add("player-1", "base at 120 64 -300");
+    await deps.memories.add(owner("player-1"), "base at 120 64 -300");
     await readSse(await chat(base, { message: "what do I need for the end?" }));
     const cleared = await fetch(`${base}/api/v2/users/player-1/session`, { method: "DELETE" });
     expect(await cleared.json()).toEqual({ cleared: true });
@@ -405,8 +409,8 @@ describe("session and memory endpoints", () => {
   test("memories can be listed and deleted one by one or all at once", async () => {
     const deps = testDeps(scripted([[finish()]]).model);
     const base = start(deps);
-    const first = await deps.memories.add("player-1", "base at 120 64 -300");
-    await deps.memories.add("player-1", "wants an iron farm");
+    const first = await deps.memories.add(owner("player-1"), "base at 120 64 -300");
+    await deps.memories.add(owner("player-1"), "wants an iron farm");
     if (first === "full") throw new Error("unexpected");
     const url = `${base}/api/v2/users/player-1/memories`;
     const listed = (await (await fetch(url)).json()) as any;
@@ -440,7 +444,7 @@ describe("session and memory endpoints", () => {
     expect((await post({ text: "x" })).status).toBe(400);
     expect((await post({})).status).toBe(400);
     expect((await fetch(url, { method: "POST", body: "not json" })).status).toBe(400);
-    for (let i = 1; i < MAX_MEMORIES; i++) await deps.memories.add("player-1", `fact ${i}`);
+    for (let i = 1; i < MAX_MEMORIES; i++) await deps.memories.add(owner("player-1"), `fact ${i}`);
     const full = await post({ text: "one too many" });
     expect(full.status).toBe(409);
     expect(((await full.json()) as any).error.code).toBe("MEMORY_FULL");

@@ -65,7 +65,11 @@ export const byokLimiter = () =>
     ],
     concurrent: settings.get("BYOK_CONCURRENT"),
   }));
+/** Every server with its own key together, under one key: free questions never take every slot from paying ones. */
+export const byokTotalLimiter = () => new Limiter(() => ({ windows: [], concurrent: settings.get("BYOK_ACTIVE_RUNS") }));
 /** Subscriptions pay per dollar; this only keeps one server from taking every slot at once. */
 export const hostedLimiter = () => new Limiter([], 4);
-/** New licenses per client address, so nobody fills the database with them. */
+/** New licenses per client address (an IPv6 /64 counts as one), so nobody fills the database with them. */
 export const licenseLimiter = () => new Limiter([{ ms: 3_600_000, max: 10 }]);
+/** New licenses from everyone together, a ceiling for a flood from many addresses. */
+export const licenseTotalLimiter = () => new Limiter([{ ms: 3_600_000, max: 500 }]);

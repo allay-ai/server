@@ -2,7 +2,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Definition, ErrorBox, Loading, PageHeader, ResultBadge, RunsTable } from "@/components/common";
+import { Definition, ErrorBox, Loading, PageHeader, PlayerLink, ResultBadge, RunsTable } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -129,7 +129,7 @@ export const RunPage = () => {
             <CardContent>
               <Definition
                 items={[
-                  [t("run.player"), <Link key="p" to="/players/$id" params={{ id: run.user_id }} className="hover:underline">{run.player ?? run.user_id}</Link>],
+                  [t("run.player"), <PlayerLink key="p" id={run.user_id} />],
                   [t("run.server"), <ServerLabel key="s" server={run.server} serverId={run.server_id} />],
                   [t("run.model"), <span key="m" className="font-mono text-xs">{run.model}</span>],
                   [t("run.language"), run.language ?? "—"],

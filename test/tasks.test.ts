@@ -12,11 +12,15 @@ import { parseChatRequest } from "../src/features/chat/chat.types";
 import { handleHealth } from "../src/features/health/health.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { AUTOMATION_TOOLS, gameTools, offeredTools } from "../src/features/tools/game.tools";
-import { handleMemories, handleMemory, handleSession } from "../src/features/users/users.controller";
+import { handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
 import { taskTtl, threadOf, ttlOf } from "../src/infrastructure/history/history";
 import { finish, readSse, scripted, testDeps, text, toolCall } from "./helpers";
+import { AUTH, owner, thread } from "./helpers";
 
-const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram };
+/** Every request here comes from the tenant's own plugin; test/access.test.ts covers the ones that don't. */
+const fetch = (url: string, init: RequestInit = {}) => globalThis.fetch(url, { ...init, headers: { ...AUTH, ...(init.headers as Record<string, string> | undefined) } });
+
+const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram };
 let server: Server<undefined> | undefined;
 
 afterEach(() => server?.stop(true));
@@ -48,12 +52,12 @@ const answerAll = (url: string) => {
 
 describe("task requests", () => {
   const code = (body: unknown) => {
-    const parsed = parseChatRequest(body);
+    const parsed = parseChatRequest(body, "self");
     return parsed.ok ? "ok" : parsed.error.code;
   };
 
   test("a wake carries its task, a brief up to 2000 characters, and is always private", () => {
-    const parsed = parseChatRequest({ ...base, mode: "task", task, visibility: "public", message: "x".repeat(2000) });
+    const parsed = parseChatRequest({ ...base, mode: "task", task, visibility: "public", message: "x".repeat(2000) }, "self");
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(parsed.context).toMatchObject({ mode: "task", task, visibility: "private" });
@@ -73,16 +77,16 @@ describe("task requests", () => {
 
   test("an ask lists the running tasks, at most four; other modes drop them, and ask drops a task", () => {
     const tasks = [{ id: "k3f9", name: "Печи", state: "asking", question: "Куда положить слитки?" }, { id: "a1", name: "Зелья", state: "waiting" }];
-    const parsed = parseChatRequest({ ...base, tasks, task });
+    const parsed = parseChatRequest({ ...base, tasks, task }, "self");
     expect(parsed.ok ? parsed.context.tasks : undefined).toEqual(tasks as NonNullable<RunContext["tasks"]>);
     expect(parsed.ok && parsed.context.task).toBeUndefined();
     expect(code({ ...base, tasks: Array(5).fill(tasks[1]) })).toBe("BAD_REQUEST");
     expect(code({ ...base, tasks: [{ ...tasks[1], state: "sleeping" }] })).toBe("BAD_REQUEST");
     expect(code({ ...base, tasks: [{ ...tasks[0], question: "x".repeat(201) }] })).toBe("BAD_REQUEST");
-    const askx = parseChatRequest({ ...base, mode: "askx", message: "give me bread", tasks });
+    const askx = parseChatRequest({ ...base, mode: "askx", message: "give me bread", tasks }, "self");
     expect(askx.ok && askx.context.tasks).toBeUndefined();
     // An agent hears of its own sub-agents.
-    const wake = parseChatRequest({ ...base, mode: "task", message: "[sub-agent] done", task, tasks: [tasks[1]] });
+    const wake = parseChatRequest({ ...base, mode: "task", message: "[sub-agent] done", task, tasks: [tasks[1]] }, "self");
     expect(wake.ok && wake.context.tasks).toEqual([tasks[1]] as NonNullable<RunContext["tasks"]>);
   });
 });
@@ -189,15 +193,15 @@ describe("task tools", () => {
 
 describe("task threads", () => {
   test("each task has its own thread under the player, living two hours", () => {
-    expect(threadOf("p1", "private", "srv-1", "k3f9")).toBe("task:p1:k3f9");
-    expect(ttlOf("task:p1:k3f9")).toBe(taskTtl());
+    expect(threadOf(owner("p1"), "private", "srv-1", "k3f9")).toEqual({ key: "self:t:p1:k3f9", kind: "task" });
+    expect(ttlOf(threadOf(owner("p1"), "private", "srv-1", "k3f9"))).toBe(taskTtl());
     expect(taskTtl()).toBe(2 * 3600);
   });
 });
 
 describe("task prompts", () => {
   const context = (extra: Partial<RunContext>): RunContext => ({
-    mode: "task", platform: "minecraft", userId: "p1", message: "go", player: { name: "Steve" }, tools: ["chests", "say", "wait", "finish"], ...extra,
+    mode: "task", platform: "minecraft", tenant: "self", userId: "p1", message: "go", player: { name: "Steve" }, tools: ["chests", "say", "wait", "finish"], ...extra,
   });
 
   test("an agent gets its own prompt with its name, kind, depth, and read-only memories", () => {
@@ -264,10 +268,10 @@ describe("task runs", () => {
     expect(second).toContain("Sort my chests. Russian.");
     expect(second).toContain("(waiting)");
     expect(second).toContain("[button] group");
-    const thread = await deps.history.load("task:player-1:k3f9");
-    expect(thread.messages.at(-1)!.content).toBe("Grouping 4 chests; waiting for the picking mode.");
+    const kept = await deps.history.load(thread("player-1", { task: "k3f9" }));
+    expect(kept.messages.at(-1)!.content).toBe("Grouping 4 chests; waiting for the picking mode.");
     // The player's own chat stays untouched.
-    expect((await deps.history.load("player-1")).messages).toEqual([]);
+    expect((await deps.history.load(thread("player-1"))).messages).toEqual([]);
   });
 
   test("the chat hears how a task finished with the player's next question, once", async () => {

@@ -12,6 +12,9 @@ import { memoryTools } from "../features/tools/memory.tools";
 import { type PerplexitySearch, searchWebTool } from "../features/tools/search-web.tool";
 import type { RunKind, RunRecord, RunStore } from "../infrastructure/runs/runs";
 import { estimateTokens, type HistoryStore, maxTokens, threadOf } from "../infrastructure/history/history";
+import type { Pseudonyms } from "../infrastructure/privacy/pseudonyms";
+import type { TraceStore } from "../infrastructure/observability/traces";
+import type { Owner } from "../shared/types/owner";
 import type { Memory, MemoryStore } from "../infrastructure/memory/memory";
 import { type ByokProvider, type ModelFactory, costOf } from "../infrastructure/providers/openrouter/openrouter.client";
 import { redact } from "../shared/lib/redact";
@@ -38,12 +41,16 @@ export interface AllayDeps {
   admin?: AdminDeps;
   /** Where each run's numbers go for the panel's statistics. */
   runs?: RunStore;
+  /** Turns a player's id into what `runs` keeps instead: a keyed digest, never the id itself. */
+  pseudonyms: Pseudonyms;
+  /** Mastra's traces, so a player's erasure reaches them too; none without tracing. */
+  traces?: TraceStore;
 }
 
 /** Who pays for a run, as the statistics name it; never a key or a license secret. */
 export interface RunPayer {
   kind: RunRecord["payer"];
-  /** The license id, or a fingerprint of a server's own key. */
+  /** The license that pays. */
   id?: string;
 }
 
@@ -62,13 +69,17 @@ export const TASK_WAITING = "(waiting)";
 /** v1 callers without a user id share "anonymous"; they get no memory. */
 const remembers = (userId: string) => userId !== "anonymous";
 
-const loadMemories = async (deps: AllayDeps, userId: string): Promise<Memory[]> => {
-  if (!remembers(userId)) return [];
+export const ownerOf = (context: RunContext): Owner => ({ tenant: context.tenant, userId: context.userId });
+
+const loadMemories = async (deps: AllayDeps, context: RunContext): Promise<Memory[]> => {
+  if (!remembers(context.userId)) return [];
   try {
-    return await deps.memories.list(userId);
+    const memories = await deps.memories.list(ownerOf(context));
+    if (memories.length) void deps.memories.touch(ownerOf(context)).catch(() => undefined);
+    return memories;
   } catch (error) {
     // Memories are a nicety, like history: answer without them.
-    logger.warn(`Memories unavailable for ${userId}: ${String(error)}`);
+    logger.warn(`Memories unavailable: ${String(error)}`);
     return [];
   }
 };
@@ -101,9 +112,10 @@ export const classify = (error: unknown, signal?: AbortSignal, provider?: ByokPr
     const text = redact(`${error.statusCode ?? ""} ${error.message}`.trim(), provider?.apiKey);
     return (provider && byokFailure(error, text)) || new ApiFailure(apierror(API_ERRORS.AI_REQUEST_FAILED, text));
   }
+  // Anything else is ours: its text may name hosts, paths, or a database, so it stays in the log and the client gets the code.
   const text = redact(error instanceof Error ? error.message : String(error), provider?.apiKey);
-  if (/fetch|network|ECONN|ETIMEDOUT|socket/i.test(text)) return new ApiFailure(apierror(API_ERRORS.NETWORK_ERROR, text));
-  return new ApiFailure(apierror(API_ERRORS.AI_REQUEST_FAILED, text));
+  if (/fetch|network|ECONN|ETIMEDOUT|socket/i.test(text)) return new ApiFailure(apierror(API_ERRORS.NETWORK_ERROR));
+  return new ApiFailure(apierror(API_ERRORS.AI_REQUEST_FAILED));
 };
 
 /**
@@ -130,7 +142,7 @@ type Steps = { steps: Array<{ toolCalls?: Array<{ toolName?: string; payload?: {
 const stepsReach = (max: number) => ({ steps }: Steps) => steps.length >= max;
 const endsWake = ({ steps }: Steps) => (steps.at(-1)?.toolCalls ?? []).some((call) => ["wait", "finish"].includes(call.toolName ?? call.payload?.toolName ?? ""));
 
-const thread = (context: RunContext) => threadOf(context.userId, context.visibility, context.server?.id, context.task?.id);
+const thread = (context: RunContext) => threadOf(ownerOf(context), context.visibility, context.server?.id, context.task?.id);
 
 /** Adds this exchange to the session; askx requests go in with a slash so later answers know what was run. */
 const record = (context: RunContext, deps: AllayDeps, asked: string, said: ModelMessage[]) =>
@@ -142,19 +154,19 @@ const kindOf = (context: RunContext): RunKind => {
   return context.mode;
 };
 
-const serverOf = (payer?: RunPayer) => (payer?.kind === "license" || payer?.kind === "byok" ? `${payer.kind}:${payer.id}` : "self");
-
-/** Hands a run's numbers to the statistics; they never hold a word of the question or the answer. */
-const report = (deps: AllayDeps, context: RunContext, options: Pick<RunOptions, "runId" | "payer">, run: Omit<RunRecord, "id" | "kind" | "payer" | "server" | "server_id" | "user_id" | "player" | "language">, kind = kindOf(context)) => {
+/**
+ * Hands a run's numbers to the statistics; they never hold a word of the question or the answer, nor the player's
+ * name or id: the player is a keyed digest, so the panel can count them without knowing who they are.
+ */
+const report = (deps: AllayDeps, context: RunContext, options: Pick<RunOptions, "runId" | "payer">, run: Omit<RunRecord, "id" | "kind" | "payer" | "server" | "server_id" | "user_id" | "language">, kind = kindOf(context)) => {
   if (!deps.runs) return;
   const record: RunRecord = {
     id: options.runId,
     kind,
     payer: options.payer?.kind ?? "self",
-    server: serverOf(options.payer),
+    server: context.tenant,
     ...(context.server?.id ? { server_id: context.server.id } : {}),
-    user_id: context.userId,
-    ...(context.player?.name ? { player: context.player.name } : {}),
+    user_id: deps.pseudonyms.of(context.userId),
     ...(context.locale ? { language: context.locale } : {}),
     ...run,
   };
@@ -173,7 +185,7 @@ const compact = async (context: RunContext, deps: AllayDeps, spend?: (usd: numbe
     const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
     const folded = await deps.history.compact(thread(context), summarizeWith(model, charge, (u) => (usage = u)), foldAt);
     if (folded) {
-      logger.info(`Folded the session of ${thread(context)}`);
+      logger.info(`Folded a ${thread(context).kind} session`);
       report(
         deps,
         context,
@@ -183,7 +195,7 @@ const compact = async (context: RunContext, deps: AllayDeps, spend?: (usd: numbe
       );
     }
   } catch (error) {
-    logger.warn(`Couldn't fold the session of ${thread(context)}: ${redact(String(error), context.provider?.apiKey)}`);
+    logger.warn(`Couldn't fold a ${thread(context).kind} session: ${redact(String(error), context.provider?.apiKey)}`);
   }
 };
 
@@ -211,7 +223,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
     modelId = model.modelId;
     const offered = offeredTools(context.tools, context.player?.op === true, context.mode, context.visibility, context.task?.depth ?? 0, context.task?.kind);
-    const memories = await loadMemories(deps, context.userId);
+    const memories = await loadMemories(deps, context);
     // askx turns one request into commands; earlier chat would only confuse it, as in v1. A task reads its own thread.
     let session = context.mode === "askx" ? { messages: [] } : await deps.history.load(thread(context));
     // Folding after answers keeps a session well below this; a fold that failed, or one huge exchange, may not.
@@ -222,7 +234,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     const instructions = systemPrompt({ ...context, tools: offered }, { memories, summary: session.summary });
     const agent = new Agent({ id: "allay", name: "Allay", instructions, model });
     if (deps.mastra) agent.__registerMastra(deps.mastra);
-    if (hearsOutcomes(context)) outcomes = await deps.history.takeOutcomes(context.userId);
+    if (hearsOutcomes(context)) outcomes = await deps.history.takeOutcomes(ownerOf(context));
     const asked = question(context, outcomes);
     const messages: ModelMessage[] = [...session.messages, { role: "user", content: asked }];
 
@@ -244,7 +256,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
           : { web: { search_web: searchWebTool(deps.models, { provider: context.provider, platform: context.platform, emit, spend, perplexity: deps.perplexity }) } }),
         math: { exact_calculations: exactCalculationsTool({ emit }) },
         ...(context.mode === "ask" && remembers(context.userId)
-          ? { memory: memoryTools(deps.memories, { userId: context.userId, emit }) }
+          ? { memory: memoryTools(deps.memories, { owner: ownerOf(context), emit }) }
           : {}),
       },
     };
@@ -287,7 +299,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
           if (call && result && typeof result === "object" && "error" in result) call.ok = false;
           // The plugin ended the task: its chat hears how with the player's next question.
           const summary = finishing.get(String(payload.toolCallId));
-          if (summary && call?.ok) await deps.history.noteOutcome(context.userId, outcomeOf(context, summary));
+          if (summary && call?.ok) await deps.history.noteOutcome(ownerOf(context), outcomeOf(context, summary));
           break;
         }
         case "tool-error": {
@@ -367,9 +379,9 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     void compact(context, deps, options.spend, undefined, options);
     return result;
   } catch (error) {
-    for (const outcome of outcomes) await deps.history.noteOutcome(context.userId, outcome);
+    for (const outcome of outcomes) await deps.history.noteOutcome(ownerOf(context), outcome);
     const failure = classify(error, signal, context.provider);
-    logger.warn(`Run ${runId} failed: ${failure.code} ${failure.message}`);
+    logger.warn(`Run ${runId} failed: ${failure.code} ${failure.message}${error instanceof ApiFailure || APICallError.isInstance(error) ? "" : ` (${redact(error instanceof Error ? error.message : String(error), context.provider?.apiKey)})`}`);
     report(deps, context, options, {
       at: new Date(started),
       model: modelId,

@@ -12,6 +12,8 @@ interface PendingCall {
 
 interface Run {
   emit: Emit;
+  /** Whose run it is: only that tenant may answer its tool calls. */
+  tenant: string;
   calls: Map<string, PendingCall>;
 }
 
@@ -28,8 +30,8 @@ export class ToolBridge {
   /** Without a fixed timeout, each call reads TOOL_TIMEOUT_MS as it starts. */
   constructor(private readonly fixedTimeoutMs?: number) {}
 
-  open(runId: string, emit: Emit): void {
-    this.runs.set(runId, { emit, calls: new Map() });
+  open(runId: string, emit: Emit, tenant: string): void {
+    this.runs.set(runId, { emit, tenant, calls: new Map() });
   }
 
   /** Ends a run: pending calls resolve as failed and later results get 404. */
@@ -83,9 +85,11 @@ export class ToolBridge {
     });
   }
 
-  /** A result from the plugin: 200 when it was waited for, 404 when unknown, 409 when already answered. */
-  answer(runId: string, callId: string, answer: ToolAnswer): 200 | 404 | 409 {
-    const call = this.runs.get(runId)?.calls.get(callId);
+  /** A result from the plugin: 200 when it was waited for, 404 when unknown or another tenant's, 409 when already answered. */
+  answer(runId: string, callId: string, tenant: string, answer: ToolAnswer): 200 | 404 | 409 {
+    const run = this.runs.get(runId);
+    if (!run || run.tenant !== tenant) return 404;
+    const call = run.calls.get(callId);
     if (!call) return 404;
     if (call.answered) return 409;
     call.settle(answer);

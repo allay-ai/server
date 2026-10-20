@@ -16,8 +16,11 @@ export interface AuditStore {
   list(options: { limit: number; before?: Date }): Promise<AuditEntry[]>;
 }
 
+/** Entries hold addresses, so they don't stay forever: a year covers any question about who changed what. */
+export const AUDIT_DAYS = 365;
+
 const schema = new Schema<AuditEntry>({
-  at: { type: Date, required: true, index: true },
+  at: { type: Date, required: true },
   actor: { type: String, required: true },
   action: { type: String, required: true },
   target: String,
@@ -25,7 +28,9 @@ const schema = new Schema<AuditEntry>({
   ip: String,
 });
 
-const AuditModel = model<AuditEntry>("AuditEntry", schema, "admin_audit");
+schema.index({ at: 1 }, { expireAfterSeconds: AUDIT_DAYS * 86_400 });
+
+export const AuditModel = model<AuditEntry>("AuditEntry", schema, "admin_audit");
 
 export const mongoAudit: AuditStore = {
   async add(entry) {

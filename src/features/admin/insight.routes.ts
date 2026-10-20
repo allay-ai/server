@@ -1,10 +1,21 @@
-import { estimateTokens } from "../../infrastructure/history/history";
 import { RUN_KINDS, type RunKind, type RunRecord } from "../../infrastructure/runs/runs";
+import { z } from "zod";
+import { PSEUDONYM } from "../../infrastructure/privacy/pseudonyms";
+import { USER_ID } from "../../shared/types/owner";
+import { TENANT } from "../auth/caller";
+import { erasePlayer } from "../users/privacy";
 import { record } from "./admin";
-import { type Route, error } from "./admin.http";
+import { type Route, body, error } from "./admin.http";
 import { RANGES, type Range, statsFor } from "./stats";
 
-const USER_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const eraseSchema = z.object({ server: z.string().regex(TENANT), user_id: z.string().regex(USER_ID) });
+
+/** A player's id typed into the search finds their pseudonym; anything else searches pseudonyms by prefix. */
+const searchOf = (deps: { pseudonyms: { of(id: string): string } }, text?: string) => {
+  if (!text) return undefined;
+  if (PSEUDONYM.test(text) || /^p_[0-9a-f]{0,20}$/.test(text)) return text;
+  return USER_ID.test(text) ? deps.pseudonyms.of(text) : undefined;
+};
 
 const runView = (run: RunRecord) => ({ ...run, at: run.at.toISOString() });
 
@@ -37,7 +48,9 @@ export const insightRoutes: Route[] = [
       if (!deps.runs) return error(503, "NO_RUNS", "This backend keeps no statistics");
       const limit = limitOf(url);
       const page = Math.max(0, Number(url.searchParams.get("page")) || 0);
-      const search = url.searchParams.get("search")?.trim().slice(0, 64) || undefined;
+      const given = url.searchParams.get("search")?.trim().slice(0, 64) || undefined;
+      const search = searchOf(deps, given);
+      if (given && !search) return Response.json({ total: 0, page, limit, players: [] });
       const { players, total } = await deps.runs.players({ search, limit, skip: page * limit });
       return Response.json({
         total,
@@ -52,49 +65,47 @@ export const insightRoutes: Route[] = [
     path: "/players/:id",
     access: "viewer",
     async handle({ deps, params }) {
-      if (!USER_ID.test(params.id)) return error(404, "NOT_FOUND", "No such player");
-      const [summary, memories, session, runs] = await Promise.all([
+      if (!PSEUDONYM.test(params.id)) return error(404, "NOT_FOUND", "No such player");
+      const [summary, runs] = await Promise.all([
         deps.runs?.players({ search: params.id, limit: 1, skip: 0 }),
-        deps.memories.list(params.id).catch(() => null),
-        deps.history.load(params.id),
         deps.runs?.list({ user_id: params.id, limit: 50 }) ?? [],
       ]);
       const player = summary?.players.find((p) => p.user_id === params.id);
+      if (!player) return error(404, "NOT_FOUND", "No such player");
+      // Numbers only: the panel knows players by pseudonym, and never what they asked or what Allay remembers.
       return Response.json({
         user_id: params.id,
-        player: player?.player ?? null,
-        language: player?.language ?? null,
-        questions: player?.questions ?? 0,
-        cost: player?.cost ?? 0,
-        first_seen: player?.first_seen.toISOString() ?? null,
-        last_seen: player?.last_seen.toISOString() ?? null,
-        // How many, never what: memories and the session stay the player's.
-        memories: memories?.length ?? null,
-        session: { messages: session.messages.length, tokens: estimateTokens(session.messages), summary: !!session.summary },
+        language: player.language ?? null,
+        questions: player.questions,
+        cost: player.cost,
+        first_seen: player.first_seen.toISOString(),
+        last_seen: player.last_seen.toISOString(),
         runs: runs.map(runView),
       });
     },
   },
   {
-    method: "DELETE",
-    path: "/players/:id/memories",
+    method: "POST",
+    path: "/players/erase",
     access: "admin",
-    async handle({ deps, admin, me, params, ip }) {
-      if (!USER_ID.test(params.id)) return error(404, "NOT_FOUND", "No such player");
-      const deleted = await deps.memories.clear(params.id);
-      await record(admin, { actor: me!.username, action: "player.memories.delete", target: params.id, changes: [{ field: "memories", old: String(deleted), new: "0" }], ip });
-      return Response.json({ deleted });
-    },
-  },
-  {
-    method: "DELETE",
-    path: "/players/:id/session",
-    access: "admin",
-    async handle({ deps, admin, me, params, ip }) {
-      if (!USER_ID.test(params.id)) return error(404, "NOT_FOUND", "No such player");
-      await deps.history.clear(params.id);
-      await record(admin, { actor: me!.username, action: "player.session.reset", target: params.id, ip });
-      return Response.json({ cleared: true });
+    async handle(ctx) {
+      const { deps, admin, me, ip } = ctx;
+      const input = eraseSchema.safeParse(await body(ctx.req));
+      if (!input.success) return error(400, "BAD_REQUEST", "Name the server (self or license:<id>) and the player's id");
+      const owner = { tenant: input.data.server, userId: input.data.user_id };
+      const erased = await erasePlayer(deps, owner);
+      // The audit log keeps the pseudonym, not the id: it outlives the erasure by a year.
+      await record(admin, {
+        actor: me!.username,
+        action: "player.erase",
+        target: `${owner.tenant} ${deps.pseudonyms.of(owner.userId)}`,
+        changes: [
+          { field: "memories", old: String(erased.memories), new: "0" },
+          { field: "runs", old: String(erased.runs), new: "erased" },
+        ],
+        ip,
+      });
+      return Response.json({ erased: true, ...erased });
     },
   },
   {

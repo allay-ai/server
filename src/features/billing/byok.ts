@@ -24,11 +24,14 @@ export const isPrivateAddress = (ip: string): boolean => {
       (a === 100 && b >= 64 && b <= 127) ||
       (a === 169 && b === 254) ||
       (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168)
+      (a === 192 && b === 168) ||
+      (a === 192 && b === 0) ||
+      (a === 198 && (b === 18 || b === 19))
     );
   }
   const low = ip.toLowerCase();
-  return low === "::" || low === "::1" || /^f[cd]/.test(low) || /^fe[89ab]/.test(low) || low.startsWith("ff");
+  // NAT64 (64:ff9b::/96) and 6to4 (2002::/16) carry an IPv4 address inside, which may well be a private one.
+  return low === "::" || low === "::1" || /^f[cd]/.test(low) || /^fe[89ab]/.test(low) || low.startsWith("ff") || low.startsWith("64:ff9b:") || low.startsWith("2002:");
 };
 
 /**
@@ -55,6 +58,19 @@ export const checkUrl = async (baseURL: string, net: Net): Promise<ApiFailure | 
   }
   return undefined;
 };
+
+/**
+ * The fetch a server's own provider gets on a backend with billing on: every request checks its host again, so a
+ * name that resolved to a public address at admission can't point inside later, and redirects are refused, so a
+ * public host can't bounce a request to a private one. The provider's TLS certificate guards the rest.
+ */
+export const guardedFetch = (net: Net): typeof fetch =>
+  (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const rejected = await checkUrl(url, net);
+    if (rejected) throw rejected;
+    return fetch(input, { ...init, redirect: "error" });
+  }) as typeof fetch;
 
 interface CatalogModel {
   id: string;

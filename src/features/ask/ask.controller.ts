@@ -1,10 +1,11 @@
-import type { Server } from "bun";
 import { type AllayDeps, runAllay } from "../../agent/allay";
+import { identify } from "../auth/caller";
 import { admit } from "../billing/gate";
 import { silent } from "../chat/chat.events";
 import { readJson } from "../../shared/lib/http";
 import { logger } from "../../shared/logging/logger";
 import { API_ERRORS, type ApiError, ApiFailure, apierror } from "../../shared/types/errors";
+import { USER_ID } from "../../shared/types/owner";
 
 interface AskRequest {
   question?: unknown;
@@ -21,8 +22,10 @@ const error = (e: ApiError): Response => {
 };
 
 /** POST /api/ask, v1: the Telegram bot and older plugins. Same agent, no game tools, one JSON answer. */
-export const handleAsk = (deps: AllayDeps) => async (req: Request, server?: Server<undefined>): Promise<Response> => {
+export const handleAsk = (deps: AllayDeps) => async (req: Request): Promise<Response> => {
   if (req.method !== "POST") return error(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
+  const caller = await identify(deps.billing, req);
+  if (caller instanceof ApiFailure) return error(caller.toApiError());
   const json = await readJson(req);
   if (!json.ok) return error(json.error);
   const body = (json.body ?? {}) as AskRequest;
@@ -34,8 +37,11 @@ export const handleAsk = (deps: AllayDeps) => async (req: Request, server?: Serv
   if (question.length > 1000) return error(apierror(API_ERRORS.QUESTION_TOO_LONG));
 
   const platform = typeof body.platform === "string" ? body.platform : "unknown";
-  const userId = typeof body.user_id === "string" && body.user_id ? body.user_id : "anonymous";
-  const admitted = await admit(deps.billing, req.headers, undefined, server?.requestIP(req)?.address ?? userId);
+  if (body.user_id !== undefined && (typeof body.user_id !== "string" || !USER_ID.test(body.user_id))) {
+    return error(apierror(API_ERRORS.BAD_REQUEST, "user_id must be 1–64 letters, digits, - or _"));
+  }
+  const userId = body.user_id || "anonymous";
+  const admitted = await admit(deps.billing, req.headers, undefined, caller);
   if (!admitted.ok) return error(admitted.error.toApiError());
   const { admission } = admitted;
   try {
@@ -43,6 +49,7 @@ export const handleAsk = (deps: AllayDeps) => async (req: Request, server?: Serv
       {
         mode: "ask",
         platform: platform === "telegram" ? "telegram" : "minecraft",
+        tenant: caller.tenant,
         userId,
         message: question,
         tools: [],
@@ -59,7 +66,7 @@ export const handleAsk = (deps: AllayDeps) => async (req: Request, server?: Serv
       user_id: userId,
     });
   } catch (e) {
-    return error(e instanceof ApiFailure ? e.toApiError() : apierror(API_ERRORS.AI_REQUEST_FAILED, String(e)));
+    return error(e instanceof ApiFailure ? e.toApiError() : apierror(API_ERRORS.AI_REQUEST_FAILED));
   } finally {
     admission.release();
   }

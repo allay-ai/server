@@ -11,6 +11,8 @@ export interface ByokProvider {
   model?: string;
   /** Empty means no web search for this run. */
   searchModel?: string;
+  /** How requests reach it; a hosted backend gives one that refuses private addresses and redirects. */
+  fetch?: typeof fetch;
 }
 
 /**
@@ -51,11 +53,11 @@ export const cachingOf = (modelId: string): { cache_control?: { type: "ephemeral
 const byokModel = (provider: ByokProvider, platform: string, search: boolean): LanguageModelV4 => {
   const modelId = (search ? provider.searchModel : provider.model) || openrouterEnv().model;
   if (isOpenRouter(provider.baseURL)) {
-    const client = createOpenRouter({ apiKey: provider.apiKey, baseURL: provider.baseURL, headers: headers(platform) });
+    const client = createOpenRouter({ apiKey: provider.apiKey, baseURL: provider.baseURL, headers: headers(platform), ...(provider.fetch ? { fetch: provider.fetch } : {}) });
     return client.chat(modelId, { usage: { include: true }, ...(search ? {} : cachingOf(modelId)) });
   }
   // Other APIs reject OpenRouter's extra fields, so they get the standard request only.
-  return createOpenAICompatible({ name: "byok", baseURL: provider.baseURL, apiKey: provider.apiKey, includeUsage: true })(modelId);
+  return createOpenAICompatible({ name: "byok", baseURL: provider.baseURL, apiKey: provider.apiKey, includeUsage: true, ...(provider.fetch ? { fetch: provider.fetch } : {}) })(modelId);
 };
 
 /** The models for a run: the server's own key when it brought one, the backend's otherwise. */

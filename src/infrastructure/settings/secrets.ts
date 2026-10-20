@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { logger } from "../../shared/logging/logger";
@@ -16,6 +16,8 @@ export interface Vault {
   seal(plain: string): Promise<SealedSecret>;
   /** Undefined when the key changed since the secret was stored. */
   open(sealed: SealedSecret): Promise<string | undefined>;
+  /** A key of its own for [label], derived from the vault's, so other uses never touch the sealing key itself. */
+  derive(label: string): Promise<Buffer>;
 }
 
 export const SECRETS_KEY_FILE = "/data/secrets.key";
@@ -37,6 +39,9 @@ const vaultWith = (key: () => Promise<Buffer>): Vault => ({
     } catch {
       return undefined;
     }
+  },
+  async derive(label) {
+    return createHmac("sha256", await key()).update(label).digest();
   },
 });
 

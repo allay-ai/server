@@ -1,4 +1,5 @@
 import { Schema, model } from "mongoose";
+import { ERASED } from "../privacy/pseudonyms";
 
 export const RUN_KINDS = ["ask", "askall", "askx", "task", "summary", "telegram"] as const;
 export type RunKind = (typeof RUN_KINDS)[number];
@@ -13,12 +14,12 @@ export interface RunRecord {
   kind: RunKind;
   /** Who paid: a license, a server's own key, or this backend's key. */
   payer: "license" | "byok" | "self";
-  /** `license:<id>`, `byok:<fingerprint>`, or `self`. */
+  /** The tenant: `license:<id>` or `self`; runs from before 6.0 may also hold `byok:<fingerprint>`. */
   server: string;
   /** The plugin's random server id, when it sent one. */
   server_id?: string;
+  /** The player's pseudonym (`p_…`), never their id or name; `erased` once they asked to be forgotten. */
   user_id: string;
-  player?: string;
   language?: string;
   model: string;
   input_tokens: number;
@@ -49,7 +50,9 @@ export interface DayRollup {
   tools: Record<string, { calls: number; failed: number }>;
   /** Counts per DURATION_BUCKETS index, for percentiles. */
   durations: Record<string, number>;
+  /** Pseudonyms of the day's players, while the day is younger than RUN_DAYS; [player_count] keeps their number after. */
   players: string[];
+  player_count?: number;
   servers: string[];
 }
 
@@ -62,7 +65,6 @@ export const RUN_DAYS = 400;
 
 export interface PlayerSummary {
   user_id: string;
-  player?: string;
   language?: string;
   questions: number;
   cost: number;
@@ -100,7 +102,18 @@ export interface RunStore {
   days(from: string, to: string): Promise<DayRollup[]>;
   players(options: { search?: string; limit: number; skip: number }): Promise<{ players: PlayerSummary[]; total: number }>;
   servers(options: { server?: string; limit: number }): Promise<ServerSummary[]>;
+  /** The numbers of a player's runs on one tenant, newest first, for their copy of what's kept. */
+  of(userId: string, server: string, limit: number): Promise<RunRecord[]>;
+  /**
+   * Erasure on one tenant: the player's runs there keep their numbers under `erased`, and the days forget the
+   * pseudonym. Returns the run ids, so their traces can go too.
+   */
+  forget(userId: string, server: string): Promise<string[]>;
+  /** Days older than RUN_DAYS keep how many players they had, not who. */
+  prune(now: Date): Promise<number>;
 }
+
+const cutoffDay = (now: Date) => dayOf(new Date(now.getTime() - RUN_DAYS * 86_400_000));
 
 const dayOf = (at: Date) => at.toISOString().slice(0, 10);
 
@@ -128,7 +141,7 @@ export const rollupUpdate = (run: RunRecord) => {
     inc[`tools.${fieldKey(tool.name)}.calls`] = (inc[`tools.${fieldKey(tool.name)}.calls`] ?? 0) + 1;
     inc[`tools.${fieldKey(tool.name)}.failed`] = (inc[`tools.${fieldKey(tool.name)}.failed`] ?? 0) + (tool.ok ? 0 : 1);
   }
-  const add = run.kind === "summary" ? {} : { players: run.user_id, servers: run.server_id ?? run.server };
+  const add = run.kind === "summary" || run.user_id === ERASED ? {} : { players: run.user_id, servers: run.server_id ?? run.server };
   return { day: dayOf(run.at), inc, add };
 };
 
@@ -141,7 +154,6 @@ const runSchema = new Schema<RunRecord>(
     server: { type: String, required: true },
     server_id: String,
     user_id: { type: String, required: true },
-    player: String,
     language: String,
     model: { type: String, required: true },
     input_tokens: Number,
@@ -179,14 +191,15 @@ const daySchema = new Schema<DayRollup>(
     tools: { type: Schema.Types.Mixed, default: {} },
     durations: { type: Schema.Types.Mixed, default: {} },
     players: [String],
+    player_count: Number,
     servers: [String],
   },
   // `errors` is a count here, not Mongoose's validation errors.
   { versionKey: false, minimize: false, suppressReservedKeysWarning: true },
 );
 
-const RunModel = model<RunRecord>("Run", runSchema, "runs");
-const DayModel = model<DayRollup>("RunDay", daySchema, "run_days");
+export const RunModel = model<RunRecord>("Run", runSchema, "runs");
+export const DayModel = model<DayRollup>("RunDay", daySchema, "run_days");
 
 const PROJECTION = { _id: 0 };
 
@@ -226,14 +239,13 @@ export const mongoRuns: RunStore = {
     return (await DayModel.find({ day: { $gte: from, $lte: to } }, PROJECTION).sort({ day: 1 }).lean<DayRollup[]>()).map(decodeDay);
   },
   async players({ search, limit, skip }) {
-    const match = { kind: { $ne: "summary" }, ...(search ? { $or: [{ player: { $regex: `^${escape(search)}`, $options: "i" } }, { user_id: search }] } : {}) };
+    const match = { kind: { $ne: "summary" }, user_id: search ? { $regex: `^${escape(search)}` } : { $ne: ERASED } };
     const [result] = await RunModel.aggregate<{ players: PlayerSummary[]; total: Array<{ n: number }> }>([
       { $match: match },
       { $sort: { at: 1 } },
       {
         $group: {
           _id: "$user_id",
-          player: { $last: "$player" },
           language: { $last: "$language" },
           questions: { $sum: 1 },
           cost: { $sum: "$cost" },
@@ -268,6 +280,22 @@ export const mongoRuns: RunStore = {
       { $sort: { last_seen: -1 } },
       { $limit: limit },
     ]);
+  },
+  async of(userId, server, limit) {
+    return RunModel.find({ user_id: userId, server }, PROJECTION).sort({ at: -1 }).limit(limit).lean<RunRecord[]>();
+  },
+  async forget(userId, server) {
+    const ids = (await RunModel.find({ user_id: userId, server }, { _id: 0, id: 1 }).lean<Array<{ id: string }>>()).map((r) => r.id);
+    await RunModel.updateMany({ user_id: userId, server }, { $set: { user_id: ERASED } });
+    await DayModel.updateMany({ players: userId }, { $pull: { players: userId } });
+    return ids;
+  },
+  async prune(now) {
+    // A pipeline update, which Mongoose only passes through from the driver.
+    const result = await DayModel.collection.updateMany({ day: { $lt: cutoffDay(now) }, "players.0": { $exists: true } }, [
+      { $set: { player_count: { $size: "$players" }, players: [] } },
+    ]);
+    return result.modifiedCount;
   },
 };
 
@@ -316,11 +344,10 @@ export const memoryRuns = (): RunStore & { all: RunRecord[] } => {
       const byUser = new Map<string, PlayerSummary>();
       for (const run of [...all].sort((a, b) => a.at.getTime() - b.at.getTime())) {
         if (run.kind === "summary") continue;
-        if (search && !(run.player?.toLowerCase().startsWith(search.toLowerCase()) || run.user_id === search)) continue;
+        if (search ? !run.user_id.startsWith(search) : run.user_id === ERASED) continue;
         const known = byUser.get(run.user_id);
         byUser.set(run.user_id, {
           user_id: run.user_id,
-          player: run.player ?? known?.player,
           language: run.language ?? known?.language,
           questions: (known?.questions ?? 0) + 1,
           cost: (known?.cost ?? 0) + run.cost,
@@ -349,6 +376,29 @@ export const memoryRuns = (): RunStore & { all: RunRecord[] } => {
         .map(({ users: _, ...s }) => s)
         .sort((a, b) => b.last_seen.getTime() - a.last_seen.getTime())
         .slice(0, limit);
+    },
+    async of(userId, server, limit) {
+      return structuredClone(all.filter((r) => r.user_id === userId && r.server === server).sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, limit));
+    },
+    async forget(userId, server) {
+      const ids: string[] = [];
+      for (const run of all) {
+        if (run.user_id !== userId || run.server !== server) continue;
+        ids.push(run.id);
+        run.user_id = ERASED;
+      }
+      for (const day of days.values()) day.players = day.players.filter((p) => p !== userId);
+      return ids;
+    },
+    async prune(now) {
+      let pruned = 0;
+      for (const day of days.values()) {
+        if (day.day >= cutoffDay(now) || !day.players.length) continue;
+        day.player_count = day.players.length;
+        day.players = [];
+        pruned++;
+      }
+      return pruned;
     },
   };
 };

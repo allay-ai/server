@@ -82,8 +82,8 @@ export interface Run {
   payer: "license" | "byok" | "self";
   server: string;
   server_id?: string;
+  /** A pseudonym (`p_…`), or `erased`. */
   user_id: string;
-  player?: string;
   language?: string;
   model: string;
   input_tokens: number;
@@ -99,8 +99,8 @@ export interface Run {
 }
 
 export interface PlayerSummary {
+  /** A pseudonym (`p_…`), or `erased`. */
   user_id: string;
-  player?: string;
   language?: string;
   questions: number;
   cost: number;
@@ -110,14 +110,11 @@ export interface PlayerSummary {
 
 export interface PlayerDetail {
   user_id: string;
-  player: string | null;
   language: string | null;
   questions: number;
   cost: number;
-  first_seen: string | null;
-  last_seen: string | null;
-  memories: number | null;
-  session: { messages: number; tokens: number; summary: boolean };
+  first_seen: string;
+  last_seen: string;
   runs: Run[];
 }
 

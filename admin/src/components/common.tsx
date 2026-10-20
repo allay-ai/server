@@ -85,6 +85,17 @@ export const Pager = ({ page, total, limit, onPage }: { page: number; total: num
 };
 
 /** A button that asks first; for anything that deletes, refunds, or blocks. */
+/** A player as the panel knows them: a pseudonym that links to their numbers, or nobody once they were erased. */
+export const PlayerLink = ({ id }: { id: string }) => {
+  const { t } = useTranslation();
+  if (id === "erased") return <span className="text-muted-foreground">{t("player.erased")}</span>;
+  return (
+    <Link to="/players/$id" params={{ id }} className="font-mono text-xs hover:underline">
+      {id}
+    </Link>
+  );
+};
+
 export const Confirm = ({
   label,
   title,
@@ -201,9 +212,7 @@ export const RunsTable = ({ runs, showPlayer = true }: { runs: Run[]; showPlayer
               <TableCell>{t(`runs.kinds.${run.kind}`)}</TableCell>
               {showPlayer && (
                 <TableCell className="max-w-40 truncate">
-                  <Link to="/players/$id" params={{ id: run.user_id }} className="hover:underline">
-                    {run.player ?? run.user_id}
-                  </Link>
+                  <PlayerLink id={run.user_id} />
                 </TableCell>
               )}
               <TableCell className="hidden max-w-56 truncate font-mono text-xs md:table-cell">{run.model}</TableCell>

@@ -51,6 +51,8 @@ export interface RunningTask {
 export interface RunContext {
   mode: Mode;
   platform: Platform;
+  /** Whose server asked: `self` or `license:<id>`. Every piece of player data a run touches belongs to it. */
+  tenant: string;
   userId: string;
   message: string;
   locale?: string;

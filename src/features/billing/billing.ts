@@ -4,7 +4,7 @@ import type { TelegramApi } from "../telegram/telegram.client";
 import { logger } from "../../shared/logging/logger";
 import { API_ERRORS, ApiFailure, apierror } from "../../shared/types/errors";
 import type { Net } from "./byok";
-import { Limiter, byokLimiter, hostedLimiter, licenseLimiter } from "./limits";
+import { Limiter, byokLimiter, byokTotalLimiter, hostedLimiter, licenseLimiter, licenseTotalLimiter } from "./limits";
 import { type Quota, allocate, quotaOf } from "./plans";
 
 /** Everything billing needs; production builds it from the environment, tests from fakes. */
@@ -22,11 +22,18 @@ export interface Billing {
     /** Telegram user ids allowed to /refund. */
     admins: number[];
   };
-  limits: { byok: Limiter; hosted: Limiter; licenses: Limiter };
+  /** Per tenant, except the totals: `byokTotal` and `licensesTotal` count everyone under the key "all". */
+  limits: { byok: Limiter; byokTotal: Limiter; hosted: Limiter; licenses: Limiter; licensesTotal: Limiter };
   now: () => Date;
 }
 
-export const newLimits = () => ({ byok: byokLimiter(), hosted: hostedLimiter(), licenses: licenseLimiter() });
+export const newLimits = () => ({
+  byok: byokLimiter(),
+  byokTotal: byokTotalLimiter(),
+  hosted: hostedLimiter(),
+  licenses: licenseLimiter(),
+  licensesTotal: licenseTotalLimiter(),
+});
 
 export const selfHosted = () => ["1", "true", "yes"].includes((process.env.SELFHOSTED || "").toLowerCase());
 

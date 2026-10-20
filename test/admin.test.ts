@@ -10,11 +10,11 @@ import { handleLicense } from "../src/features/billing/license.controller";
 import { handleChat, handleToolResult } from "../src/features/chat/chat.controller";
 import { handleHealth } from "../src/features/health/health.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
-import { handleMemories, handleMemory, handleSession } from "../src/features/users/users.controller";
-import { scripted, testAdmin, testBilling, testDeps, text, finish } from "./helpers";
+import { handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
+import { AUTH, scripted, testAdmin, testBilling, testDeps, text, finish } from "./helpers";
 
 const handlers = {
-  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram,
+  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram,
   handleAdminInit, handleAdmin,
 };
 let server: Server<undefined> | undefined;
@@ -40,7 +40,9 @@ const start = (options: Parameters<typeof testAdmin>[0] & { billing?: boolean } 
     if (set) cookie = set.split(";")[0].endsWith("=") ? "" : set.split(";")[0];
     return { status: response.status, body: (await response.json().catch(() => null)) as any, headers: response.headers };
   };
-  const init = () => fetch(`${base}/api/v2/admin/init`, { method: "POST" }).then(async (r) => ({ status: r.status, body: (await r.json()) as any }));
+  /** `/allay init` from the backend's own plugin, or from whoever sends [headers]. */
+  const init = (headers: Record<string, string> = AUTH) =>
+    fetch(`${base}/api/v2/admin/init`, { method: "POST", headers }).then(async (r) => ({ status: r.status, body: (await r.json()) as any }));
   const codeOf = (url: string) => new URL(url).searchParams.get("code")!;
   return { admin, audit, advance, call, init, codeOf, signOut: () => (cookie = ""), session: () => cookie, deps };
 };
@@ -79,9 +81,31 @@ describe("setup", () => {
     expect((await call("POST", "/api/admin/setup", { code: second, username: "owner", password: PASSWORD })).body.error.code).toBe("BAD_CODE");
   });
 
+  test("only the backend's own plugin gets a code from /allay init", async () => {
+    const { init, admin } = start();
+    expect(await init({})).toMatchObject({ status: 401, body: { error: { code: "TOKEN_REQUIRED" } } });
+    expect(await init({ Authorization: "Bearer guessed-token-guessed-token-123" })).toMatchObject({ status: 401, body: { error: { code: "TOKEN_INVALID" } } });
+    // Nothing was issued for them: a code someone else got would still work otherwise.
+    expect(admin.setup.check("anything")).toBe(false);
+    expect((await init()).status).toBe(200);
+  });
+
+  test("a self-hosted backend without PLUGIN_TOKEN answers no plugin at all", async () => {
+    const { init } = start();
+    const token = process.env.PLUGIN_TOKEN;
+    try {
+      delete process.env.PLUGIN_TOKEN;
+      expect(await init()).toMatchObject({ status: 503, body: { error: { code: "TOKEN_NOT_SET" } } });
+      process.env.PLUGIN_TOKEN = "too-short";
+      expect(await init({ Authorization: "Bearer too-short" })).toMatchObject({ status: 503, body: { error: { code: "TOKEN_NOT_SET" } } });
+    } finally {
+      process.env.PLUGIN_TOKEN = token;
+    }
+  });
+
   test("a hosted backend refuses /allay init and takes the log's code", async () => {
     const { init, call, admin } = start({ selfHosted: false, billing: true });
-    expect(await init()).toMatchObject({ status: 404, body: { error: { code: "NOT_SELFHOSTED" } } });
+    expect(await init({})).toMatchObject({ status: 401, body: { error: { code: "LICENSE_REQUIRED" } } });
     expect((await call("GET", "/api/admin/state")).body.setup).toBe("log");
     const { code } = admin.setup.issue(null);
     expect((await call("POST", "/api/admin/setup", { code, username: "owner", password: PASSWORD })).status).toBe(201);
@@ -210,7 +234,7 @@ describe("recovery", () => {
 
   test("a hosted backend has no recovery from the game", async () => {
     const { call, init, admin } = await withOwner({ selfHosted: false, billing: true });
-    expect(await init()).toMatchObject({ status: 404, body: { error: { code: "NOT_SELFHOSTED" } } });
+    expect(await init({})).toMatchObject({ status: 401, body: { error: { code: "LICENSE_REQUIRED" } } });
     const { code } = admin.recovery.issue();
     expect((await call("POST", "/api/admin/recover", { code, username: "owner", password: NEW })).body.error.code).toBe("NOT_SELFHOSTED");
   });
@@ -384,5 +408,50 @@ describe("billing in the panel", () => {
     const revenue = (await ctx.call("GET", "/api/admin/billing/revenue?range=30d")).body;
     expect(revenue.totals).toMatchObject({ payments: 1, stars: 500, net_stars: 500, usd: 6.5 });
     expect(revenue.series).toHaveLength(1);
+  });
+});
+
+describe("players in the panel", () => {
+  test("the panel knows players by pseudonym, finds one by id, and an admin erases one on request", async () => {
+    const ctx = await withOwner();
+    const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
+    Object.assign(ctx.deps, { runs });
+    const { call, deps, audit } = ctx;
+    await deps.memories.add({ tenant: "self", userId: "uuid-steve" }, "base at 120 64 -300");
+    const pseudonym = deps.pseudonyms.of("uuid-steve");
+    await runs.add({
+      id: "r1", at: new Date(), kind: "ask", payer: "self", server: "self", user_id: pseudonym, model: "m",
+      input_tokens: 1, output_tokens: 1, reasoning_tokens: 0, cost: 0.001, steps: 1, tools: [], searches: 0, duration_ms: 10, result: "ok",
+    });
+    const list = (await call("GET", "/api/admin/players")).body;
+    expect(list.players.map((p: any) => p.user_id)).toEqual([pseudonym]);
+    expect(JSON.stringify(list)).not.toContain("uuid-steve");
+    // An operator with a player's id finds them; the id itself never shows.
+    expect((await call("GET", "/api/admin/players?search=uuid-steve")).body.players.map((p: any) => p.user_id)).toEqual([pseudonym]);
+    const detail = (await call("GET", `/api/admin/players/${pseudonym}`)).body;
+    expect(detail).toMatchObject({ user_id: pseudonym, questions: 1 });
+    expect(detail.memories).toBeUndefined();
+
+    const erased = await call("POST", "/api/admin/players/erase", { server: "self", user_id: "uuid-steve" });
+    expect(erased.body).toMatchObject({ erased: true, memories: 1, runs: 1 });
+    expect(await deps.memories.list({ tenant: "self", userId: "uuid-steve" })).toEqual([]);
+    expect(runs.all[0].user_id).toBe("erased");
+    const entry = audit.entries.find((e) => e.action === "player.erase")!;
+    expect(entry.target).toBe(`self ${pseudonym}`);
+    expect(JSON.stringify(audit.entries)).not.toContain("uuid-steve");
+    expect((await call("POST", "/api/admin/players/erase", { server: "anything", user_id: "x" })).status).toBe(400);
+  });
+
+  test("a viewer can't erase players or see who paid", async () => {
+    const ctx = await withOwner({ selfHosted: false, billing: true });
+    const { call, deps } = ctx;
+    const now = deps.billing.now();
+    await deps.billing.licenses.create({ id: "lic1", secret_hash: "x", name: "Moonlands", created_at: now, renews: false, telegram_user_id: 7 });
+    expect((await call("GET", "/api/admin/licenses/lic1")).body.license.telegram_user_id).toBe(7);
+    await call("POST", "/api/admin/accounts", { username: "viewer", password: PASSWORD, role: "viewer" });
+    await call("POST", "/api/admin/logout");
+    await call("POST", "/api/admin/login", { username: "viewer", password: PASSWORD });
+    expect((await call("GET", "/api/admin/licenses/lic1")).body.license.telegram_user_id).toBeNull();
+    expect((await call("POST", "/api/admin/players/erase", { server: "self", user_id: "uuid-steve" })).status).toBe(403);
   });
 });

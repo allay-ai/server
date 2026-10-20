@@ -1,4 +1,5 @@
 import { MemoryModel } from "../../entities/memory/memory.model";
+import type { Owner } from "../../shared/types/owner";
 
 export interface Memory {
   id: string;
@@ -6,14 +7,19 @@ export interface Memory {
   created_at: string;
 }
 
-/** Lasting facts per user. Unlike the chat session, they never expire; the player clears them. */
+/**
+ * Lasting facts per player and tenant. Unlike the chat session they outlive a day: the player clears them, and they
+ * go by themselves once the player hasn't asked for MEMORY_DAYS.
+ */
 export interface MemoryStore {
   /** Oldest first. */
-  list(userId: string): Promise<Memory[]>;
-  /** The saved memory, or "full" when the user already has MAX_MEMORIES. */
-  add(userId: string, text: string): Promise<Memory | "full">;
-  remove(userId: string, id: string): Promise<boolean>;
-  clear(userId: string): Promise<number>;
+  list(owner: Owner): Promise<Memory[]>;
+  /** The saved memory, or "full" when the player already has MAX_MEMORIES. */
+  add(owner: Owner, text: string): Promise<Memory | "full">;
+  remove(owner: Owner, id: string): Promise<boolean>;
+  clear(owner: Owner): Promise<number>;
+  /** The player just asked: their memories live another MEMORY_DAYS. */
+  touch(owner: Owner): Promise<void>;
 }
 
 export const MAX_MEMORIES = 30;
@@ -24,47 +30,54 @@ const shortId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 5);
 
 const clean = (text: string) => text.replace(/\s+/g, " ").trim().slice(0, MAX_MEMORY_CHARS);
 
+const query = (owner: Owner) => ({ tenant: owner.tenant, user_id: owner.userId });
+
 export const mongoMemories: MemoryStore = {
-  async list(userId) {
-    const docs = await MemoryModel.find({ user_id: userId }).sort({ created_at: 1 }).limit(MAX_MEMORIES).lean();
+  async list(owner) {
+    const docs = await MemoryModel.find(query(owner)).sort({ created_at: 1 }).limit(MAX_MEMORIES).lean();
     return docs.map((doc) => ({ id: doc.id, text: doc.text, created_at: doc.created_at.toISOString() }));
   },
-  async add(userId, text) {
-    if ((await MemoryModel.countDocuments({ user_id: userId })) >= MAX_MEMORIES) return "full";
-    const doc = await MemoryModel.create({ id: shortId(), user_id: userId, text: clean(text) });
+  async add(owner, text) {
+    if ((await MemoryModel.countDocuments(query(owner))) >= MAX_MEMORIES) return "full";
+    const doc = await MemoryModel.create({ id: shortId(), ...query(owner), text: clean(text) });
     return { id: doc.id, text: doc.text, created_at: doc.created_at.toISOString() };
   },
-  async remove(userId, id) {
-    return (await MemoryModel.deleteOne({ user_id: userId, id })).deletedCount > 0;
+  async remove(owner, id) {
+    return (await MemoryModel.deleteOne({ ...query(owner), id })).deletedCount > 0;
   },
-  async clear(userId) {
-    return (await MemoryModel.deleteMany({ user_id: userId })).deletedCount;
+  async clear(owner) {
+    return (await MemoryModel.deleteMany(query(owner))).deletedCount;
+  },
+  async touch(owner) {
+    await MemoryModel.updateMany(query(owner), { $set: { seen_at: new Date() } });
   },
 };
 
 /** For tests and local runs without MongoDB. */
 export const memoryMemories = (): MemoryStore => {
   const store = new Map<string, Memory[]>();
-  const of = (userId: string) => store.get(userId) ?? [];
+  const at = (owner: Owner) => `${owner.tenant}\n${owner.userId}`;
+  const of = (owner: Owner) => store.get(at(owner)) ?? [];
   return {
-    async list(userId) {
-      return [...of(userId)];
+    async list(owner) {
+      return [...of(owner)];
     },
-    async add(userId, text) {
-      if (of(userId).length >= MAX_MEMORIES) return "full";
+    async add(owner, text) {
+      if (of(owner).length >= MAX_MEMORIES) return "full";
       const memory = { id: shortId(), text: clean(text), created_at: new Date().toISOString() };
-      store.set(userId, [...of(userId), memory]);
+      store.set(at(owner), [...of(owner), memory]);
       return memory;
     },
-    async remove(userId, id) {
-      const before = of(userId);
-      store.set(userId, before.filter((m) => m.id !== id));
-      return before.length !== of(userId).length;
+    async remove(owner, id) {
+      const before = of(owner);
+      store.set(at(owner), before.filter((m) => m.id !== id));
+      return before.length !== of(owner).length;
     },
-    async clear(userId) {
-      const count = of(userId).length;
-      store.delete(userId);
+    async clear(owner) {
+      const count = of(owner).length;
+      store.delete(at(owner));
       return count;
     },
+    async touch() {},
   };
 };

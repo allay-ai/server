@@ -8,26 +8,26 @@ const base = { message: "how do I find diamonds?", user_id: "5627dd98-e6be-3c21-
 
 describe("v2 request validation", () => {
   test("a minimal request gets defaults", () => {
-    const parsed = parseChatRequest(base);
+    const parsed = parseChatRequest(base, "self");
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(parsed.context).toMatchObject({ mode: "ask", platform: "minecraft", tools: [], message: base.message });
   });
 
   test("tools are deduplicated and extra fields are tolerated", () => {
-    const parsed = parseChatRequest({ ...base, tools: ["get_world", "get_world", "future_tool"], extra: 1 });
+    const parsed = parseChatRequest({ ...base, tools: ["get_world", "get_world", "future_tool"], extra: 1 }, "self");
     expect(parsed.ok && parsed.context.tools).toEqual(["get_world", "future_tool"]);
   });
 
   test("an operator's plugin may offer every tool the backend knows", () => {
     const tools = [...GAME_TOOLS, ...OPERATOR_TOOLS];
-    const parsed = parseChatRequest({ ...base, player: { name: "Steve", op: true }, tools });
+    const parsed = parseChatRequest({ ...base, player: { name: "Steve", op: true }, tools }, "self");
     expect(parsed.ok && parsed.context.tools).toEqual(tools);
   });
 
   test("the player's dimension comes through, and an unknown one is dropped instead of refused", () => {
     const dimension = (value: unknown) => {
-      const parsed = parseChatRequest({ ...base, player: { name: "Steve", dimension: value } });
+      const parsed = parseChatRequest({ ...base, player: { name: "Steve", dimension: value } }, "self");
       return parsed.ok ? parsed.context.player?.dimension ?? "none" : "refused";
     };
     expect(dimension("the_nether")).toBe("the_nether");
@@ -37,7 +37,7 @@ describe("v2 request validation", () => {
 
   test("questions are private unless the plugin says otherwise, and askx always is", () => {
     const visibility = (body: object) => {
-      const parsed = parseChatRequest({ ...base, ...body });
+      const parsed = parseChatRequest({ ...base, ...body }, "self");
       return parsed.ok ? parsed.context.visibility : "error";
     };
     expect(visibility({})).toBe("private");
@@ -48,7 +48,7 @@ describe("v2 request validation", () => {
 
   test("errors use the v1 codes", () => {
     const code = (body: unknown) => {
-      const parsed = parseChatRequest(body);
+      const parsed = parseChatRequest(body, "self");
       return parsed.ok ? "ok" : parsed.error.code;
     };
     expect(code({ ...base, message: "   " })).toBe("EMPTY_QUESTION");

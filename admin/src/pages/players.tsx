@@ -4,7 +4,8 @@ import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Confirm, Definition, Empty, ErrorBox, Loading, PageHeader, Pager, RunsTable, StatTile, TableFrame } from "@/components/common";
+import { Confirm, Definition, Empty, ErrorBox, Loading, PageHeader, Pager, PlayerLink, RunsTable, StatTile, TableFrame } from "@/components/common";
+import { FormField } from "@/components/form-field";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -70,10 +71,8 @@ export const PlayersPage = () => {
                 <TableBody>
                   {query.data.players.map((p) => (
                     <TableRow key={p.user_id}>
-                      <TableCell className="max-w-48">
-                        <Link to="/players/$id" params={{ id: p.user_id }} className="block truncate font-medium hover:underline">
-                          {p.player ?? p.user_id}
-                        </Link>
+                      <TableCell className="max-w-48 truncate">
+                        <PlayerLink id={p.user_id} />
                       </TableCell>
                       <TableCell className="tabular text-right">{number(p.questions)}</TableCell>
                       <TableCell className="tabular text-right">{usd(p.cost)}</TableCell>
@@ -89,28 +88,63 @@ export const PlayersPage = () => {
             <Pager page={page} total={query.data.total} limit={LIMIT} onPage={(next) => navigate({ search: { search: search || undefined, page: next } })} />
           </>
         ))}
+      <EraseCard />
     </>
+  );
+};
+
+/** A player asked to be forgotten: the server and their id, which the panel itself never shows. */
+const EraseCard = () => {
+  const { t } = useTranslation();
+  const can = useCan();
+  const client = useQueryClient();
+  const [server, setServer] = useState("self");
+  const [userId, setUserId] = useState("");
+  const erase = useMutation({
+    mutationFn: () => api<{ memories: number; runs: number }>("/players/erase", { method: "POST", body: JSON.stringify({ server: server.trim(), user_id: userId.trim() }) }),
+    onSuccess: async (result) => {
+      toast.success(t("players.erase.done", { memories: result.memories, runs: result.runs }));
+      setUserId("");
+      await client.invalidateQueries({ queryKey: ["players"] });
+    },
+    onError: (error) => showErrors(error),
+  });
+  if (!can("admin")) return null;
+  return (
+    <Card className="mt-6 gap-4">
+      <CardHeader>
+        <CardTitle className="text-base">{t("players.erase.title")}</CardTitle>
+        <CardDescription>{t("players.erase.description")}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-end">
+        <FormField id="erase-server" label={t("players.erase.server")} hint={t("players.erase.serverHint")}>
+          <Input id="erase-server" value={server} onChange={(e) => setServer(e.target.value)} autoComplete="off" />
+        </FormField>
+        <FormField id="erase-player" label={t("players.erase.player")}>
+          <Input id="erase-player" value={userId} onChange={(e) => setUserId(e.target.value)} autoComplete="off" />
+        </FormField>
+        <Confirm
+          label={t("players.erase.action")}
+          title={t("players.erase.confirmTitle")}
+          text={t("players.erase.confirmText")}
+          action={t("players.erase.action")}
+          destructive
+          disabled={!server.trim() || !userId.trim()}
+          onConfirm={() => erase.mutateAsync()}
+        />
+      </CardContent>
+    </Card>
   );
 };
 
 export const PlayerPage = () => {
   const { t } = useTranslation();
   const { id } = useParams({ from: "/app/players/$id" });
-  const can = useCan();
-  const client = useQueryClient();
   const query = useQuery({ queryKey: ["player", id], queryFn: () => api<PlayerDetail>(`/players/${encodeURIComponent(id)}`) });
-  const act = useMutation({
-    mutationFn: (what: "memories" | "session") => api(`/players/${encodeURIComponent(id)}/${what}`, { method: "DELETE" }),
-    onSuccess: async (_, what) => {
-      toast.success(t(what === "memories" ? "player.memoriesDeleted" : "player.sessionReset"));
-      await client.invalidateQueries({ queryKey: ["player", id] });
-    },
-    onError: (error) => showErrors(error),
-  });
   const player = query.data;
   return (
     <>
-      <PageHeader title={player?.player ?? id} description={t("player.description", { id })} />
+      <PageHeader title={id} description={t("player.description")} />
       {query.isPending && <Loading />}
       {query.error && <ErrorBox error={query.error} />}
       {player && (
@@ -118,44 +152,20 @@ export const PlayerPage = () => {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatTile label={t("player.questions")} value={number(player.questions)} />
             <StatTile label={t("player.cost")} value={usd(player.cost)} />
-            <StatTile label={t("player.memories")} value={player.memories === null ? "—" : number(player.memories)} />
-            <StatTile label={t("player.session")} value={t("player.sessionSize", { count: player.session.messages })} hint={t("player.tokens", { count: player.session.tokens })} />
           </div>
           <Card className="gap-4">
             <CardHeader>
               <CardTitle className="text-base">{t("player.details")}</CardTitle>
               <CardDescription>{t("player.privacy")}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col gap-5">
+            <CardContent>
               <Definition
                 items={[
                   [t("player.language"), player.language ?? "—"],
                   [t("player.firstSeen"), dateTime(player.first_seen)],
                   [t("player.lastSeen"), dateTime(player.last_seen)],
-                  [t("player.summary"), player.session.summary ? t("common.yes") : t("common.no")],
                 ]}
               />
-              {can("admin") && (
-                <div className="flex flex-wrap gap-2">
-                  <Confirm
-                    label={t("player.deleteMemories")}
-                    title={t("player.deleteMemoriesTitle")}
-                    text={t("player.deleteMemoriesText", { count: player.memories ?? 0 })}
-                    action={t("player.deleteMemories")}
-                    destructive
-                    disabled={!player.memories}
-                    onConfirm={() => act.mutateAsync("memories")}
-                  />
-                  <Confirm
-                    label={t("player.resetSession")}
-                    title={t("player.resetSessionTitle")}
-                    text={t("player.resetSessionText")}
-                    action={t("player.resetSession")}
-                    disabled={!player.session.messages && !player.session.summary}
-                    onConfirm={() => act.mutateAsync("session")}
-                  />
-                </div>
-              )}
             </CardContent>
           </Card>
           <section className="flex flex-col gap-3">

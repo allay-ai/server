@@ -135,36 +135,33 @@
   },
   "players": {
     "title": "Players",
-    "description": "Everyone who asked Allay, newest first.",
-    "search": "Search by name or id",
+    "description": "Everyone who asked Allay, newest first, by pseudonym: the panel never shows a player's name or id.",
+    "search": "Search by pseudonym or player id",
     "none": "Nobody has asked yet.",
     "noMatch": "No player matches that.",
-    "columns": { "player": "Player", "questions": "Questions", "cost": "Cost", "language": "Language", "lastSeen": "Last question" }
+    "columns": { "player": "Player", "questions": "Questions", "cost": "Cost", "language": "Language", "lastSeen": "Last question" },
+    "erase": {
+      "title": "Erase a player",
+      "description": "When a player asks to be forgotten: their memories, session, and agents' threads go, and their runs keep only numbers.",
+      "server": "Server",
+      "serverHint": "self, or license:<id> on a hosted backend",
+      "player": "Player id (UUID)",
+      "action": "Erase",
+      "confirmTitle": "Erase everything about this player on this server?",
+      "confirmText": "This can't be undone. The audit log keeps that it happened, under the player's pseudonym.",
+      "done": "Erased {{memories}} memories; {{runs}} runs now count as nobody's."
+    }
   },
   "player": {
-    "description": "Player id {{id}}",
+    "description": "A pseudonym: the same player always gets it, and nobody can tell who it is from it.",
     "questions": "Questions",
     "cost": "Cost",
-    "memories": "Memories",
-    "session": "Session",
-    "sessionSize_one": "{{count}} message",
-    "sessionSize_other": "{{count}} messages",
-    "tokens": "about {{count}} tokens",
     "details": "Details",
-    "privacy": "What the player asked, what Allay remembers about them, and their session stay theirs: the panel shows only how many.",
+    "privacy": "What the player asked, what Allay remembers about them, and their session stay theirs: the panel shows only numbers.",
     "language": "Language",
     "firstSeen": "First question",
     "lastSeen": "Last question",
-    "summary": "Session summary",
-    "deleteMemories": "Delete all memories",
-    "deleteMemoriesTitle": "Delete all of this player's memories?",
-    "deleteMemoriesText_one": "Allay forgets the {{count}} fact it keeps about this player. They can't get it back.",
-    "deleteMemoriesText_other": "Allay forgets the {{count}} facts it keeps about this player. They can't get them back.",
-    "memoriesDeleted": "Memories deleted.",
-    "resetSession": "Reset the session",
-    "resetSessionTitle": "Reset this player's session?",
-    "resetSessionText": "Their next question starts a fresh conversation, as /ask new does. Memories stay.",
-    "sessionReset": "Session reset.",
+    "erased": "erased",
     "runs": "Recent runs"
   },
   "servers": {
@@ -343,7 +340,8 @@
       "tracing": { "title": "Tracing", "description": "Which runs leave a trace, and for how long." },
       "billing": { "title": "Billing and plans", "description": "Prices, budgets, and the limits for servers with their own key." },
       "telegram": { "title": "Telegram bot", "description": "The bot that takes payments." },
-      "address": { "title": "Public address", "description": "Where people and Telegram reach this backend." }
+      "address": { "title": "Public address", "description": "Where people and Telegram reach this backend." },
+      "access": { "title": "Access", "description": "Who may call this backend, and which proxies may name a client's address." }
     },
     "source": { "env": "Set by the environment", "stored": "Saved here", "default": "Default" },
     "restart": "Applies after a restart",

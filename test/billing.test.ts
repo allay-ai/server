@@ -4,7 +4,7 @@ import { APICallError } from "ai";
 import { routes } from "../src/application/routes";
 import { handleAsk } from "../src/features/ask/ask.controller";
 import { handleAskX } from "../src/features/askx/askx.controller";
-import type { Billing } from "../src/features/billing/billing";
+import { type Billing, createLicense } from "../src/features/billing/billing";
 import { isPrivateAddress, resetChecks } from "../src/features/billing/byok";
 import { handleLicense } from "../src/features/billing/license.controller";
 import { Limiter } from "../src/features/billing/limits";
@@ -14,12 +14,12 @@ import { handleHealth } from "../src/features/health/health.controller";
 import { handleUpdate } from "../src/features/telegram/telegram.bot";
 import type { TelegramApi } from "../src/features/telegram/telegram.client";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
-import { handleMemories, handleMemory, handleSession } from "../src/features/users/users.controller";
+import { handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
 import type { GrantRecord } from "../src/infrastructure/billing/licenses";
-import { fakeNet, finish, readSse, scripted, testBilling, testDeps, text, toolCall } from "./helpers";
+import { AUTH, fakeNet, finish, readSse, scripted, testBilling, testDeps, text, toolCall } from "./helpers";
 
 const handlers = {
-  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram,
+  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram,
 };
 let server: Server<undefined> | undefined;
 
@@ -34,7 +34,11 @@ const start = (deps: ReturnType<typeof testDeps>) => {
   return `http://localhost:${server.port}`;
 };
 
-const chat = (base: string, body: object, headers: Record<string, string> = {}) =>
+/** A license made straight in the store, as `POST /api/v2/license` would: what a BYOK plugin sends as its identity. */
+const licensed = async (billing: Billing) => ({ Authorization: `Bearer ${(await createLicense(billing)).license}` });
+
+/** A question; without headers, from a self-hosted backend's own plugin. */
+const chat = (base: string, body: object, headers: Record<string, string> = AUTH) =>
   fetch(`${base}/api/v2/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream", ...headers },
@@ -181,6 +185,29 @@ describe("licenses", () => {
     expect((await body(wrong)).error.code).toBe("LICENSE_INVALID");
   });
 
+  test("new licenses count per client address, read from a trusted proxy only", async () => {
+    const billing = testBilling({ enabled: true });
+    const base = start(testDeps(scripted([]).model, { billing }));
+    const make = (forwarded: string) => fetch(`${base}/api/v2/license`, { method: "POST", headers: { "X-Forwarded-For": forwarded } });
+    // Nobody is trusted: the header is the client's own word, and every request counts against the peer.
+    for (let i = 0; i < 10; i++) expect((await make(`203.0.113.${i}`)).status).toBe(200);
+    expect((await make("203.0.113.99")).status).toBe(429);
+
+    process.env.TRUSTED_PROXIES = "127.0.0.1, ::1";
+    try {
+      const behind = start(testDeps(scripted([]).model, { billing: testBilling({ enabled: true }) }));
+      const via = (forwarded: string) => fetch(`${behind}/api/v2/license`, { method: "POST", headers: { "X-Forwarded-For": forwarded } });
+      for (let i = 0; i < 10; i++) expect((await via("198.51.100.7")).status).toBe(200);
+      expect((await via("198.51.100.7")).status).toBe(429);
+      // Behind the proxy, another client has its own count; a value the client put first doesn't fool it.
+      expect((await via("198.51.100.8")).status).toBe(200);
+      expect((await via("198.51.100.7, 198.51.100.9")).status).toBe(200);
+      expect((await via("198.51.100.9, 198.51.100.7")).status).toBe(429);
+    } finally {
+      delete process.env.TRUSTED_PROXIES;
+    }
+  });
+
   test("without a bot there are no payment links", async () => {
     const billing = testBilling({ enabled: true });
     billing.bot.username = undefined;
@@ -194,8 +221,8 @@ describe("licenses", () => {
 describe("the subscription gate", () => {
   test("no license, an unpaid one, then a paid one: each gets its answer", async () => {
     const h = await hosted();
-    const none = await chat(h.base, {});
-    expect(none.status).toBe(402);
+    const none = await chat(h.base, {}, {});
+    expect(none.status).toBe(401);
     expect((await body(none)).error.code).toBe("LICENSE_REQUIRED");
     const unpaid = await chat(h.base, {}, h.auth);
     expect((await body(unpaid)).error.code).toBe("SUBSCRIPTION_INACTIVE");
@@ -255,7 +282,7 @@ describe("the subscription gate", () => {
   test("v1 endpoints need a license or a key too", async () => {
     const h = await hosted();
     const response = await fetch(`${h.base}/api/ask`, { method: "POST", body: JSON.stringify({ question: "hi" }) });
-    expect(response.status).toBe(402);
+    expect(response.status).toBe(401);
     expect((await body(response)).code).toBe("LICENSE_REQUIRED");
   });
 });
@@ -277,10 +304,12 @@ describe("bring your own key", () => {
     const deps = testDeps(model, { billing: testBilling({ enabled: true, net: fakeNet(catalog) }) });
     const base = start(deps);
     const events = await readSse(
-      await chat(base, { provider: { base_url: "https://api.example.com/v1", model: "llama-4" }, tools: ["get_world"] }, { "X-Provider-Key": "sk-own-key-123456" }),
+      await chat(base, { provider: { base_url: "https://api.example.com/v1", model: "llama-4" }, tools: ["get_world"] }, { ...(await licensed(deps.billing)), "X-Provider-Key": "sk-own-key-123456" }),
     );
     expect(events.at(-1)!.event).toBe("done");
-    expect(deps.lastProvider).toEqual({ baseURL: "https://api.example.com/v1", apiKey: "sk-own-key-123456", model: "llama-4", searchModel: undefined });
+    expect(deps.lastProvider).toMatchObject({ baseURL: "https://api.example.com/v1", apiKey: "sk-own-key-123456", model: "llama-4", searchModel: undefined });
+    // Its requests go through the guard that checks every address and refuses redirects.
+    expect(typeof (deps.lastProvider as { fetch?: unknown }).fetch).toBe("function");
     expect(offered[0]).not.toContain("search_web");
     expect(offered[0]).toContain("get_world");
   });
@@ -289,14 +318,14 @@ describe("bring your own key", () => {
     const { model, offered } = scripted([[...text("Hi."), finish()]]);
     const deps = testDeps(model, { billing: testBilling({ enabled: true, net: fakeNet(catalog) }) });
     const base = start(deps);
-    await readSse(await chat(base, {}, { "X-OpenRouter-Token": "sk-or-old-header-1" }));
+    await readSse(await chat(base, {}, { ...(await licensed(deps.billing)), "X-OpenRouter-Token": "sk-or-old-header-1" }));
     expect(deps.lastProvider).toMatchObject({ baseURL: "https://openrouter.ai/api/v1", apiKey: "sk-or-old-header-1", model: "openai/gpt-6-luna" });
     expect(offered[0]).toContain("search_web");
   });
 
   const refusedWith = async (block: object, net = fakeNet(catalog), key = "sk-or-v1-abcdef123456") => {
     const deps = testDeps(scripted([[...text("Hi."), finish()]]).model, { billing: testBilling({ enabled: true, net }) });
-    const response = await chat(start(deps), { provider: block }, { "X-Provider-Key": key });
+    const response = await chat(start(deps), { provider: block }, { ...(await licensed(deps.billing)), "X-Provider-Key": key });
     return { status: response.status, error: (await body(response)).error };
   };
 
@@ -335,29 +364,56 @@ describe("bring your own key", () => {
     };
     const deps = testDeps(failing, { billing: testBilling({ enabled: true }) });
     const base = start(deps);
-    const events = await readSse(await chat(base, { provider: { base_url: "https://api.example.com/v1", model: "m" } }, { "X-Provider-Key": key }));
+    const events = await readSse(await chat(base, { provider: { base_url: "https://api.example.com/v1", model: "m" } }, { ...(await licensed(deps.billing)), "X-Provider-Key": key }));
     const error = events.find((e) => e.event === "error")!;
     expect(error.data.code).toBe("PROVIDER_AUTH_FAILED");
     expect(JSON.stringify(events)).not.toContain(key);
   });
 
-  test("a server gets 20 questions a minute", async () => {
+  test("a server gets 20 questions a minute, counted by its license, not by what the body claims", async () => {
     const deps = testDeps(scripted([[...text("Hi."), finish()]]).model, { billing: testBilling({ enabled: true, net: fakeNet(catalog) }) });
     const base = start(deps);
-    const headers = { "X-Provider-Key": "sk-or-v1-abcdef123456" };
+    const headers = { ...(await licensed(deps.billing)), "X-Provider-Key": "sk-or-v1-abcdef123456" };
     for (let i = 0; i < 20; i++) await readSse(await chat(base, {}, headers));
     const response = await chat(base, {}, headers);
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBeTruthy();
     expect((await body(response)).error).toMatchObject({ code: "RATE_LIMITED", retry_after: expect.any(Number) });
-    // Another server has its own count.
-    expect((await chat(base, { server: { id: "srv-2" } }, headers)).status).toBe(200);
+    // Another server id in the body changes nothing: before 6.0 it was a fresh count for the asking.
+    expect((await chat(base, { server: { id: "srv-2" } }, headers)).status).toBe(429);
+    // Another license is another server, with its own count.
+    expect((await chat(base, {}, { ...(await licensed(deps.billing)), "X-Provider-Key": "sk-or-v1-abcdef123456" })).status).toBe(200);
+  });
+
+  test("a key alone identifies nobody: without a license a hosted backend refuses it", async () => {
+    const deps = testDeps(scripted([[...text("Hi."), finish()]]).model, { billing: testBilling({ enabled: true, net: fakeNet(catalog) }) });
+    const response = await chat(start(deps), {}, { "X-Provider-Key": "sk-or-v1-abcdef123456" });
+    expect(response.status).toBe(401);
+    expect((await body(response)).error.code).toBe("LICENSE_REQUIRED");
+  });
+
+  test("a blocked server can't ask with its own key either", async () => {
+    const deps = testDeps(scripted([[...text("Hi."), finish()]]).model, { billing: testBilling({ enabled: true, net: fakeNet(catalog) }) });
+    const made = await createLicense(deps.billing);
+    await deps.billing.licenses.update(made.license_id, { blocked_at: new Date() });
+    const response = await chat(start(deps), {}, { Authorization: `Bearer ${made.license}`, "X-Provider-Key": "sk-or-v1-abcdef123456" });
+    expect((await body(response)).error.code).toBe("SUBSCRIPTION_INACTIVE");
+  });
+
+  test("free servers together never take more than BYOK_ACTIVE_RUNS slots", () => {
+    const deps = testDeps(scripted([]).model, { billing: testBilling({ enabled: true }) });
+    const total = deps.billing.limits.byokTotal;
+    const taken = Array.from({ length: 100 }, () => total.take("all"));
+    expect(taken.every((t) => t.ok)).toBe(true);
+    expect(total.take("all").ok).toBe(false);
+    if (taken[0].ok) taken[0].release();
+    expect(total.take("all").ok).toBe(true);
   });
 
   test("a self-hosted backend takes any URL and has no limits", async () => {
     const deps = testDeps(scripted([[...text("Hi."), finish()]]).model, { billing: testBilling({ enabled: false }) });
     const base = start(deps);
-    const events = await readSse(await chat(base, { provider: { base_url: "http://localhost:11434/v1", model: "qwen3" } }, { "X-Provider-Key": "ollama-local-key" }));
+    const events = await readSse(await chat(base, { provider: { base_url: "http://localhost:11434/v1", model: "qwen3" } }, { ...AUTH, "X-Provider-Key": "ollama-local-key" }));
     expect(events.at(-1)!.event).toBe("done");
     expect(deps.lastProvider).toMatchObject({ baseURL: "http://localhost:11434/v1" });
     expect(deps.lastModel).toBeUndefined();

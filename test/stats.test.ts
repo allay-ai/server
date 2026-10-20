@@ -16,7 +16,7 @@ describe("runs", () => {
     ]);
     const deps = { ...testDeps(model), runs: memoryRuns() };
     await runAllay(
-      { mode: "ask", platform: "minecraft", userId: "u-1", message: SECRET_QUESTION, tools: [], player: { name: "Steve" }, locale: "en_us", server: { id: "srv-1" } },
+      { mode: "ask", platform: "minecraft", tenant: "license:lic1", userId: "u-1", message: SECRET_QUESTION, tools: [], player: { name: "Steve" }, locale: "en_us", server: { id: "srv-1" } },
       deps,
       { runId: "run-1", emit: silent, payer: { kind: "license", id: "lic1" } },
     );
@@ -27,8 +27,7 @@ describe("runs", () => {
       payer: "license",
       server: "license:lic1",
       server_id: "srv-1",
-      user_id: "u-1",
-      player: "Steve",
+      user_id: deps.pseudonyms.of("u-1"),
       language: "en_us",
       model: "mock-model",
       steps: 2,
@@ -38,6 +37,10 @@ describe("runs", () => {
     expect(run.tools.map((t) => t.name).sort()).toEqual(["exact_calculations", "search_web"]);
     expect(run.cost).toBeGreaterThan(0);
     const raw = JSON.stringify(deps.runs.all);
+    // The player is a pseudonym: neither their id nor their name is kept.
+    expect(run.user_id).toMatch(/^p_[0-9a-f]{20}$/);
+    expect(raw).not.toContain("u-1");
+    expect(raw).not.toContain("Steve");
     expect(raw).not.toContain("diamonds");
     expect(raw).not.toContain("oak");
     expect(raw).not.toContain("1+1");
@@ -46,7 +49,7 @@ describe("runs", () => {
   test("a failed run is counted with its error code", async () => {
     const { model } = scripted([[{ type: "error", error: new Error("boom") }]]);
     const deps = { ...testDeps(model), runs: memoryRuns() };
-    await runAllay({ mode: "ask", platform: "minecraft", userId: "u-1", message: "hi", tools: [], visibility: "public" }, deps, { runId: "run-2", emit: silent }).catch(() => undefined);
+    await runAllay({ mode: "ask", platform: "minecraft", tenant: "self", userId: "u-1", message: "hi", tools: [], visibility: "public" }, deps, { runId: "run-2", emit: silent }).catch(() => undefined);
     expect(deps.runs.all[0]).toMatchObject({ kind: "askall", payer: "self", server: "self", result: "error", error_code: "AI_REQUEST_FAILED" });
   });
 
@@ -93,7 +96,7 @@ describe("runs", () => {
   test("players and servers sum their runs", async () => {
     const runs = memoryRuns();
     const run = (id: string, user: string, at: string, cost = 0.002): RunRecord => ({
-      id, at: new Date(at), kind: "ask", payer: "byok", server: "byok:abc", server_id: "srv", user_id: user, player: user.toUpperCase(), model: "m",
+      id, at: new Date(at), kind: "ask", payer: "byok", server: "byok:abc", server_id: "srv", user_id: user, model: "m",
       input_tokens: 1, output_tokens: 1, reasoning_tokens: 0, cost, steps: 1, tools: [], searches: 0, duration_ms: 100, result: "ok",
     });
     await runs.add(run("1", "u1", "2026-10-10T00:00:00Z"));
@@ -101,7 +104,7 @@ describe("runs", () => {
     await runs.add(run("3", "u1", "2026-10-12T00:00:00Z"));
     const { players, total } = await runs.players({ limit: 10, skip: 0 });
     expect(total).toBe(2);
-    expect(players[0]).toMatchObject({ user_id: "u1", player: "U1", questions: 2 });
+    expect(players[0]).toMatchObject({ user_id: "u1", questions: 2 });
     expect(await runs.servers({ limit: 10 })).toEqual([expect.objectContaining({ server: "byok:abc", server_id: "srv", questions: 3, players: 2 })]);
   });
 });

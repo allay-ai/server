@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DIMENSIONS, type RunContext, TASK_KINDS, TASK_STATES } from "../../agent/agent.types";
 import type { ProviderBlock } from "../billing/gate";
 import { API_ERRORS, type ApiError, apierror } from "../../shared/types/errors";
+import { USER_ID } from "../../shared/types/owner";
 
 const text = (max: number) => z.string().max(max).optional();
 const taskId = z.string().regex(/^[a-z0-9]{1,16}$/);
@@ -12,8 +13,8 @@ export const chatRequestSchema = z.object({
   message: z.string(),
   platform: z.literal("minecraft").default("minecraft"),
   visibility: z.enum(["private", "public"]).default("private"),
-  // No colon: "public:<server id>" names a server's shared thread, and a player must not write into it as themselves.
-  user_id: z.string().min(1).max(64).regex(/^[^:]+$/),
+  // Letters, digits, - and _ only: ids go into Redis keys, and no colon may let one id reach another's thread.
+  user_id: z.string().regex(USER_ID, "1–64 letters, digits, - or _"),
   locale: text(16),
   timezone: text(64),
   // dimension since 5.1: where the player stands when they ask. Unknown values are dropped, not refused, for future dimensions.
@@ -46,6 +47,7 @@ const LIMITS = { ask: 1000, askx: 500, task: 2000 } as const;
 /** Validates a v2 body into a run context, or explains what's wrong with it in v1 error codes. Who pays is decided later. */
 export const parseChatRequest = (
   body: unknown,
+  tenant: string,
 ): { ok: true; context: RunContext; provider?: ProviderBlock } | { ok: false; error: ApiError } => {
   const parsed = chatRequestSchema.safeParse(body);
   if (!parsed.success) {
@@ -66,6 +68,7 @@ export const parseChatRequest = (
     context: {
       mode: request.mode,
       platform: "minecraft",
+      tenant,
       userId: request.user_id,
       message,
       locale: request.locale,

@@ -35,6 +35,8 @@ export interface TraceStore {
   list(options: { before?: Date; limit: number }): Promise<TraceSummary[]>;
   /** The trace of a run, by its trace id or the run's id. */
   get(id: string): Promise<{ trace: TraceSummary; spans: SpanView[] } | null>;
+  /** Erasure: deletes the whole traces of these runs, prompts and answers with them. Returns how many spans went. */
+  forget(runIds: string[]): Promise<number>;
 }
 
 interface RawSpan {
@@ -141,6 +143,16 @@ export const mongoTraces: TraceStore = {
     const own = spans.filter((s) => s.traceId === root.traceId);
     return { trace: summaryOf(root, own), spans: own.map(spanView) };
   },
+  async forget(runIds) {
+    if (!runIds.length) return 0;
+    const collection = mongoose.connection.db!.collection<RawSpan>(SPANS);
+    let deleted = 0;
+    for (let i = 0; i < runIds.length; i += 500) {
+      const traceIds = await collection.distinct("traceId", { runId: { $in: runIds.slice(i, i + 500) } });
+      if (traceIds.length) deleted += (await collection.deleteMany({ traceId: { $in: traceIds } })).deletedCount;
+    }
+    return deleted;
+  },
 };
 
 /** For tests: spans as Mastra would store them, read through the same filter. */
@@ -159,5 +171,11 @@ export const memoryTraces = (spans: RawSpan[] = []): TraceStore & { spans: RawSp
     if (!root) return null;
     const trace = spans.filter((s) => s.traceId === root.traceId).sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime());
     return { trace: summaryOf(root, trace), spans: trace.map(spanView) };
+  },
+  async forget(runIds) {
+    const traceIds = new Set(spans.filter((s) => s.runId && runIds.includes(s.runId)).map((s) => s.traceId));
+    const before = spans.length;
+    spans.splice(0, spans.length, ...spans.filter((s) => !traceIds.has(s.traceId)));
+    return before - spans.length;
   },
 });

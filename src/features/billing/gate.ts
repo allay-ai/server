@@ -1,8 +1,9 @@
 import { type ByokProvider, OPENROUTER_URL, openrouterToken } from "../../infrastructure/providers/openrouter/openrouter.client";
 import { API_ERRORS, ApiFailure, apierror } from "../../shared/types/errors";
 import type { RunPayer } from "../../agent/allay";
-import { type Billing, charge, quotaFor, refusal, verifyLicense } from "./billing";
-import { checkUrl, preflight } from "./byok";
+import { type Billing, charge, quotaFor, refusal } from "./billing";
+import { checkUrl, guardedFetch, preflight } from "./byok";
+import type { Caller } from "../auth/caller";
 import type { Take } from "./limits";
 
 /** The provider block of a v2 request; the key itself comes in a header. */
@@ -25,9 +26,6 @@ export interface Admission {
 
 const nothing = () => {};
 
-/** Names a server's own key in the statistics without keeping the key: a digest of where it goes and the key. */
-const fingerprint = (provider: ByokProvider) => new Bun.CryptoHasher("sha256").update(`${provider.baseURL}\n${provider.apiKey}`).digest("hex").slice(0, 12);
-
 const limited = (take: Take): ApiFailure | undefined =>
   take.ok ? undefined : new ApiFailure({ ...apierror(API_ERRORS.RATE_LIMITED), retry_after: take.retryAfter });
 
@@ -46,52 +44,69 @@ const byokOf = (headers: Headers, block?: ProviderBlock): ByokProvider | undefin
   return token ? openrouterToken(token) : undefined;
 };
 
+/** Takes from each limiter in turn; a refusal gives back what the earlier ones took. */
+const takeAll = (takes: Array<() => Take>): { ok: true; release: () => void } | { ok: false; error: ApiFailure } => {
+  const taken: Array<() => void> = [];
+  for (const take of takes) {
+    const result = take();
+    if (!result.ok) {
+      for (const release of taken) release();
+      return { ok: false, error: limited(result)! };
+    }
+    taken.push(result.release);
+  }
+  return { ok: true, release: () => taken.forEach((release) => release()) };
+};
+
 /**
- * Decides who pays before a run starts. A server's own key wins; without one, a backend with billing on
- * wants a license with money left, and a self-hosted one runs everyone on its own key, as before 5.0.
- * `serverKey` names the server for limits: its `server.id`, or the client address.
+ * Decides who pays before a run starts, for a caller `identify` already let in. A server's own key wins; without one,
+ * a backend with billing on wants the caller's license to have money left, and a self-hosted one runs everyone on its
+ * own key, as before 5.0. Limits count per tenant, never per anything the request body claims.
  */
 export const admit = async (
   billing: Billing,
   headers: Headers,
   block: ProviderBlock | undefined,
-  serverKey: string,
+  caller: Caller,
 ): Promise<{ ok: true; admission: Admission } | { ok: false; error: ApiFailure }> => {
   const byok = byokOf(headers, block);
+  const license = caller.license;
+  // A blocked server is blocked whoever pays: its own key doesn't buy its way past an operator's decision.
+  if (billing.enabled && (!license || license.blocked_at)) return { ok: false, error: new ApiFailure(apierror(license ? API_ERRORS.SUBSCRIPTION_INACTIVE : API_ERRORS.LICENSE_REQUIRED)) };
   if (byok) {
     let release = nothing;
     if (billing.enabled) {
       const rejected = await checkUrl(byok.baseURL, billing.net);
       if (rejected) return { ok: false, error: rejected };
+      // Every later request to that host goes through the same check, without redirects: no way into our network.
+      byok.fetch = guardedFetch(billing.net);
       // Before the check, which calls the provider: a server over its limit shouldn't make us call anyone.
-      const take = billing.limits.byok.take(serverKey, billing.now().getTime());
-      if (!take.ok) return { ok: false, error: limited(take)! };
-      release = take.release;
+      const now = billing.now().getTime();
+      const took = takeAll([() => billing.limits.byok.take(caller.tenant, now), () => billing.limits.byokTotal.take("all", now)]);
+      if (!took.ok) return took;
+      release = took.release;
     }
     const failure = await preflight(byok, billing.net);
     if (failure) {
       release();
       return { ok: false, error: failure };
     }
-    return { ok: true, admission: { provider: byok, release, payer: { kind: "byok", id: fingerprint(byok) } } };
+    return { ok: true, admission: { provider: byok, release, payer: { kind: "byok" } } };
   }
   // A self-hosted backend serves its own servers, so their plugin may pick a model per player; a hosted one keeps its own.
   if (!billing.enabled) return { ok: true, admission: { release: nothing, payer: { kind: "self" }, ...(block?.model?.trim() ? { model: block.model.trim() } : {}) } };
 
-  const license = await verifyLicense(billing, headers.get("Authorization"));
-  if (license instanceof ApiFailure) return { ok: false, error: license };
-  if (license.blocked_at) return { ok: false, error: new ApiFailure(apierror(API_ERRORS.SUBSCRIPTION_INACTIVE)) };
-  const refused = refusal(await quotaFor(billing, license));
+  const refused = refusal(await quotaFor(billing, license!));
   if (refused) return { ok: false, error: refused };
-  const take = billing.limits.hosted.take(license.id, billing.now().getTime());
+  const take = billing.limits.hosted.take(license!.id, billing.now().getTime());
   if (!take.ok) return { ok: false, error: limited(take)! };
   return {
     ok: true,
     admission: {
       release: take.release,
-      payer: { kind: "license", id: license.id },
+      payer: { kind: "license", id: license!.id },
       spend: (usd) => {
-        if (usd > 0) void charge(billing, license.id, usd);
+        if (usd > 0) void charge(billing, license!.id, usd);
       },
     },
   };

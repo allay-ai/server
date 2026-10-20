@@ -1,32 +1,43 @@
 import { describe, expect, test } from "bun:test";
 import { systemPrompt } from "../src/agent/prompts";
 import { MAX_MEMORIES, memoryMemories } from "../src/infrastructure/memory/memory";
+import { owner } from "./helpers";
 
 describe("memories", () => {
   test("are capped per player and trimmed to 200 characters", async () => {
     const store = memoryMemories();
-    for (let i = 0; i < MAX_MEMORIES; i++) expect(await store.add("p1", `fact ${i}`)).not.toBe("full");
-    expect(await store.add("p1", "one too many")).toBe("full");
+    for (let i = 0; i < MAX_MEMORIES; i++) expect(await store.add(owner("p1"), `fact ${i}`)).not.toBe("full");
+    expect(await store.add(owner("p1"), "one too many")).toBe("full");
     // Another player has their own limit.
-    const long = await store.add("p2", `${"x".repeat(250)}`);
+    const long = await store.add(owner("p2"), `${"x".repeat(250)}`);
     expect(long !== "full" && long.text.length).toBe(200);
   });
 
   test("can be removed one by one or all at once", async () => {
     const store = memoryMemories();
-    const first = await store.add("p1", "base at 120 64 -300");
-    await store.add("p1", "wants an iron farm");
+    const first = await store.add(owner("p1"), "base at 120 64 -300");
+    await store.add(owner("p1"), "wants an iron farm");
     if (first === "full") throw new Error("unexpected");
     expect(first.id).toMatch(/^[0-9a-f]{5}$/);
-    expect(await store.remove("p1", first.id)).toBe(true);
-    expect(await store.remove("p1", first.id)).toBe(false);
-    expect(await store.clear("p1")).toBe(1);
-    expect(await store.list("p1")).toEqual([]);
+    expect(await store.remove(owner("p1"), first.id)).toBe(true);
+    expect(await store.remove(owner("p1"), first.id)).toBe(false);
+    expect(await store.clear(owner("p1"))).toBe(1);
+    expect(await store.list(owner("p1"))).toEqual([]);
+  });
+
+  test("belong to one tenant: the same player id on another server sees and removes nothing", async () => {
+    const store = memoryMemories();
+    const mine = await store.add(owner("p1", "license:aaa"), "base at 120 64 -300");
+    if (mine === "full") throw new Error("unexpected");
+    expect(await store.list(owner("p1", "license:bbb"))).toEqual([]);
+    expect(await store.remove(owner("p1", "license:bbb"), mine.id)).toBe(false);
+    expect(await store.clear(owner("p1", "license:bbb"))).toBe(0);
+    expect((await store.list(owner("p1", "license:aaa"))).map((m) => m.text)).toEqual(["base at 120 64 -300"]);
   });
 });
 
 describe("system prompt", () => {
-  const context = { mode: "ask" as const, platform: "minecraft" as const, userId: "p1", message: "hi", tools: [] };
+  const context = { mode: "ask" as const, platform: "minecraft" as const, tenant: "self", userId: "p1", message: "hi", tools: [] };
 
   test("lists memories with ids and the session summary, framed as data", () => {
     const prompt = systemPrompt(context, {

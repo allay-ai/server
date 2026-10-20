@@ -108,7 +108,7 @@ export const TracePage = () => {
                 <div>
                   <CardTitle className="text-base">
                     <Link to="/runs/$id" params={{ id: data.run.id }} className="hover:underline">
-                      {t(`runs.kinds.${data.run.kind}`)} · {data.run.player ?? data.run.user_id}
+                      {t(`runs.kinds.${data.run.kind}`)} · {data.run.user_id}
                     </Link>
                   </CardTitle>
                   <CardDescription>

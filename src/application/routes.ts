@@ -8,7 +8,7 @@ import type { handleChat, handleToolResult } from "../features/chat/chat.control
 import type { handleLicense } from "../features/billing/license.controller";
 import type { handleHealth } from "../features/health/health.controller";
 import type { handleTelegram } from "../features/telegram/telegram.controller";
-import type { handleMemories, handleMemory, handleSession } from "../features/users/users.controller";
+import type { handleMemories, handleMemory, handleSession, handleUser } from "../features/users/users.controller";
 
 interface Handlers {
   handleAsk: typeof handleAsk;
@@ -16,6 +16,7 @@ interface Handlers {
   handleChat: typeof handleChat;
   handleToolResult: typeof handleToolResult;
   handleHealth: typeof handleHealth;
+  handleUser: typeof handleUser;
   handleSession: typeof handleSession;
   handleMemories: typeof handleMemories;
   handleMemory: typeof handleMemory;
@@ -29,19 +30,40 @@ interface Handlers {
 
 type Route = (req: Request, server: Server<undefined>) => Promise<Response>;
 
-/** The HTTP routes, built from injected services so tests can serve them with fakes. */
-export const routes = (deps: AllayDeps, h: Handlers): Record<string, Route> => ({
-  "/api/health": h.handleHealth(deps),
-  "/api/ask": h.handleAsk(deps),
-  "/api/askx": h.handleAskX(deps),
-  "/api/v2/chat": h.handleChat(deps),
-  "/api/v2/chat/:runId/tools/:callId": h.handleToolResult(deps),
-  "/api/v2/users/:userId/session": h.handleSession(deps),
-  "/api/v2/users/:userId/memories": h.handleMemories(deps),
-  "/api/v2/users/:userId/memories/:memoryId": h.handleMemory(deps),
-  "/api/v2/license": h.handleLicense(deps),
-  "/api/telegram/webhook": h.handleTelegram(deps),
-  ...(h.handleAdminInit ? { "/api/v2/admin/init": h.handleAdminInit(deps) } : {}),
-  ...(h.handleAdmin ? { "/api/admin/*": h.handleAdmin(deps) } : {}),
-  ...(h.adminPages ? { "/admin": h.adminPages, "/admin/*": h.adminPages } : {}),
-});
+/** Headers every API answer carries: nothing sniffs its type, nothing frames it, and no page it's on learns where it came from. */
+const API_HEADERS = { "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer" };
+
+const secured =
+  (route: Route): Route =>
+  async (req, server) => {
+    const response = await route(req, server);
+    for (const [name, value] of Object.entries(API_HEADERS)) if (!response.headers.has(name)) response.headers.set(name, value);
+    return response;
+  };
+
+/**
+ * The HTTP routes, built from injected services so tests can serve them with fakes. Every route identifies its
+ * caller (a plugin's license or token, or a panel session) except health, the Telegram webhook (its own secret),
+ * license creation, and the panel's pages and sign-in; `test/access.test.ts` walks this table to keep it so.
+ */
+export const routes = (deps: AllayDeps, h: Handlers): Record<string, Route> => {
+  const api: Record<string, Route> = {
+    "/api/health": h.handleHealth(deps),
+    "/api/ask": h.handleAsk(deps),
+    "/api/askx": h.handleAskX(deps),
+    "/api/v2/chat": h.handleChat(deps),
+    "/api/v2/chat/:runId/tools/:callId": h.handleToolResult(deps),
+    "/api/v2/users/:userId": h.handleUser(deps),
+    "/api/v2/users/:userId/session": h.handleSession(deps),
+    "/api/v2/users/:userId/memories": h.handleMemories(deps),
+    "/api/v2/users/:userId/memories/:memoryId": h.handleMemory(deps),
+    "/api/v2/license": h.handleLicense(deps),
+    "/api/telegram/webhook": h.handleTelegram(deps),
+    ...(h.handleAdminInit ? { "/api/v2/admin/init": h.handleAdminInit(deps) } : {}),
+    ...(h.handleAdmin ? { "/api/admin/*": h.handleAdmin(deps) } : {}),
+  };
+  return {
+    ...Object.fromEntries(Object.entries(api).map(([path, route]) => [path, secured(route)])),
+    ...(h.adminPages ? { "/admin": h.adminPages, "/admin/*": h.adminPages } : {}),
+  };
+};

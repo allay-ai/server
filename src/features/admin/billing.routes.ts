@@ -3,7 +3,7 @@ import type { GrantRecord, LicenseRecord, PaymentRecord } from "../../infrastruc
 import { type Billing, quotaFor, serverName } from "../billing/billing";
 import { quotaOf } from "../billing/plans";
 import { refundPayment } from "../telegram/telegram.bot";
-import { record } from "./admin";
+import { allows, record } from "./admin";
 import { type Context, type Route, body, error } from "./admin.http";
 
 const DAY = 86_400_000;
@@ -17,7 +17,10 @@ const iso = (date?: Date | null) => (date ? date.toISOString() : null);
 const usd = (n: number) => Math.round(n * 1_000_000) / 1_000_000;
 
 /** A license as the owner's panel shows it: in dollars, unlike what operators see. */
-const licenseView = async (billing: Billing, license: LicenseRecord, grants?: GrantRecord[]) => {
+/** Telegram ids are personal data: admins and owners see them, viewers don't need them. */
+const seesPayers = (ctx: Context) => !!ctx.me && allows(ctx.me.role, "admin");
+
+const licenseView = async (billing: Billing, license: LicenseRecord, grants?: GrantRecord[], payers = true) => {
   const now = billing.now();
   const windows = grants ?? (await billing.licenses.grants(license.id));
   const quota = quotaOf(windows, now);
@@ -34,7 +37,7 @@ const licenseView = async (billing: Billing, license: LicenseRecord, grants?: Gr
     spent: usd(open.reduce((sum, g) => sum + g.spent, 0)),
     used_percent: quota.usedPercent,
     resets_at: iso(quota.resetsAt),
-    telegram_user_id: license.telegram_user_id ?? null,
+    telegram_user_id: payers ? (license.telegram_user_id ?? null) : null,
     language: license.language ?? null,
     last_payment_at: iso(license.last_payment_at),
     stopped_at: iso(license.stopped_at),
@@ -42,12 +45,12 @@ const licenseView = async (billing: Billing, license: LicenseRecord, grants?: Gr
   };
 };
 
-const paymentView = (payment: PaymentRecord) => ({
+const paymentView = (payment: PaymentRecord, payers = true) => ({
   charge_id: payment.charge_id,
   license: payment.license,
   plan: payment.plan,
   stars: payment.stars,
-  telegram_user_id: payment.telegram_user_id,
+  telegram_user_id: payers ? payment.telegram_user_id : null,
   at: payment.at.toISOString(),
   recurring: payment.recurring,
   refunded_at: iso(payment.refunded_at),
@@ -133,12 +136,13 @@ export const billingRoutes: Route[] = [
     method: "GET",
     path: "/licenses",
     access: "viewer",
-    handle: hosted(async ({ deps, url }) => {
+    handle: hosted(async (ctx) => {
+      const { deps, url } = ctx;
       const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 50));
       const page = Math.max(0, Number(url.searchParams.get("page")) || 0);
       const search = url.searchParams.get("search")?.trim().slice(0, 64) || undefined;
       const { licenses, total } = await deps.billing.licenses.list({ search, limit, skip: page * limit });
-      return Response.json({ total, page, limit, licenses: await Promise.all(licenses.map((l) => licenseView(deps.billing, l))) });
+      return Response.json({ total, page, limit, licenses: await Promise.all(licenses.map((l) => licenseView(deps.billing, l, undefined, seesPayers(ctx)))) });
     }),
   },
   {
@@ -155,11 +159,11 @@ export const billingRoutes: Route[] = [
         ctx.deps.runs?.servers({ server: `license:${license.id}`, limit: 100 }) ?? [],
       ]);
       return Response.json({
-        license: await licenseView(billing, license, grants),
+        license: await licenseView(billing, license, grants, seesPayers(ctx)),
         grants: grants
           .sort((a, b) => a.starts.getTime() - b.starts.getTime())
           .map((g) => ({ id: g.id, payment: g.payment ?? null, budget: usd(g.budget), spent: usd(g.spent), starts: iso(g.starts), ends: iso(g.ends) })),
-        payments: payments.map(paymentView),
+        payments: payments.map((p) => paymentView(p, seesPayers(ctx))),
         servers: servers.map((s) => ({ ...s, last_seen: s.last_seen.toISOString() })),
       });
     }),
@@ -238,14 +242,15 @@ export const billingRoutes: Route[] = [
     method: "GET",
     path: "/payments",
     access: "viewer",
-    handle: hosted(async ({ deps, url }) => {
+    handle: hosted(async (ctx) => {
+      const { deps, url } = ctx;
       const before = url.searchParams.get("before");
       const payments = await deps.billing.licenses.payments({
         license: url.searchParams.get("license") ?? undefined,
         before: before ? new Date(before) : undefined,
         limit: Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 100)),
       });
-      return Response.json({ payments: payments.map(paymentView) });
+      return Response.json({ payments: payments.map((p) => paymentView(p, seesPayers(ctx))) });
     }),
   },
   {
