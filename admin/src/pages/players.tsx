@@ -117,8 +117,9 @@ const BlockedCard = () => {
         {query.data.bans.map((ban) => (
           <div key={`${ban.server} ${ban.user_id}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
             <PlayerLink id={ban.user_id} />
-            <span className="text-muted-foreground">
-              <ServerLabel server={ban.server} /> · {t("players.blocked.since", { date: dateTime(ban.blocked_at) })}
+            <span className="flex flex-wrap gap-x-2 text-muted-foreground">
+              <ServerLabel server={ban.server} />
+              <span>{t("players.blocked.since", { date: dateTime(ban.blocked_at) })}</span>
             </span>
           </div>
         ))}

@@ -44,7 +44,7 @@ export const Marquee = ({ children, title, className }: { children: ReactNode; t
   const style = { "--marquee-shift": `-${shift}px`, "--marquee-duration": `${Math.max(4, shift / 40) * 2 + 3}s` } as CSSProperties;
   return (
     <span ref={box} title={shift > 0 ? title : undefined} className={cn("block overflow-hidden whitespace-nowrap", shift > 0 && "marquee-fade", className)}>
-      <span ref={line} className={cn("inline-block", shift > 0 && "marquee")} style={style}>
+      <span ref={line} className={cn("inline-block", shift > 0 && "marquee pr-3")} style={style}>
         {children}
       </span>
     </span>

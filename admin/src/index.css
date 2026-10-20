@@ -135,7 +135,8 @@
   animation-play-state: paused;
 }
 .marquee-fade {
-  mask-image: linear-gradient(to right, transparent, #000 0.5rem, #000 calc(100% - 0.75rem), transparent);
+  /* Only the right edge fades: the first letter stays crisp at rest, and the line's end pads past the fade. */
+  mask-image: linear-gradient(to right, #000 calc(100% - 0.75rem), transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .marquee {
