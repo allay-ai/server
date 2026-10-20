@@ -13,40 +13,45 @@
 - **Агенты для рутины.** Сортировку сундуков, переплавку, зельеварение и крафт ведут агенты автоматизации и сами отчитываются.
 - **Свежие факты и точный счёт.** Поиск в интернете, когда вопрос того требует, и вычисления с 64 значащими цифрами.
 - **Память для каждого игрока.** Сессия для уточняющих вопросов и до 30 долгих фактов, которыми игрок управляет сам.
-- **Приватность по умолчанию.** Инструменты игры видят только спросившего, а панель администратора никогда не показывает вопросы и ответы.
+- **Приватность по умолчанию.** Каждый запрос называет свой сервер, и сервер видит только своих игроков. Инструменты игры видят только спросившего, панель администратора знает игроков под псевдонимами и никогда не показывает вопросы, а каждый игрок может получить копию своих данных или стереть их.
 - **Панель администратора.** Все настройки, учётные записи с ролями и статистика по вопросам, расходам, моделям и инструментам.
 - **Ваш ключ — ваши правила.** Свой ключ любого OpenAI-совместимого API, подписка за Telegram Stars или свой бэкенд без лимитов.
 
 ## С чего начать
 
-1. Сохраните это как `compose.yaml`, подставьте [свежую версию](https://github.com/allay-ai/server/releases) и случайный `SECRETS_KEY`, затем выполните `docker compose up -d`:
+1. Сохраните это как `compose.yaml`, подставьте [свежую версию](https://github.com/allay-ai/server/releases) и замените каждое `change-me` своим случайным значением (`openssl rand -hex 24`). Затем выполните `docker compose up -d`:
 
    ```yaml
    services:
      allay:
-       image: ghcr.io/allay-ai/server:5.12.3
+       image: ghcr.io/allay-ai/server:6.0.0
        restart: unless-stopped
        depends_on: [allay-mongo, allay-redis]
-       ports: ["3000:3000"]
+       ports: ["127.0.0.1:3000:3000"]
        environment:
-         MONGODB_URI: mongodb://allay-mongo:27017
+         MONGODB_URI: mongodb://allay:change-me-mongo@allay-mongo:27017/?authSource=admin
          MONGODB_DATABASE: allay
-         REDIS_URL: redis://allay-redis:6379
+         REDIS_URL: redis://:change-me-redis@allay-redis:6379
          SELFHOSTED: "1"
+         PLUGIN_TOKEN: change-me-to-24-random-characters
          SECRETS_KEY: change-me
          PUBLIC_URL: http://localhost:3000
      allay-mongo:
        image: mongo:8.0
        restart: unless-stopped
+       environment:
+         MONGO_INITDB_ROOT_USERNAME: allay
+         MONGO_INITDB_ROOT_PASSWORD: change-me-mongo
        volumes: [mongo:/data/db]
      allay-redis:
        image: redis:8-alpine
        restart: unless-stopped
+       command: ["redis-server", "--requirepass", "change-me-redis"]
    volumes:
      mongo:
    ```
 
-2. Укажите `server.url` в `config.yml` плагина как `http://ваш-хост:3000` и выполните `/allay reload`. Затем `/allay init` откроет панель администратора, где вы вставите ключ OpenRouter.
+2. Укажите в `config.yml` плагина `server.url` как `http://localhost:3000` и `server.token` — ваш `PLUGIN_TOKEN`, затем выполните `/allay reload`. После этого `/allay init` откроет панель администратора, где вы вставите ключ OpenRouter. Бэкенд слушает только эту машину; сервер Minecraft на другой машине достучится до него через обратный прокси с TLS.
 3. Дальше — [Self-hosting with Docker](https://github.com/allay-ai/server/wiki/Self-hosting-with-Docker) в вики: прокси, пароли и обновления.
 
 ## Документация

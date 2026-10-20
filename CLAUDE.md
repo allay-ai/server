@@ -15,7 +15,8 @@ The backend of Allay, an AI helper for Minecraft players and a Telegram bot. A M
 | `src/features/chat/` | `POST /api/v2/chat`: the SSE stream and the bridge that hands client tools to the plugin and waits for `POST /api/v2/chat/{run}/tools/{call}` |
 | `src/features/ask`, `src/features/askx` | v1 endpoints for plugins before 2.0 (the Telegram bot allay-ai/bot is archived); keep their request and response shapes |
 | `src/features/tools/` | Client tool definitions (run by the plugin, only about the asking player; operator tools only for operators) and the server tools: `search_web` (Perplexity's Search API with the backend's key, an OpenRouter search model otherwise), `exact_calculations` (math.js in a worker), `remember`/`forget` |
-| `src/features/users/` | `/api/v2/users/{user_id}/session` and `/memories`: the plugin's `/ask new`, `/ask memory`, `/ask forget` |
+| `src/features/users/` | `/api/v2/users/{user_id}` (a player's export and erasure), `/session`, and `/memories`: the plugin's `/ask new`, `/ask memory`, `/ask forget`, `/allay privacy` |
+| `src/features/auth/` | `identify`: who sent a request (a license, or `PLUGIN_TOKEN` self-hosted) and its tenant |
 | `src/agent/` | The agent runner, prompt assembly, the session summarizer, askx command validation |
 | `src/prompts/*.md` | The system prompts, bundled into the build; the only place to change them |
 | `src/infrastructure/` | The Redis session (v1 history key plus `chat_summary:*`, whole exchanges with tool calls since 5.5), memories in MongoDB, the OpenRouter provider, traces into MongoDB through Mastra's observability |
@@ -26,22 +27,35 @@ The backend of Allay, an AI helper for Minecraft players and a Telegram bot. A M
 | `src/features/admin/` | The admin panel's API at `/api/admin/*` (a route table in `admin.routes.ts`, `insight.routes.ts`, `billing.routes.ts`), `POST /api/v2/admin/init`, and the built panel at `/admin` (`admin.pages.ts`) |
 | `src/infrastructure/admin/`, `runs/`, `settings/` | Admin accounts, Redis sessions, the audit log; the `runs` collection and its daily rollups; the stored settings and the vault that seals secrets |
 | `admin/` | The panel: React, Vite, shadcn/ui, TanStack Router and Query, react-hook-form with zod, Recharts, react-i18next (`src/locales/en.json`) |
-| `docs/protocol-v2.md` | The contract with the plugin. Change it only additively, and change the plugin (allay-ai/minecraft) to match |
+| `src/infrastructure/database/migrations.ts`, `src/application/migrate.ts` | What runs on every start (tenants, pseudonyms, old sessions) and the `migrate` command: `status`, `retag --from self --to license:<id>`, `purge-untagged` |
+| `docs/protocol-v2.md` | The contract with the plugin. Change it additively, unless security needs a break (as 6.0 did); change the plugin (allay-ai/minecraft) to match |
 
 The tool bridge keeps pending calls in memory, so the backend runs as one instance.
 
 The build bundles `src/features/tools/calc.worker.ts` next to the entrypoint; `exact-calculations.tool.ts` finds it by a computed name so the bundler leaves the path alone. Keep both in `bun run build`.
 
+## Security and privacy
+
+The owner settled these on 2026-10-20 for 6.0, before allay.chat serves the public; keep them for every change.
+
+- **Every route identifies its caller.** A plugin's license (hosted) or `PLUGIN_TOKEN` (self-hosted, at least 24 characters; without one the backend answers nobody), or a panel session with the right role. Open are only `GET /api/health`, `POST /api/v2/license`, Telegram's webhook (its own secret), and the panel's sign-in, setup, and recovery. A new route goes through `identify` or the admin router, and `test/access.test.ts`, which walks the route table, must stay green.
+- **Player data only by (tenant, user).** The tenant is `license:<id>` or `self`, from `identify`, never from the body. Memories, Redis keys (`threadOf`), outcomes, the public thread, runs (`server`), limits, and tool callbacks all carry it; a new store or key does too, with a test that another tenant can't reach it.
+- **No personal data or secrets in logs.** Log run ids and tenants, never a player's name, id, question, or answer, a key, a license, a token, or a code (the hosted setup code is the one exception). Errors from inside the backend reach clients as a code only.
+- **Runs know players by pseudonym** (`deps.pseudonyms`, an HMAC under a key derived from `SECRETS_KEY`), never by id or name; the panel never shows a player's id.
+- **Retention:** sessions per `CHAT_TTL_SECONDS`, memories until forgotten or 365 days after the last question, runs 400 days, days' player lists 400 days, traces `TRACE_DAYS`, the audit log 365 days. Export and erasure (`/api/v2/users/{id}`, the panel's “Erase a player”) cover everything a new store keeps.
+- **Client addresses** come from `clientAddress` with `TRUSTED_PROXIES`; never read a forwarding header directly.
+- **Least privilege:** viewers read numbers; admins change and erase; owners manage accounts. Telegram ids show to admins only.
+
 ## Billing
 
 The owner settled these on 2026-10-14; change them only when the owner asks.
 
-- **Two ways to pay.** BYOK, free on our backend, limited per server to 20 questions a minute, 2000 a day, 4 at once; or a subscription on our key and models, which the plugin can't change.
+- **Two ways to pay.** BYOK, free on our backend with a free license as the server's identity (since 6.0), limited per license to 20 questions a minute, 2000 a day, 4 at once, and `BYOK_ACTIVE_RUNS` for all of them together; or a subscription on our key and models, which the plugin can't change.
 - **No free trial.** A server pays before its first hosted question.
 - **The limit is money, not questions.** Each plan is a budget in US dollars of what the server's runs really cost: model steps, `search_web`, and session summaries, all through `RunOptions.spend`. Operators see it as a percentage, never in dollars; players see only that the limit is used up.
 - **Plans** (`plans.ts`): week 150 ⭐ for $0.75, month 500 ⭐ for $3.00 as a Stars subscription that renews every 30 days, year 10 000 ⭐ (Telegram's cap) for $6.00 a month refilled every 30 days. A payment during a period adds its budget at once and moves the end date.
 - **How the prices came about.** A question measured on `openai/gpt-6-luna` costs about $0.0007; a Perplexity search about $0.005, in roughly every fifth question; with summaries and OpenRouter's 5.5% fee, about $0.003 a question with a margin. Hosting allay.chat adds about $10 a month. A Star brings us about $0.013 (buyers pay $0.015–0.02). At full use the plans return ×2.2, ×1.85, and ×1.66 of their cost; servers typically use far less. Measure again before changing the model or the prices.
-- **Self-hosted backends** set `SELFHOSTED=1`: billing off, everyone on the backend's key, no license, BYOK without limits. Moonlands needs it in its `compose.yaml` before it runs 5.0.
+- **Self-hosted backends** set `SELFHOSTED=1` and `PLUGIN_TOKEN`: billing off, every plugin with the token on the backend's key, no license, BYOK without limits.
 - The bot is @AllayChatBot. `TELEGRAM_ADMIN_IDS` for the owner is `362695653`. A real 1-Star payment and its `/refund` went through on 2026-10-14.
 - **Never** log a provider key, a license secret, or a claim code. The bot token sits in `~/.secrets/cloud.env` and the Keychain as `ALLAY_TELEGRAM_BOT_TOKEN`, and reaches the backend as `TELEGRAM_BOT_TOKEN`.
 - Switching allay.chat to require a subscription stops servers that use it today; agree on the date with the owner first.
@@ -50,9 +64,9 @@ The owner settled these on 2026-10-14; change them only when the owner asks.
 
 The owner settled these on 2026-10-18 (task file `~/c/personal/minecraft/AGENT_ALLAY_ADMIN_TASK.txt`, section 9); change them only when the owner asks.
 
-- **No texts, ever.** The panel never shows what players asked, what Allay answered, tool arguments or results, or memories' text, in any role. `runs` holds numbers only; `traces.ts` reads Mastra's spans through a field whitelist, so the rest never leaves MongoDB. Tests check both.
+- **No texts, ever.** The panel never shows what players asked, what Allay answered, tool arguments or results, or memories' text, in any role, nor a player's id or name (pseudonyms since 6.0). `runs` holds numbers only; `traces.ts` reads Mastra's spans through a field whitelist, so the rest never leaves MongoDB. Tests check both.
 - **Settings.** A new setting goes into `settings.definitions.ts` with the env name it would have had, and into the wiki's “Admin panel and settings” table; read it with `settings.get(...)` where it's used, so a save applies to the next run. Only what the backend needs to start (MongoDB, Redis, `SELFHOSTED`, `PORT`, `SECRETS_KEY`, `ADMIN_*`, `APP_VERSION`) reads `process.env` directly. Something read once at start gets `restart: true`.
-- **The first admin.** Self-hosted: `/allay init` → `POST /api/v2/admin/init`, a code for 30 minutes, never logged. Hosted: a code in the log at start, the one place a code is logged. `ADMIN_*` turns setup off. No “first visitor wins”.
+- **The first admin.** Self-hosted: `/allay init` → `POST /api/v2/admin/init` with `PLUGIN_TOKEN`, a code for 30 minutes, never logged. Hosted: a code in the log at start, the one place a code is logged. `ADMIN_*` turns setup off. No “first visitor wins”.
 - **A forgotten password.** Self-hosted, once an account exists: `/allay init` hands out a recovery code instead (`mode: "recover"`), under the setup code's rules but kept apart from it (`AdminDeps.recovery`). `POST /api/admin/recover` sets a new password for an account in MongoDB, ends its sessions, audits `recover`, and signs in; never for the environment's admin, whose password lives in the environment. Hosted backends have no recovery from the game: an owner resets others on the Accounts page, and `ADMIN_*` is the last resort.
 - **Secrets** are sealed with AES-GCM (`SECRETS_KEY`, or `/data/secrets.key` on a volume); the API shows only the last four characters and the audit log masks them.
 - **Strings** go through i18n (`admin/src/locales/en.json`), English only for now; dates and numbers through Intl. A new key goes into `en.json` in the same change.
@@ -79,7 +93,7 @@ The owner's server, Moonlands, runs its own instance of this backend, built from
 ## Checking a change
 
 1. `bun test` and `bun run typecheck`.
-2. `docker build -t allay-server:check .`, since the image is what ships. Start it with Redis and MongoDB from `docker-compose.dev.yaml` and `GET /api/health`: it answers with the version.
+2. `docker build -t allay-server:check .`, since the image is what ships. Start it with Redis and MongoDB from `docker-compose.dev.yaml` and `GET /api/health`: it answers with the version. A change to who may call what: `curl` every route without credentials (`401`), and with a second tenant's (nothing of the first's).
 3. A change to the agent or its tools: one real question through the plugin's protocol, with `OPENROUTER_API_KEY` from `~/.secrets/cloud.env`. After a release reaches Moonlands, the owner asks `/ask` once.
 
 ## Autopilot

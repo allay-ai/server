@@ -2,6 +2,25 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.0.0
+
+For Allay 6.0, which sends the credentials this version wants. **Breaking:** Allay 5.x gets `401` from this backend; update the plugin first, then the backend. A self-hosted backend needs `PLUGIN_TOKEN` in its environment and the same value in the plugin's `server.token`.
+
+- 🔐 **Every request says who sends it.** A hosted backend wants the server's license on every plugin request, a self-hosted one its new `PLUGIN_TOKEN` (24 characters or more, compared in constant time). Without one configured, a self-hosted backend answers no plugin instead of everyone. Only health, license creation, and Telegram's webhook stay open; a test walks the route table to keep it so.
+- 🧱 **Servers never see each other's players.** Memories, sessions, task threads, task outcomes, and the public thread are kept per tenant (`license:<id>` or `self`) and player. Before, anyone who knew a player's UUID could read, add to, or wipe their memories through `/api/v2/users`, or send their `user_id` to `/api/v2/chat` and have the agent read out their memories and session; another server's public thread opened to anyone who sent its `server.id`.
+- 🔑 **BYOK needs a license as identity.** It's free from `POST /api/v2/license` and pays for nothing. Limits count per license instead of the `server.id` a request claimed, all BYOK servers together take at most `BYOK_ACTIVE_RUNS` (100) slots so paying servers keep theirs, and a blocked license can't ask with its own key either.
+- 🧰 **Tool results only from the run's own server.** `POST /api/v2/chat/{run}/tools/{call}` wants the same credentials as the question; another tenant's answer gets `404`.
+- 🚪 **`/allay init` only for the backend's own plugin.** `POST /api/v2/admin/init` wants `PLUGIN_TOKEN`: its recovery code resets any admin's password, and before anyone who reached the backend could ask for one.
+- 🌐 **Client addresses come only from trusted proxies.** New settings `TRUSTED_PROXIES` and `CLIENT_IP_HEADER`: forwarding headers count only when the peer is a proxy the operator named, `X-Forwarded-For` is read from the right, and an IPv6 /64 counts as one address. Behind a proxy, license creation and the panel's sign-in limits no longer share one bucket, and nobody can spoof their way around them. Moonlands-style setups set `TRUSTED_PROXIES` to their proxy's address.
+- 🕵️ **Players are pseudonyms in the statistics.** Runs keep a keyed digest of the player instead of their UUID and name; the panel lists and searches players by it, and finds one from a UUID an operator types. The digest's key comes from `SECRETS_KEY`.
+- 🗑️ **Export and erasure per player (GDPR).** `GET /api/v2/users/{id}` returns everything kept about a player, `DELETE` erases it: memories, sessions, outcomes, agents' threads, and their traces go, runs keep only numbers. Admins erase a player from the Players page by server and UUID; the audit log keeps only the pseudonym.
+- ⏳ **Data doesn't stay forever.** Memories go 365 days after a player's last question, audit entries after 365 days, and days older than 400 keep how many players they had, not who.
+- 🧹 **Less in logs and answers.** Logs carry run ids and tenants, never player names, ids, or questions; errors from inside the backend reach the client as a code without the details; `/api/health` no longer shows the process's memory and uptime; API answers carry `nosniff`, `DENY` framing, and `no-referrer`; bodies are capped at 2 MB.
+- 🛡️ **BYOK requests can't be bounced inside.** Every request to a server's own provider checks its address again and refuses redirects; NAT64, 6to4, and benchmark ranges count as private too.
+- 👀 **Viewers no longer see who paid.** Telegram ids of payers show to admins and owners only.
+- 🐳 **The stock `docker-compose.yaml` publishes only the backend, on 127.0.0.1.** MongoDB and Redis have no ports and want their passwords (`MONGO_INITDB_ROOT_*`, `REDIS_PASSWORD`); `MONGODB_URI` carries the user with `?authSource=admin`.
+- 🚚 **Data moves on its own.** On start, memories get their tenant (`self` on a self-hosted backend), runs lose players' ids and names, and sessions from before 6.0, which carry no tenant, are dropped. `bun run dist/application/migrate.js retag --from self --to license:<id>` moves an imported self-hosted dump to a license; `status` and `purge-untagged` help around it.
+
 ## 5.12.3
 
 For Allay 5.14.3; older plugins work too.

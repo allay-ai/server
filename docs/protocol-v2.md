@@ -2,11 +2,32 @@
 
 The plugin opens one streaming request per question. The backend agent (Mastra) streams back what it is doing, and when it needs to know something about the game it asks the plugin to run a tool and post the result back. Web search runs on the backend.
 
+Server 6.0 keeps the paths and the bodies of v2 but breaks one thing on purpose: **every request identifies its server.** A plugin before 6.0 (Allay 5.x) gets `401` from a 6.0 backend until it sends the credentials below.
+
+## Who is asking
+
+Since 6.0. Every endpoint below wants `Authorization: Bearer …`, except `GET /api/health`, `POST /api/v2/license` without a license, and Telegram's webhook:
+
+- **A hosted backend** (billing on) wants the server's license, `<license id>.<secret>`. A license only identifies: a server that brings its own key (BYOK) gets one free from `POST /api/v2/license` and sends it next to `X-Provider-Key`; paying for it is what turns on the backend's own key.
+- **A self-hosted backend** (`SELFHOSTED=1`) wants its `PLUGIN_TOKEN`, a secret of at least 24 characters the operator sets in the backend's environment and in the plugin's `server.token`. A backend without one answers no plugin at all (`503 TOKEN_NOT_SET`), never everyone.
+
+| Code | Status | Meaning |
+|---|---|---|
+| `LICENSE_REQUIRED` | 401 | A hosted backend got no `Authorization` (before 6.0: 402 without a key) |
+| `LICENSE_INVALID` | 401 | Unknown license or wrong secret |
+| `TOKEN_REQUIRED` | 401 | A self-hosted backend got no token |
+| `TOKEN_INVALID` | 401 | The token isn't the backend's `PLUGIN_TOKEN` |
+| `TOKEN_NOT_SET` | 503 | The self-hosted backend has no `PLUGIN_TOKEN` of 24 characters or more |
+
+The caller's **tenant** is `license:<id>` on a hosted backend and `self` on a self-hosted one. Every piece of player data is kept by tenant and `user_id`: a caller names any `user_id` it likes, but only ever reaches the players of its own tenant. The same Minecraft account on two servers is two players who never meet. Rate limits count per tenant, never per anything the body claims.
+
+`user_id` is 1–64 letters, digits, `-`, or `_` (a UUID, `console`); anything else is `400`.
+
 ## Request
 
 `POST /api/v2/chat`
 
-Headers: `Content-Type: application/json`, `Accept: text/event-stream`, `X-Plugin-Version`, and who pays for the model (since 5.0, see “Providers and billing”): `Authorization: Bearer <license>` for a subscription, or `X-Provider-Key` with a `provider` block for the server's own key. The v1 header `X-OpenRouter-Token` still works as such a key with the default models.
+Headers: `Content-Type: application/json`, `Accept: text/event-stream`, `X-Plugin-Version`, `Authorization` (see “Who is asking”), and for the server's own key `X-Provider-Key` with a `provider` block (since 5.0, see “Providers and billing”). The v1 header `X-OpenRouter-Token` still works as such a key with the default models.
 
 ```json
 {
@@ -25,7 +46,7 @@ Headers: `Content-Type: application/json`, `Accept: text/event-stream`, `X-Plugi
 
 `timezone` is the asker's IANA time zone (optional, since 2.3). The backend puts their real date and time in front of each `ask` question, as `[Mon, 12 Oct 2026, 23:42 Europe/Moscow] question`, and keeps it in the session history; without it the time is UTC.
 
-`visibility` (since 3.0) is `private` by default. `public` marks a question from `/askall` or `?` in chat mode: the plugin shows the question and the answer to every player online, the prompt tells the model so, and the run goes without `write_book`. `askx` is always private. A public question reads and extends the server's shared thread instead of the asker's session (see “Conversation memory”); `server.id`, a random id the plugin keeps for its server, names that thread.
+`visibility` (since 3.0) is `private` by default. `public` marks a question from `/askall` or `?` in chat mode: the plugin shows the question and the answer to every player online, the prompt tells the model so, and the run goes without `write_book`. `askx` is always private. A public question reads and extends the server's shared thread instead of the asker's session (see “Conversation memory”); `server.id`, a random id the plugin keeps for its server, names that thread within the caller's tenant (since 6.0: another server sending the same id reaches its own thread, not this one).
 
 `player.dimension` (optional, since 5.1) is the dimension the player stood in when they asked: `overworld`, `the_nether`, or `the_end`. The prompt tells the model, so a place named without a dimension lands where the player is; any other value is dropped.
 
@@ -60,7 +81,7 @@ Headers: `Content-Type: application/json`, `Accept: text/event-stream`, `X-Plugi
 { "ok": false, "error": "player is offline" }
 ```
 
-Answers: `200 { "accepted": true }`, `404` unknown or finished run or call, `409` already answered. The backend waits up to 15 s per client call; past that the model gets an error result and the run goes on.
+with the same `Authorization` as the question. Answers: `200 { "accepted": true }`, `401` without credentials, `404` unknown or finished run or call, or another tenant's run (since 6.0), `409` already answered. The backend waits up to 15 s per client call; past that the model gets an error result and the run goes on.
 
 ## Client tools (run by the plugin, on the server thread, about the asking player only)
 
@@ -200,17 +221,19 @@ Since 5.5, for plugin 5.7. The chat hands work in the world (sorting chests, sme
 
 ## Conversation memory
 
-The backend keeps two things per `user_id`:
+The backend keeps these per tenant and `user_id` (since 6.0; before, per `user_id` alone):
 
 - **The session.** Whole exchanges verbatim (since 5.5 with the tool calls and their results, whole) plus a summary of everything older. The backend folds all but the newest 12 000 tokens (2 to 30 exchanges) into the summary with the model after an answer once the session passes about 32 000 tokens or 100 exchanges, and before an answer past 42 000. A quiet session isn't folded; it expires. A session lives 24 hours after the last question. `/askx` requests land in it as one short exchange (the request and the commands or the refusal), so a later `/ask` knows what was done.
-- **The server's public thread** (since 3.0). Public questions with a `server.id` go to `public:<server.id>` instead of the asker's session, each question prefixed with the asker's name in brackets, so a follow-up from another player continues the talk. It folds like a session and lives 2 hours after the last question (`PUBLIC_CHAT_TTL_SECONDS`). Without `server.id` a public question uses the asker's session.
-- **A task's thread** (since 5.5). Each wake of an automation agent reads and extends `task:<user_id>:<task.id>`: the wake's message and the agent's final text, or `(waiting)` when it ended without one. It folds like a session and lives 2 hours after the last wake (`TASK_CHAT_TTL_SECONDS`). The player's session never sees it.
-- **Memories.** Lasting facts the model saves with `remember`, kept in MongoDB without expiry. They go into the system prompt with their ids.
+- **The server's public thread** (since 3.0). Public questions with a `server.id` go to the tenant's thread for that id instead of the asker's session, each question prefixed with the asker's name in brackets, so a follow-up from another player continues the talk. It folds like a session and lives 2 hours after the last question (`PUBLIC_CHAT_TTL_SECONDS`). Without `server.id` a public question uses the asker's session.
+- **A task's thread** (since 5.5). Each wake of an automation agent reads and extends its own thread under the player and `task.id`: the wake's message and the agent's final text, or `(waiting)` when it ended without one. It folds like a session and lives 2 hours after the last wake (`TASK_CHAT_TTL_SECONDS`). The player's session never sees it.
+- **Memories.** Lasting facts the model saves with `remember`, kept in MongoDB until the player forgets them or, since 6.0, 365 days after their last question. They go into the system prompt with their ids.
 
-Endpoints for the plugin's `/allay new`, `/allay memory [text]`, and `/allay forget`:
+Endpoints for the plugin's `/allay new`, `/allay memory [text]`, `/allay forget`, and (since 6.0) `/allay privacy`, all with `Authorization`:
 
 | Request | Answer |
 |---|---|
+| `GET /api/v2/users/{user_id}` | Since 6.0. `200` with everything kept about the player: `{ user_id, tenant, pseudonym, memories, session: { summary?, messages }, outcomes, tasks: { <task id>: session }, runs: [{ at, kind, model, input_tokens, output_tokens, cost, duration_ms, result }], retention }` |
+| `DELETE /api/v2/users/{user_id}` | Since 6.0. `200 { "erased": true, "memories": 3, "runs": 12, "traces": 40 }`: memories, session, pending outcomes, and agents' threads go; the player's runs keep only numbers under `erased`; their traces go. The tenant's public thread expires by itself within 2 hours |
 | `DELETE /api/v2/users/{user_id}/session` | `200 { "cleared": true }`; memories stay |
 | `GET /api/v2/users/{user_id}/memories` | `200 { "memories": [{ "id": "k3f9a", "text": "…", "created_at": "ISO-8601" }] }`, oldest first |
 | `POST /api/v2/users/{user_id}/memories` with `{ "text": "3–200 chars" }` | `200 { "memory": { "id", "text", "created_at" } }`; `409 MEMORY_FULL` at 30; `400` for other text. Since 5.1 |
@@ -245,7 +268,7 @@ The model must call tools. For OpenRouter the backend checks the model's `suppor
 | `PROVIDER_URL_REJECTED` | 400 | `base_url` isn't https, or points into a private network |
 | `RATE_LIMITED` | 429 | Too many questions from this server; `retry_after` (seconds) says when to come back |
 
-The same codes can arrive as an `error` event when the provider only fails mid-run. On a backend with billing on, BYOK is free and limited per server (`server.id`, or the client address without one): 20 questions a minute, 2000 a day, 4 at once.
+The same codes can arrive as an `error` event when the provider only fails mid-run. On a backend with billing on, BYOK is free and needs a license as the server's identity (since 6.0); it's limited per license: 20 questions a minute, 2000 a day, 4 at once, and all BYOK servers together take at most `BYOK_ACTIVE_RUNS` (100) slots, so paying servers always have room. A blocked license can't ask with its own key either. Every request to the provider goes through a guard that checks the address again and refuses redirects.
 
 `X-OpenRouter-Token` without a `provider` block is BYOK on OpenRouter with the backend's default models.
 
@@ -255,22 +278,21 @@ Without a key, the request runs on the backend's own key and models. The plugin 
 
 | Code | Status | Meaning |
 |---|---|---|
-| `LICENSE_REQUIRED` | 402 | No license and no key |
-| `LICENSE_INVALID` | 401 | Unknown license or wrong secret |
-| `SUBSCRIPTION_INACTIVE` | 402 | Nothing paid for now, or the period ended |
+| `LICENSE_REQUIRED`, `LICENSE_INVALID` | 401 | See “Who is asking” |
+| `SUBSCRIPTION_INACTIVE` | 402 | Nothing paid for now, the period ended, or the license is blocked |
 | `QUOTA_EXCEEDED` | 402 | This period's limit is spent; `resets_at` (ISO-8601) says when it refills, absent when only a new payment helps |
 
 Before a stream these come as `{ "error": { "code", "message", "resets_at"?, "retry_after"? } }`.
 
 The limit is a budget in US dollars: what the server's questions really cost, counting the model, web search, and the session summaries. Each run is charged when it ends, so one run can overshoot a little.
 
-A backend with billing off (`SELFHOSTED=1`, as on a server's own backend) never asks for a license: it serves everyone on its own key, and BYOK still works without limits. Since 5.5, such a backend honors `provider.model` from a request without a key: the run (and its session summary) uses that model on the backend's own key, so the plugin can give each player tier its own model. `base_url` and `search_model` are ignored there, and search stays the backend's own. With billing on, a request without a key never picks the model.
+A backend with billing off (`SELFHOSTED=1`, as on a server's own backend) never asks for a license, only for its `PLUGIN_TOKEN`: it serves its plugins on its own key, and BYOK still works without limits. Since 5.5, such a backend honors `provider.model` from a request without a key: the run (and its session summary) uses that model on the backend's own key, so the plugin can give each player tier its own model. `base_url` and `search_model` are ignored there, and search stays the backend's own. With billing on, a request without a key never picks the model.
 
 ### License endpoints
 
 | Request | Answer |
 |---|---|
-| `POST /api/v2/license` without `Authorization` | `200 { "license": "<id>.<secret>", "license_id", "claim_code", "pay_url": "https://t.me/<bot>?start=<claim code>", "claim_expires_at" }`: a new license. The plugin keeps `license` in `plugins/Allay/license.key` and shows `pay_url` |
+| `POST /api/v2/license` without `Authorization` | `200 { "license": "<id>.<secret>", "license_id", "claim_code", "pay_url": "https://t.me/<bot>?start=<claim code>", "claim_expires_at" }`: a new license. The plugin keeps `license` in `plugins/Allay/license.key` and shows `pay_url`. Free, and limited to 10 an hour per client address (an IPv6 /64 counts as one) and 500 an hour in all |
 | `POST /api/v2/license` with `Authorization: Bearer <license>` | The same shape without `license`: a fresh claim code for the existing license |
 | `GET /api/v2/license` with `Authorization` | `200` with the status below |
 | any of them with billing off | `200 { "billing": false }` |
@@ -309,14 +331,14 @@ A payment while a period runs adds its budget at once and moves `paid_until` fur
 
 ## Admin panel setup
 
-Since server 5.7 and plugin 5.9. The backend has a web admin panel at `<PUBLIC_URL>/admin`. On a self-hosted backend (`SELFHOSTED=1`), an operator creates its first account from the game with `/allay init`, which calls:
+Since server 5.7 and plugin 5.9. The backend has a web admin panel at `<PUBLIC_URL>/admin`. On a self-hosted backend (`SELFHOSTED=1`), an operator creates its first account from the game with `/allay init`, which calls the following. Since 6.0 it wants the backend's `PLUGIN_TOKEN` (`401` without it): a recovery code resets any account's password, so only the backend's own plugin may ask for one.
 
 | Request | Answer |
 |---|---|
 | `POST /api/v2/admin/init`, no body | `200 { "url": "<PUBLIC_URL>/admin/setup?code=<code>", "expires_at", "mode": "setup" }` while the panel has no admin. The code works once and for 30 minutes; a new call replaces a pending one |
 | the same once an account exists (since server 5.10) | `200 { "url": "<PUBLIC_URL>/admin/recover?code=<code>", "expires_at", "mode": "recover" }`: a recovery link that sets a new password for any account the panel keeps. Same rules: once, 30 minutes, a new call replaces a pending one. Setup and recovery codes never stand in for each other |
 | the same when the only admin is defined in the environment, or on servers before 5.10 once an admin exists | `409 { "error": { "code": "ADMIN_EXISTS", … }, "url": "<PUBLIC_URL>/admin" }` |
-| the same on a backend with billing on | `404 { "error": { "code": "NOT_SELFHOSTED", … } }`: its first admin comes from a code in its own log |
+| the same on a backend with billing on | `404 { "error": { "code": "NOT_SELFHOSTED", … } }` for a license holder, `401` for anyone else: its first admin comes from a code in its own log |
 
 The plugin shows the link only to whoever ran the command, as a clickable chat line, and never logs it; from the console it prints it to the console. It reads `mode` to say which link it is; an answer without `mode` is a setup link. Older backends answer `404` without that code: the plugin then says the backend has no panel.
 
@@ -324,4 +346,11 @@ The recovery page posts `{ code, username, password }` to the panel's `POST /api
 
 ## Compatibility
 
-`POST /api/ask` and `POST /api/askx` keep their v1 request and response shapes. They run the same agent without client tools, so the Telegram bot and older plugins keep working.
+`POST /api/ask` and `POST /api/askx` keep their v1 request and response shapes, and since 6.0 want the same `Authorization` as v2 and a `user_id` of letters, digits, `-`, or `_` when they send one. They run the same agent without client tools.
+
+`GET /api/health` answers `{ "name": "Allay", "status": "ok", "version", "billing" }`; since 6.0 nothing about the process.
+
+| Plugin | Server before 6.0 | Server 6.0 |
+|---|---|---|
+| Allay 5.x | Works | `401` everywhere: it sends no token, and a BYOK server sends no license |
+| Allay 6.0 | Works; a self-hosted backend ignores the token | Works |

@@ -13,40 +13,45 @@
 - **Agents that do the chores.** Sorting chests, smelting, brewing, and crafting run as automation agents that report back.
 - **Fresh facts and exact math.** Web search when a question needs it, and calculations at 64 significant digits.
 - **A memory per player.** A session for follow-ups, plus up to 30 lasting facts the player controls.
-- **Privacy by design.** Game tools see only the asker, and the admin panel never shows what anyone asked or got as an answer.
+- **Privacy by design.** Every request says which server sends it, and a server reaches only its own players. Game tools see only the asker, the admin panel knows players by pseudonym and never shows what anyone asked, and each player can get a copy of their data or have it erased.
 - **An admin panel.** Every setting, accounts with roles, and statistics on questions, cost, models, and tools.
 - **Your key, your rules.** Bring any OpenAI-compatible key, subscribe in Telegram Stars, or self-host with no limits.
 
 ## Get started
 
-1. Save this as `compose.yaml` with the [newest version](https://github.com/allay-ai/server/releases) and a random `SECRETS_KEY`, then run `docker compose up -d`:
+1. Save this as `compose.yaml` with the [newest version](https://github.com/allay-ai/server/releases), and replace every `change-me` with its own random value (`openssl rand -hex 24`). Then run `docker compose up -d`:
 
    ```yaml
    services:
      allay:
-       image: ghcr.io/allay-ai/server:5.12.3
+       image: ghcr.io/allay-ai/server:6.0.0
        restart: unless-stopped
        depends_on: [allay-mongo, allay-redis]
-       ports: ["3000:3000"]
+       ports: ["127.0.0.1:3000:3000"]
        environment:
-         MONGODB_URI: mongodb://allay-mongo:27017
+         MONGODB_URI: mongodb://allay:change-me-mongo@allay-mongo:27017/?authSource=admin
          MONGODB_DATABASE: allay
-         REDIS_URL: redis://allay-redis:6379
+         REDIS_URL: redis://:change-me-redis@allay-redis:6379
          SELFHOSTED: "1"
+         PLUGIN_TOKEN: change-me-to-24-random-characters
          SECRETS_KEY: change-me
          PUBLIC_URL: http://localhost:3000
      allay-mongo:
        image: mongo:8.0
        restart: unless-stopped
+       environment:
+         MONGO_INITDB_ROOT_USERNAME: allay
+         MONGO_INITDB_ROOT_PASSWORD: change-me-mongo
        volumes: [mongo:/data/db]
      allay-redis:
        image: redis:8-alpine
        restart: unless-stopped
+       command: ["redis-server", "--requirepass", "change-me-redis"]
    volumes:
      mongo:
    ```
 
-2. Set `server.url` in the plugin's `config.yml` to `http://your-host:3000` and run `/allay reload`. Then `/allay init` opens the admin panel, where you paste your OpenRouter key.
+2. Set `server.url` in the plugin's `config.yml` to `http://localhost:3000` and `server.token` to your `PLUGIN_TOKEN`, then run `/allay reload`. Then `/allay init` opens the admin panel, where you paste your OpenRouter key. The backend listens on this machine only; a Minecraft server elsewhere reaches it through a reverse proxy with TLS.
 3. [Self-hosting with Docker](https://github.com/allay-ai/server/wiki/Self-hosting-with-Docker) goes further: proxies, passwords, and upgrades.
 
 ## Documentation
