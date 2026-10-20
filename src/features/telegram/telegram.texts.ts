@@ -33,6 +33,7 @@ type Texts = {
   not_yours: string;
   unavailable: string;
   refunded: string;
+  revoked: string;
   help: string;
 };
 
@@ -78,6 +79,7 @@ const en: Texts = {
   not_yours: "This server is linked to another Telegram account.",
   unavailable: "This plan can't be paid right now. Try again from /status.",
   refunded: "Refunded {stars} ⭐ for {server}.",
+  revoked: "Your payments for {server} were refunded: {stars} ⭐ are back on your balance, and its Allay license is revoked. To use Allay there again, an operator deletes plugins/Allay/license.key and runs /allay link.",
   help: "/status: your servers, their limits, and buttons to pay\n/start: how to link a server",
 };
 
@@ -123,6 +125,7 @@ const ru: Texts = {
   not_yours: "Этот сервер привязан к другому аккаунту Telegram.",
   unavailable: "Этот тариф сейчас нельзя оплатить. Попробуйте ещё раз из /status.",
   refunded: "Возвращено {stars} ⭐ за {server}.",
+  revoked: "Платежи за {server} возвращены: {stars} ⭐ снова на вашем балансе, а лицензия Allay этого сервера аннулирована. Чтобы Allay снова работал там, оператор удаляет plugins/Allay/license.key и выполняет /allay link.",
   help: "/status — ваши серверы, их лимиты и кнопки оплаты\n/start — как привязать сервер",
 };
 
@@ -168,6 +171,7 @@ const es: Texts = {
   not_yours: "Este servidor está vinculado a otra cuenta de Telegram.",
   unavailable: "Ahora no se puede pagar este plan. Inténtalo otra vez desde /status.",
   refunded: "Se devolvieron {stars} ⭐ por {server}.",
+  revoked: "Te devolvimos los pagos de {server}: {stars} ⭐ vuelven a tu saldo y su licencia de Allay queda revocada. Para usar Allay allí otra vez, un operador borra plugins/Allay/license.key y ejecuta /allay link.",
   help: "/status: tus servidores, sus límites y botones para pagar\n/start: cómo vincular un servidor",
 };
 
@@ -213,6 +217,7 @@ const pt: Texts = {
   not_yours: "Este servidor está vinculado a outra conta do Telegram.",
   unavailable: "Não dá para pagar este plano agora. Tente de novo pelo /status.",
   refunded: "Foram devolvidas {stars} ⭐ por {server}.",
+  revoked: "Os pagamentos de {server} foram devolvidos: {stars} ⭐ voltaram para o seu saldo, e a licença do Allay desse servidor foi revogada. Para usar o Allay lá de novo, um operador apaga plugins/Allay/license.key e executa /allay link.",
   help: "/status: seus servidores, os limites e botões para pagar\n/start: como vincular um servidor",
 };
 
@@ -258,6 +263,7 @@ const de: Texts = {
   not_yours: "Dieser Server ist mit einem anderen Telegram-Konto verknüpft.",
   unavailable: "Dieser Tarif lässt sich gerade nicht bezahlen. Versuch es über /status noch einmal.",
   refunded: "{stars} ⭐ für {server} zurückerstattet.",
+  revoked: "Deine Zahlungen für {server} sind zurückerstattet: {stars} ⭐ liegen wieder auf deinem Guthaben, und die Allay-Lizenz des Servers ist widerrufen. Damit Allay dort wieder läuft, löscht ein Operator plugins/Allay/license.key und führt /allay link aus.",
   help: "/status: deine Server, ihre Limits und Knöpfe zum Bezahlen\n/start: wie du einen Server verknüpfst",
 };
 

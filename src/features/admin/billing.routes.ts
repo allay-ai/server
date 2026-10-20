@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { GrantRecord, LicenseRecord, PaymentRecord } from "../../infrastructure/billing/licenses";
 import { type Billing, quotaFor, serverName } from "../billing/billing";
 import { quotaOf } from "../billing/plans";
-import { refundPayment } from "../telegram/telegram.bot";
+import { LicenseRefundFailure, refundLicense, refundPayment } from "../telegram/telegram.bot";
 import { allows, record } from "./admin";
 import { type Context, type Route, body, error } from "./admin.http";
 
@@ -30,7 +30,7 @@ const licenseView = async (billing: Billing, license: LicenseRecord, grants?: Gr
     name: serverName(license),
     created_at: iso(license.created_at),
     plan: license.plan ?? null,
-    status: license.blocked_at ? "blocked" : quota.active ? "active" : license.last_payment_at ? "expired" : "unpaid",
+    status: license.revoked_at ? "revoked" : license.blocked_at ? "blocked" : quota.active ? "active" : license.last_payment_at ? "expired" : "unpaid",
     paid_until: iso(quota.paidUntil),
     renews: license.renews && quota.active,
     budget: usd(open.reduce((sum, g) => sum + g.budget, 0)),
@@ -42,6 +42,7 @@ const licenseView = async (billing: Billing, license: LicenseRecord, grants?: Gr
     last_payment_at: iso(license.last_payment_at),
     stopped_at: iso(license.stopped_at),
     blocked_at: iso(license.blocked_at),
+    revoked_at: iso(license.revoked_at),
   };
 };
 
@@ -117,6 +118,9 @@ const licenseOr404 = async (ctx: Context) => {
   return license ?? null;
 };
 
+/** A revoked license is history: nothing changes it any more. */
+const revoked = () => error(409, "REVOKED", "This license is revoked");
+
 const grantSchema = z.object({ usd: z.number().positive().max(1_000), days: z.number().int().min(1).max(366) });
 const extendSchema = z.object({ days: z.number().int().min(1).max(366) });
 
@@ -175,6 +179,7 @@ export const billingRoutes: Route[] = [
     handle: hosted(async (ctx) => {
       const license = await licenseOr404(ctx);
       if (!license) return error(404, "NOT_FOUND", "No such license");
+      if (license.revoked_at) return revoked();
       const input = grantSchema.safeParse(await body(ctx.req));
       if (!input.success) return error(400, "BAD_REQUEST", "Give usd (up to 1000) and days (1–366)");
       const now = ctx.deps.billing.now();
@@ -199,6 +204,7 @@ export const billingRoutes: Route[] = [
     handle: hosted(async (ctx) => {
       const license = await licenseOr404(ctx);
       if (!license) return error(404, "NOT_FOUND", "No such license");
+      if (license.revoked_at) return revoked();
       const input = extendSchema.safeParse(await body(ctx.req));
       if (!input.success) return error(400, "BAD_REQUEST", "Give days (1–366)");
       const now = ctx.deps.billing.now();
@@ -225,6 +231,7 @@ export const billingRoutes: Route[] = [
       handle: hosted(async (ctx) => {
         const license = await licenseOr404(ctx);
         if (!license) return error(404, "NOT_FOUND", "No such license");
+        if (license.revoked_at) return revoked();
         const at = action === "block" ? ctx.deps.billing.now() : undefined;
         await ctx.deps.billing.licenses.update(license.id, { blocked_at: at });
         await record(ctx.admin, {
@@ -238,6 +245,36 @@ export const billingRoutes: Route[] = [
       }),
     }),
   ),
+  {
+    method: "POST",
+    path: "/licenses/:id/refund",
+    access: "admin",
+    handle: hosted(async (ctx) => {
+      const license = await licenseOr404(ctx);
+      if (!license) return error(404, "NOT_FOUND", "No such license");
+      if (license.revoked_at) return revoked();
+      const { billing } = ctx.deps;
+      if (!(await billing.licenses.payments({ license: license.id, limit: 1 })).length) return error(409, "NOT_PAID", "Nobody paid for this license, so there's nothing to refund");
+      const api = billing.bot.api;
+      if (!api) return error(503, "BOT_OFF", "The payment bot isn't running, so Telegram can't return the Stars");
+      const done = await refundLicense(billing, api, license).catch((failure) => failure as Error);
+      if (done instanceof LicenseRefundFailure) {
+        return error(502, "TELEGRAM_FAILED", `Refunded ${done.refunded} payments, ${done.left} left; the license stays until all are back. Telegram: ${done.message}`);
+      }
+      if (done instanceof Error) throw done;
+      await record(ctx.admin, {
+        actor: ctx.me!.username,
+        action: "license.refund",
+        target: license.id,
+        changes: [
+          { field: "stars", old: String(done.stars), new: "refunded" },
+          { field: "revoked", old: "no", new: "yes" },
+        ],
+        ip: ctx.ip,
+      });
+      return Response.json({ revoked: true, stars: done.stars, payments: done.payments });
+    }),
+  },
   {
     method: "GET",
     path: "/payments",

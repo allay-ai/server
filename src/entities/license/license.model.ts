@@ -20,6 +20,8 @@ export interface LicenseDocument {
   stopped_at?: Date;
   /** Blocked in the admin panel: no questions and no payments until unblocked. */
   blocked_at?: Date;
+  /** Refunded and revoked in the admin panel: its key stops working for good, and the server takes a new license. */
+  revoked_at?: Date;
 }
 
 const licenseSchema = new Schema<LicenseDocument>({
@@ -38,6 +40,7 @@ const licenseSchema = new Schema<LicenseDocument>({
   last_payment_at: Date,
   stopped_at: Date,
   blocked_at: Date,
+  revoked_at: Date,
 });
 
 /** One budget window a payment opened: dollars the server may spend between `starts` and `ends`. */

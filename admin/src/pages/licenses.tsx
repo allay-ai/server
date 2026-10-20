@@ -24,12 +24,13 @@ import { SearchBox } from "./players";
 
 const LIMIT = 50;
 
-// Green for paid and running, amber for a lapsed payment, plain for never paid, red for blocked.
+// Green for paid and running, amber for a lapsed payment, plain for never paid, red for blocked, red outline for revoked.
 const STATUS_COLORS: Record<License["status"], string> = {
   active: "border-success/30 bg-success/15 text-success",
   expired: "border-warning/40 bg-warning/20 text-foreground",
   unpaid: "text-muted-foreground",
   blocked: "",
+  revoked: "border-destructive/40 text-destructive",
 };
 
 const StatusBadge = ({ status }: { status: License["status"] }) => {
@@ -218,8 +219,19 @@ export const LicensePage = () => {
       showErrors(error);
     }
   };
+  const refund = async () => {
+    try {
+      const result = await post<{ stars: number }>(`/licenses/${encodeURIComponent(id)}/refund`);
+      toast.success(t("licenses.refundDone", { stars: number(result.stars) }));
+    } catch (error) {
+      showErrors(error);
+    }
+    // A refund that stopped halfway still returned some payments, so the page shows them either way.
+    await refresh();
+  };
   const data = query.data;
   const license = data?.license;
+  const unrefunded = data?.payments.filter((p) => !p.refunded_at) ?? [];
   return (
     <>
       <PageHeader title={license?.name ?? id} description={<span className="font-mono text-xs">{id}</span>} actions={license && <StatusBadge status={license.status} />} />
@@ -246,9 +258,10 @@ export const LicensePage = () => {
                   [t("licenses.lastPayment"), dateTime(license.last_payment_at)],
                   [t("licenses.stopped"), license.stopped_at ? dateTime(license.stopped_at) : "—"],
                   [t("licenses.blockedAt"), license.blocked_at ? dateTime(license.blocked_at) : "—"],
+                  ...(license.revoked_at ? [[t("licenses.revokedAt"), dateTime(license.revoked_at)] as [string, string]] : []),
                 ]}
               />
-              {can("admin") && (
+              {can("admin") && !license.revoked_at && (
                 <div className="flex flex-wrap gap-2">
                   <GrantDialog id={id} onDone={refresh} />
                   <ExtendDialog id={id} onDone={refresh} />
@@ -256,6 +269,16 @@ export const LicensePage = () => {
                     <Confirm label={t("licenses.unblock")} title={t("licenses.unblockTitle")} text={t("licenses.unblockText")} action={t("licenses.unblock")} onConfirm={() => toggleBlock(false)} />
                   ) : (
                     <Confirm label={t("licenses.block")} title={t("licenses.blockTitle")} text={t("licenses.blockText")} action={t("licenses.block")} destructive variant="outline" onConfirm={() => toggleBlock(true)} />
+                  )}
+                  {data.payments.length > 0 && (
+                    <Confirm
+                      label={t("licenses.refund")}
+                      title={t("licenses.refundTitle")}
+                      text={t("licenses.refundText", { stars: number(unrefunded.reduce((sum, p) => sum + p.stars, 0)), count: unrefunded.length })}
+                      action={t("licenses.refund")}
+                      destructive
+                      onConfirm={refund}
+                    />
                   )}
                 </div>
               )}

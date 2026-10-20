@@ -81,7 +81,8 @@ export const verifyLicense = async (billing: Billing, header: string | null): Pr
   const given = Buffer.from(sha256(match[2]));
   const kept = Buffer.from(license?.secret_hash ?? "0".repeat(64));
   // Compare even when the id is unknown, so timing doesn't tell which ids exist.
-  if (!timingSafeEqual(given, kept) || !license) return new ApiFailure(apierror(API_ERRORS.LICENSE_INVALID));
+  // A revoked key reads as unknown, which the plugin already answers with “delete license.key and /allay link”.
+  if (!timingSafeEqual(given, kept) || !license || license.revoked_at) return new ApiFailure(apierror(API_ERRORS.LICENSE_INVALID));
   return license;
 };
 

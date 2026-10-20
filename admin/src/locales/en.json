@@ -273,7 +273,7 @@
     "description": "Servers on a subscription, in dollars; operators see only percentages.",
     "search": "Search by id or server name",
     "none": "No licenses yet.",
-    "status": { "active": "Active", "expired": "Expired", "unpaid": "Never paid", "blocked": "Blocked" },
+    "status": { "active": "Active", "expired": "Expired", "unpaid": "Never paid", "blocked": "Blocked", "revoked": "Revoked" },
     "columns": {
       "server": "Server",
       "status": "Status",
@@ -316,6 +316,12 @@
     "unblockTitle": "Unblock this license?",
     "unblockText": "Its servers can ask and pay again.",
     "unblocked": "License unblocked.",
+    "revokedAt": "Revoked",
+    "refund": "Refund and revoke",
+    "refundTitle": "Refund this license and revoke it?",
+    "refundText_one": "The bot returns {{stars}} Stars from {{count}} payment to the payer, stops the subscription, and revokes the license for good. Its key stops working: to use Allay again, the server deletes license.key, runs /allay link, and pays again or uses its own key. Its players' memories stay with the old license.",
+    "refundText_other": "The bot returns {{stars}} Stars from {{count}} payments to the payer, stops the subscription, and revokes the license for good. Its key stops working: to use Allay again, the server deletes license.key, runs /allay link, and pays again or uses its own key. Its players' memories stay with the old license.",
+    "refundDone": "{{stars}} Stars refunded, license revoked.",
     "windows": "Budget windows",
     "fromPayment": "Payment",
     "byHand": "Granted by hand",
@@ -463,6 +469,7 @@
       "license.extend": "extended",
       "license.block": "blocked",
       "license.unblock": "unblocked",
+      "license.refund": "refunded and revoked",
       "payment.refund": "refunded"
     }
   },

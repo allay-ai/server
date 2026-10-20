@@ -2,6 +2,11 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.3.0
+
+- 💸 **Refund a license and revoke it.** “Refund and revoke” on a license's page in the panel returns every payment that isn't refunded yet through the bot, stops the subscription, and tells the payer in their language. The license is revoked for good: its key answers `LICENSE_INVALID`, its claim code and invoices stop working, and the bot leaves it out of `/status`, so the server takes a new license with `/allay link` and pays again or uses its own key. When Telegram refuses one payment, the license stays and a second try returns the rest. Telegram refunds only whole payments, so a refund is always full.
+- 🔓 **Unblock unblocks.** On MongoDB, unblocking a license and resuming renewal in the bot left the old date behind, so a blocked license stayed blocked. Clearing a field now removes it.
+
 ## 6.2.1
 
 - 🧹 **Erase a player by pseudonym.** “Erase a player” takes the pseudonym from the list as well as a UUID, so an admin who never saw the player's id can still erase them. A player nothing on the server names (no consent, no memories) loses what's left of them, their runs' ties and traces, instead of the button staying grey.

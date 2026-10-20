@@ -163,7 +163,7 @@ export interface License {
   name: string;
   created_at: string | null;
   plan: string | null;
-  status: "active" | "expired" | "unpaid" | "blocked";
+  status: "active" | "expired" | "unpaid" | "blocked" | "revoked";
   paid_until: string | null;
   renews: boolean;
   budget: number;
@@ -175,6 +175,7 @@ export interface License {
   last_payment_at: string | null;
   stopped_at: string | null;
   blocked_at: string | null;
+  revoked_at: string | null;
 }
 
 export interface Payment {

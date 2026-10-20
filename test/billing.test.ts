@@ -11,7 +11,7 @@ import { Limiter } from "../src/features/billing/limits";
 import { allocate, planOf, quotaOf, windowsFor } from "../src/features/billing/plans";
 import { handleChat, handleToolResult } from "../src/features/chat/chat.controller";
 import { handleHealth } from "../src/features/health/health.controller";
-import { handleUpdate } from "../src/features/telegram/telegram.bot";
+import { handleUpdate, refundLicense } from "../src/features/telegram/telegram.bot";
 import type { TelegramApi } from "../src/features/telegram/telegram.client";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { handleConsent, handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
@@ -508,6 +508,26 @@ describe("the Telegram bot", () => {
     expect(h.telegram.last("refundStarPayment")).toEqual({ user_id: 7, telegram_payment_charge_id: "charge-1" });
     expect(await h.billing.licenses.grants(h.created.license_id)).toHaveLength(0);
     expect((await body(chat(h.base, {}, h.auth))).error.code).toBe("SUBSCRIPTION_INACTIVE");
+  });
+
+  test("a revoked license's key, claim code, status line, and invoices stop working", async () => {
+    const h = await hosted();
+    await handleUpdate(h.billing, h.telegram.api, message(`/start ${h.code}`) as any);
+    await h.pay("week", "charge-1");
+    const license = (await h.billing.licenses.get(h.created.license_id))!;
+    const done = await refundLicense(h.billing, h.telegram.api, license);
+    expect(done).toEqual({ stars: planOf("week")!.stars, payments: 1 });
+    expect(h.telegram.last("sendMessage").text).toContain("revoked");
+
+    expect((await body(fetch(`${h.base}/api/v2/license`, { headers: h.auth }))).error.code).toBe("LICENSE_INVALID");
+    expect((await body(chat(h.base, {}, h.auth))).error.code).toBe("LICENSE_INVALID");
+    await handleUpdate(h.billing, h.telegram.api, message("/status") as any);
+    expect(h.telegram.last("sendMessage").text).not.toContain("Moonlands SMP");
+    await handleUpdate(h.billing, h.telegram.api, {
+      update_id: 5,
+      pre_checkout_query: { id: "pc", from: user(), currency: "XTR", total_amount: planOf("week")!.stars, invoice_payload: `week:${license.id}` },
+    } as any);
+    expect(h.telegram.last("answerPreCheckoutQuery")).toMatchObject({ ok: false });
   });
 
   test("the webhook wants Telegram's secret token", async () => {

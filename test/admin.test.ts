@@ -6,6 +6,7 @@ import { handleAdmin } from "../src/features/admin/admin.controller";
 import { handleAdminInit } from "../src/features/admin/init.controller";
 import { handleAsk } from "../src/features/ask/ask.controller";
 import { handleAskX } from "../src/features/askx/askx.controller";
+import { createLicense, verifyLicense } from "../src/features/billing/billing";
 import { handleLicense } from "../src/features/billing/license.controller";
 import { handleChat, handleToolResult } from "../src/features/chat/chat.controller";
 import { handleHealth } from "../src/features/health/health.controller";
@@ -400,6 +401,66 @@ describe("billing in the panel", () => {
     expect(calls).toEqual(["refundStarPayment", "editUserStarSubscription"]);
     expect((await ctx.call("GET", "/api/admin/licenses/lic1")).body.license.status).toBe("expired");
     expect((await ctx.call("POST", "/api/admin/payments/ch1/refund")).status).toBe(404);
+  });
+
+  test("a license's refund returns every payment, stops the subscription, and revokes its key", async () => {
+    const ctx = await withOwner({ selfHosted: false, billing: true });
+    await paid(ctx);
+    const { billing } = ctx.deps;
+    const now = billing.now();
+    await billing.licenses.pay({ charge_id: "ch2", license: "lic1", plan: "week", stars: 150, telegram_user_id: 7, at: now, recurring: false }, [
+      { budget: 0.75, starts: now, ends: new Date(now.getTime() + 7 * 86_400_000) },
+    ]);
+    await billing.licenses.refund("ch2", now);
+    await billing.licenses.pay({ charge_id: "ch3", license: "lic1", plan: "week", stars: 150, telegram_user_id: 7, at: now, recurring: false }, [
+      { budget: 0.75, starts: now, ends: new Date(now.getTime() + 7 * 86_400_000) },
+    ]);
+    const made = await createLicense(billing);
+    const secret = made.license.split(".")[1];
+    await billing.licenses.update("lic1", { secret_hash: (await billing.licenses.get(made.license_id))!.secret_hash, telegram_chat_id: 7, language: "ru" });
+
+    const calls: Array<{ method: string; params: any }> = [];
+    billing.bot.api = { call: async <T>(method: string, params?: any) => (calls.push({ method, params }), true as T) };
+    const done = await ctx.call("POST", "/api/admin/licenses/lic1/refund");
+    expect(done.body).toEqual({ revoked: true, stars: 650, payments: 2 });
+    expect(calls.filter((c) => c.method === "refundStarPayment").map((c) => c.params.telegram_payment_charge_id).sort()).toEqual(["ch1", "ch3"]);
+    expect(calls.some((c) => c.method === "editUserStarSubscription" && c.params.is_canceled)).toBe(true);
+    expect(calls.at(-1)).toMatchObject({ method: "sendMessage", params: { chat_id: 7 } });
+    expect(calls.at(-1)!.params.text).toContain("650 ⭐");
+
+    const view = (await ctx.call("GET", "/api/admin/licenses/lic1")).body;
+    expect(view.license).toMatchObject({ status: "revoked", renews: false });
+    expect(view.payments.every((p: any) => p.refunded_at)).toBe(true);
+    expect(await verifyLicense(billing, `Bearer lic1.${secret}`)).toMatchObject({ code: "LICENSE_INVALID" });
+    for (const action of ["refund", "grant", "extend", "block"]) {
+      expect((await ctx.call("POST", `/api/admin/licenses/lic1/${action}`, { usd: 1, days: 1 })).body.error.code).toBe("REVOKED");
+    }
+    expect(ctx.audit.entries.map((e) => e.action)).toContain("license.refund");
+  });
+
+  test("a license nobody paid for has nothing to refund", async () => {
+    const ctx = await withOwner({ selfHosted: false, billing: true });
+    await ctx.deps.billing.licenses.create({ id: "free1", secret_hash: "x", created_at: ctx.deps.billing.now(), renews: false });
+    expect((await ctx.call("POST", "/api/admin/licenses/free1/refund")).body.error.code).toBe("NOT_PAID");
+  });
+
+  test("when Telegram refuses a refund, the license stays and a second try returns the rest", async () => {
+    const ctx = await withOwner({ selfHosted: false, billing: true });
+    await paid(ctx);
+    const { billing } = ctx.deps;
+    let fail = true;
+    billing.bot.api = {
+      call: async <T>(method: string) => {
+        if (method === "refundStarPayment" && fail) throw new Error("Telegram refundStarPayment: BALANCE_TOO_LOW");
+        return true as T;
+      },
+    };
+    const failed = await ctx.call("POST", "/api/admin/licenses/lic1/refund");
+    expect(failed.status).toBe(502);
+    expect(failed.body.error.message).toContain("0 payments, 1 left");
+    expect((await ctx.call("GET", "/api/admin/licenses/lic1")).body.license.status).toBe("active");
+    fail = false;
+    expect((await ctx.call("POST", "/api/admin/licenses/lic1/refund")).body).toEqual({ revoked: true, stars: 500, payments: 1 });
   });
 
   test("revenue sums payments by week", async () => {

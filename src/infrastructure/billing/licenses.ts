@@ -69,7 +69,11 @@ export const mongoLicenses: LicenseStore = {
     return LicenseModel.findOne({ id: licenseId }).lean<LicenseRecord>();
   },
   async update(licenseId, patch) {
-    await LicenseModel.updateOne({ id: licenseId }, { $set: patch });
+    // Mongoose drops undefined from $set, so a field set to undefined (unblock, resume, revoke) is unset instead.
+    const entries = Object.entries(patch);
+    const set = Object.fromEntries(entries.filter(([, value]) => value !== undefined));
+    const unset = Object.fromEntries(entries.filter(([, value]) => value === undefined).map(([key]) => [key, 1]));
+    await LicenseModel.updateOne({ id: licenseId }, { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) });
   },
   async claim(claimHash, now) {
     return LicenseModel.findOneAndUpdate(

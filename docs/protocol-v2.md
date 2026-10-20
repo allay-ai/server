@@ -14,7 +14,7 @@ Since 6.0. Every endpoint below wants `Authorization: Bearer …`, except `GET /
 | Code | Status | Meaning |
 |---|---|---|
 | `LICENSE_REQUIRED` | 401 | A hosted backend got no `Authorization` (before 6.0: 402 without a key) |
-| `LICENSE_INVALID` | 401 | Unknown license or wrong secret |
+| `LICENSE_INVALID` | 401 | Unknown license, wrong secret, or a license the backend revoked after a refund |
 | `TOKEN_REQUIRED` | 401 | A self-hosted backend got no token |
 | `TOKEN_INVALID` | 401 | The token isn't the backend's `PLUGIN_TOKEN` |
 | `TOKEN_NOT_SET` | 503 | The self-hosted backend has no `PLUGIN_TOKEN` of 24 characters or more |

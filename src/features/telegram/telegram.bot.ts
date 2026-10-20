@@ -34,7 +34,7 @@ const claim = async (billing: Billing, api: TelegramApi, chat: number, from: Tel
   const language = languageOf(from.language_code);
   const t = textsOf(language);
   const license = await billing.licenses.claim(sha256(code), billing.now());
-  if (!license) return say(api, chat, t.claim_failed);
+  if (!license || license.revoked_at) return say(api, chat, t.claim_failed);
   // The code came from an operator's /allay link, so whoever opens it may take the server over.
   await billing.licenses.update(license.id, { telegram_user_id: from.id, telegram_chat_id: chat, language });
   logger.info(`License ${license.id} claimed in Telegram`);
@@ -46,7 +46,7 @@ const claim = async (billing: Billing, api: TelegramApi, chat: number, from: Tel
 const status = async (billing: Billing, api: TelegramApi, chat: number, from: TelegramUser) => {
   const language = languageOf(from.language_code);
   const t = textsOf(language);
-  const licenses = await billing.licenses.ofTelegram(from.id);
+  const licenses = (await billing.licenses.ofTelegram(from.id)).filter((l) => !l.revoked_at);
   if (!licenses.length) return say(api, chat, t.status_none);
   const lines = [t.status_title];
   const buttons: Button[][] = [];
@@ -96,7 +96,7 @@ const callback = async (billing: Billing, api: TelegramApi, query: NonNullable<U
   const [action, a, b] = (query.data ?? "").split(":");
   const licenseId = action === "buy" ? b : a;
   const license = licenseId ? await billing.licenses.get(licenseId) : null;
-  if (!license || license.telegram_user_id !== query.from.id) {
+  if (!license || license.revoked_at || license.telegram_user_id !== query.from.id) {
     return api.call("answerCallbackQuery", { callback_query_id: query.id, text: t.not_yours, show_alert: true });
   }
   await api.call("answerCallbackQuery", { callback_query_id: query.id });
@@ -132,7 +132,7 @@ const parsePayload = (payload: string) => {
 const preCheckout = async (billing: Billing, api: TelegramApi, query: NonNullable<Update["pre_checkout_query"]>) => {
   const { plan, license } = parsePayload(query.invoice_payload);
   const known = license ? await billing.licenses.get(license) : null;
-  const ok = !!plan && !!known && !known.blocked_at && query.currency === "XTR" && query.total_amount === plan.stars;
+  const ok = !!plan && !!known && !known.blocked_at && !known.revoked_at && query.currency === "XTR" && query.total_amount === plan.stars;
   await api.call("answerPreCheckoutQuery", {
     pre_checkout_query_id: query.id,
     ok,
@@ -210,6 +210,49 @@ export const refundPayment = async (billing: Billing, api: TelegramApi, chargeId
   }
   const done = await unbook(billing, chargeId);
   return { payment, license: done?.license ?? null };
+};
+
+export class LicenseRefundFailure extends Error {
+  constructor(
+    readonly refunded: number,
+    readonly left: number,
+    cause: Error,
+  ) {
+    super(cause.message);
+  }
+}
+
+/**
+ * Returns every payment of a license that isn't refunded yet, stops its subscription, and revokes it, so its key stops
+ * working and the server takes a new license. When Telegram refuses one payment, the license stays as it is and
+ * `LicenseRefundFailure` says how many went back; trying again returns the rest.
+ */
+export const refundLicense = async (billing: Billing, api: TelegramApi, license: LicenseRecord) => {
+  const payments = (await billing.licenses.payments({ license: license.id, limit: 100_000 })).filter((p) => !p.refunded_at);
+  let stars = 0;
+  let refunded = 0;
+  for (const payment of payments) {
+    const done = await refundPayment(billing, api, payment.charge_id).catch((failure: Error) => {
+      throw new LicenseRefundFailure(refunded, payments.length - refunded, failure);
+    });
+    if (!done) continue;
+    stars += payment.stars;
+    refunded++;
+  }
+  const now = await billing.licenses.get(license.id);
+  // A subscription whose own payment went back earlier still renews until someone cancels it.
+  if (now?.renews && now.subscription_charge_id && now.telegram_user_id !== undefined) {
+    await api
+      .call("editUserStarSubscription", { user_id: now.telegram_user_id, telegram_payment_charge_id: now.subscription_charge_id, is_canceled: true })
+      .catch(() => undefined);
+  }
+  await billing.licenses.update(license.id, { revoked_at: billing.now(), renews: false, claim_hash: undefined, claim_expires: undefined });
+  logger.info(`License ${license.id} revoked after refunding ${refunded} payments`);
+  if (stars > 0 && license.telegram_chat_id !== undefined) {
+    const language = license.language ?? "en";
+    await say(api, license.telegram_chat_id, fill(textsOf(language).revoked, { stars, server: serverName(license) })).catch(() => undefined);
+  }
+  return { stars, payments: refunded };
 };
 
 /** /refund <charge id>, for the bot's admins only. */

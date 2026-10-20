@@ -39,7 +39,7 @@ export const API_ERRORS = {
   TOKEN_REQUIRED: { code: 'TOKEN_REQUIRED', message: "This backend wants its PLUGIN_TOKEN as Authorization: Bearer <token> (server.token in the plugin's config.yml)", statusCode: 401 },
   TOKEN_INVALID: { code: 'TOKEN_INVALID', message: "The token doesn't match this backend's PLUGIN_TOKEN", statusCode: 401 },
   TOKEN_NOT_SET: { code: 'TOKEN_NOT_SET', message: "This self-hosted backend has no PLUGIN_TOKEN of at least 24 characters, so it answers no plugin; set one and put it in the plugin's server.token", statusCode: 503 },
-  LICENSE_INVALID: { code: 'LICENSE_INVALID', message: 'Unknown license', statusCode: 401 },
+  LICENSE_INVALID: { code: 'LICENSE_INVALID', message: 'Unknown or revoked license', statusCode: 401 },
   SUBSCRIPTION_INACTIVE: { code: 'SUBSCRIPTION_INACTIVE', message: "This server's Allay subscription isn't active", statusCode: 402 },
   QUOTA_EXCEEDED: { code: 'QUOTA_EXCEEDED', message: "This server's Allay limit is used up", statusCode: 402 },
   PLAYER_BLOCKED: { code: 'PLAYER_BLOCKED', message: 'This player may not ask Allay on this server', statusCode: 403 },
