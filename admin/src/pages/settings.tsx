@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 
 type FormValues = Record<string, string | boolean>;
 
-const GROUP_ORDER = ["model", "search", "limits", "sessions", "tracing", "billing", "telegram", "address"];
+const GROUP_ORDER = ["model", "search", "limits", "sessions", "tracing", "billing", "telegram", "address", "access"];
 /** Which check each group offers, and the fields it reads from the form. */
 const CHECKS: Record<string, { kind: string; keys: string[] }> = {
   model: { kind: "model", keys: ["OPENROUTER_API_KEY", "OPENROUTER_API_URL", "OPENROUTER_API_MODEL"] },

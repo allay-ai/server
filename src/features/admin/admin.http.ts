@@ -1,6 +1,7 @@
 import type { Server } from "bun";
 import type { AllayDeps } from "../../agent/allay";
-import { isPrivateAddress } from "../billing/byok";
+import { clientAddress } from "../../shared/lib/address";
+import { trustOf } from "../settings/trust";
 import { logger } from "../../shared/logging/logger";
 import type { Role } from "../../infrastructure/admin/accounts";
 import { type Admin, type AdminDeps, COOKIE, SESSION_TTL, adminNamed, allows } from "./admin";
@@ -9,14 +10,6 @@ import { type Admin, type AdminDeps, COOKIE, SESSION_TTL, adminNamed, allows } f
 export const prefixOf = (req: Request) => {
   const prefix = req.headers.get("X-Forwarded-Prefix")?.trim().replace(/\/+$/, "") ?? "";
   return /^(\/[A-Za-z0-9._~-]+)*$/.test(prefix) ? prefix : "";
-};
-
-/** The browser's address: behind a proxy on a private address, the one it forwards; otherwise the peer's. */
-export const clientAddress = (req: Request, server?: Server<undefined>) => {
-  const peer = server?.requestIP(req)?.address ?? "unknown";
-  if (peer !== "unknown" && !isPrivateAddress(peer)) return peer;
-  const forwarded = req.headers.get("X-Real-IP") ?? req.headers.get("X-Forwarded-For")?.split(",")[0];
-  return forwarded?.trim() || peer;
 };
 
 const hostOf = (req: Request) => req.headers.get("X-Forwarded-Host") ?? req.headers.get("Host") ?? new URL(req.url).host;
@@ -121,7 +114,7 @@ export const adminRouter = (routes: Route[]) => {
           params: Object.fromEntries(route.names.map((name, i) => [name, decodeURIComponent(match[i + 1])])),
           deps,
           admin,
-          ip: clientAddress(req, server),
+          ip: clientAddress(req, server, trustOf(admin.settings)),
         };
         if (route.access !== "public") {
           const id = cookieOf(req);

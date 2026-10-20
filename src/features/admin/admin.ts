@@ -3,6 +3,7 @@ import type { AccountStore, AdminAccount, Role } from "../../infrastructure/admi
 import type { AuditEntry, AuditStore } from "../../infrastructure/admin/audit";
 import type { SessionStore } from "../../infrastructure/admin/sessions";
 import type { TraceStore } from "../../infrastructure/observability/traces";
+import { rateKey } from "../../shared/lib/address";
 import { logger } from "../../shared/logging/logger";
 import type { Settings } from "../settings/settings";
 
@@ -108,7 +109,7 @@ export class SetupCodes {
 }
 
 /**
- * Failed sign-ins per address and per name, in memory: 10 failures from one address or 5 for one name
+ * Failed sign-ins per address (an IPv6 /64 counts as one) and per name, in memory: 10 failures from one address or 5 for one name
  * within 15 minutes lock that for the rest of the window. A success clears the name.
  */
 export class LoginLimiter {
@@ -129,11 +130,11 @@ export class LoginLimiter {
 
   /** Seconds to wait, or 0 when this sign-in may be tried. */
   blocked(address: string, username: string): number {
-    return Math.max(this.left(`ip:${address}`, this.perAddress), this.left(`name:${username}`, this.perName));
+    return Math.max(this.left(`ip:${rateKey(address)}`, this.perAddress), this.left(`name:${username}`, this.perName));
   }
 
   fail(address: string, username: string) {
-    for (const key of [`ip:${address}`, `name:${username}`]) {
+    for (const key of [`ip:${rateKey(address)}`, `name:${username}`]) {
       const entry = this.failures.get(key);
       if (!entry || this.now() - entry.start >= this.windowMs) this.failures.set(key, { start: this.now(), count: 1 });
       else entry.count++;

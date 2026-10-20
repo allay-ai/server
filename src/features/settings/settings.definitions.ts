@@ -4,9 +4,9 @@
  * Descriptions match the wiki's “Admin panel and settings” table; the panel shows them next to each field.
  */
 
-export type SettingGroup = "model" | "search" | "limits" | "sessions" | "tracing" | "billing" | "telegram" | "address";
+export type SettingGroup = "model" | "search" | "limits" | "sessions" | "tracing" | "billing" | "telegram" | "address" | "access";
 
-export const GROUPS: SettingGroup[] = ["model", "search", "limits", "sessions", "tracing", "billing", "telegram", "address"];
+export const GROUPS: SettingGroup[] = ["model", "search", "limits", "sessions", "tracing", "billing", "telegram", "address", "access"];
 
 /** Groups that only mean something with billing on; a self-hosted backend hides them. */
 export const HOSTED_GROUPS: SettingGroup[] = ["billing", "telegram"];
@@ -118,6 +118,14 @@ export const DEFINITIONS = {
   BYOK_PER_MINUTE: { type: "int", group: "billing", default: 20, min: 1, max: 10_000, description: "Questions a minute from a server with its own key" },
   BYOK_PER_DAY: { type: "int", group: "billing", default: 2_000, min: 1, max: 1_000_000, description: "Questions a day from a server with its own key" },
   BYOK_CONCURRENT: { type: "int", group: "billing", default: 4, min: 1, max: 100, description: "Questions at once from a server with its own key" },
+  BYOK_ACTIVE_RUNS: {
+    type: "int",
+    group: "billing",
+    default: 100,
+    min: 1,
+    max: 10_000,
+    description: "Questions at once from all servers with their own key together, so free servers can't take every slot from paying ones",
+  },
   STAR_USD: { type: "number", group: "billing", default: 0.013, min: 0, max: 1, description: "What a Star brings in US dollars, for the revenue estimates" },
 
   TELEGRAM_BOT_TOKEN: { type: "secret", group: "telegram", description: "The payment bot's token; without it there are no payment links" },
@@ -139,6 +147,26 @@ export const DEFINITIONS = {
     group: "address",
     default: (get: Getter) => String(get("API_URL")),
     description: "Where people reach this backend in a browser, with any path prefix; the setup link starts with it. API_URL when empty",
+  },
+
+  PLUGIN_TOKEN: {
+    type: "secret",
+    group: "access",
+    description: "Self-hosted: the token every plugin sends as Authorization: Bearer (server.token in its config.yml), at least 24 characters. Without it the backend answers no plugin",
+  },
+  TRUSTED_PROXIES: {
+    type: "string",
+    group: "access",
+    pattern: "^[0-9A-Fa-f:.,/\\s]*$",
+    max: 1000,
+    description: "Addresses and CIDR ranges of the reverse proxies in front of the backend, comma-separated; only their forwarding headers count. Empty trusts nobody",
+  },
+  CLIENT_IP_HEADER: {
+    type: "enum",
+    group: "access",
+    options: ["x-forwarded-for", "x-real-ip", "cf-connecting-ip"],
+    default: "x-forwarded-for",
+    description: "The header a trusted proxy puts the client's address in",
   },
 } satisfies Record<string, SettingDefinition>;
 
