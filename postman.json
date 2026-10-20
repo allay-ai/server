@@ -10,6 +10,12 @@
       "key": "base_url",
       "value": "http://localhost:3000",
       "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string",
+      "description": "Since 6.0: the license (hosted) or PLUGIN_TOKEN (self-hosted) every request but health sends"
     }
   ],
   "item": [
@@ -385,5 +391,15 @@
         }
       ]
     }
-  ]
-} 
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  }
+}
