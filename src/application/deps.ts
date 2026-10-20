@@ -15,6 +15,7 @@ import { mongoAudit } from "../infrastructure/admin/audit";
 import { redisSessions } from "../infrastructure/admin/sessions";
 import { mongoRuns } from "../infrastructure/runs/runs";
 import { mongoTraces } from "../infrastructure/observability/traces";
+import type { Pseudonyms } from "../infrastructure/privacy/pseudonyms";
 
 const admins = () =>
   (settings.get("TELEGRAM_ADMIN_IDS") ?? "")
@@ -26,7 +27,7 @@ const admins = () =>
  * The real services; tests build their own with a mock model, in-memory stores, and a fake network.
  * Built once the stored settings are loaded, since tracing reads them at start.
  */
-export const productionDeps = (): AllayDeps => {
+export const productionDeps = (pseudonyms: Pseudonyms): AllayDeps => {
   const mastra = tracing(MONGODB_URI, MONGODB_DATABASE);
   return {
     models: openrouterModels,
@@ -34,6 +35,8 @@ export const productionDeps = (): AllayDeps => {
     memories: mongoMemories,
     bridge,
     runs: mongoRuns,
+    pseudonyms,
+    traces: mastra ? mongoTraces : undefined,
     get perplexity() {
       const apiKey = settings.get("PERPLEXITY_API_KEY");
       return apiKey ? { apiKey } : undefined;
@@ -43,7 +46,8 @@ export const productionDeps = (): AllayDeps => {
       enabled: !selfHosted(),
       licenses: mongoLicenses,
       net: {
-        fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(10_000) }),
+        // No redirects: a public provider must not bounce the backend's checks to a private address.
+        fetch: (url, init) => fetch(url, { ...init, redirect: "error", signal: AbortSignal.timeout(10_000) }),
         resolve: async (host) => (await lookup(host, { all: true })).map((a) => a.address),
       },
       bot: {

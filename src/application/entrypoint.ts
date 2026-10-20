@@ -9,12 +9,16 @@ import { handleChat, handleToolResult } from "../features/chat/chat.controller";
 import { handleLicense } from "../features/billing/license.controller";
 import { handleHealth } from "../features/health/health.controller";
 import { handleTelegram, startTelegram, watchTelegram } from "../features/telegram/telegram.controller";
-import { handleMemories, handleMemory, handleSession } from "../features/users/users.controller";
+import { handleMemories, handleMemory, handleSession, handleUser } from "../features/users/users.controller";
 import { logger } from "../shared/logging/logger";
 import { connect as mongoConnect, disconnect as mongoDisconnect } from "../infrastructure/database/mongodb.client";
 import { settings } from "../features/settings/settings";
 import { productionVault } from "../infrastructure/settings/secrets";
 import { mongoSettings } from "../infrastructure/settings/store";
+import { migrate } from "../infrastructure/database/migrations";
+import { PSEUDONYM_LABEL, pseudonymsWith } from "../infrastructure/privacy/pseudonyms";
+import { mongoRuns } from "../infrastructure/runs/runs";
+import { selfHosted } from "../features/billing/billing";
 import { productionDeps } from "./deps";
 import { routes } from "./routes";
 
@@ -22,19 +26,34 @@ logger.info("Allay Server is starting...");
 
 await redis.ping();
 await mongoConnect();
-await settings.attach(mongoSettings, productionVault());
-const deps = productionDeps();
+const vault = productionVault();
+await settings.attach(mongoSettings, vault);
+const pseudonyms = pseudonymsWith(await vault.derive(PSEUDONYM_LABEL));
+await migrate({ selfHosted: selfHosted(), pseudonyms, now: new Date() });
+const deps = productionDeps(pseudonyms);
+
+// Days past RUN_DAYS keep how many played, not who; once at start and then daily.
+const prune = () => mongoRuns.prune(new Date()).catch((error) => logger.warn(`Couldn't prune old statistics: ${String(error)}`));
+void prune();
+setInterval(prune, 86_400_000).unref();
+
+if (selfHosted() && (settings.get("PLUGIN_TOKEN")?.trim().length ?? 0) < 24) {
+  logger.warn("PLUGIN_TOKEN is not set (or shorter than 24 characters): this self-hosted backend answers no plugin until it is");
+}
 
 const server = serve({
   port: Number(process.env.PORT) || 3000,
-  hostname: "0.0.0.0",
+  // In a container the port must listen on every interface; compose publishes it on 127.0.0.1 only.
+  hostname: process.env.HOST || "0.0.0.0",
+  // Questions are 2000 characters, tool results a few dozen kilobytes; nothing needs Bun's 128 MB default.
+  maxRequestBodySize: 2 * 1024 * 1024,
   routes: routes(deps, {
-    handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleSession, handleMemories, handleMemory,
+    handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleMemories, handleMemory,
     handleLicense, handleTelegram, handleAdminInit, handleAdmin, adminPages: adminPages(),
   }),
   error: (error: Error) => {
     logger.error("Server error:", error);
-    return Response.json({ error: "Internal server error" }, { status: 500 });
+    return Response.json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, { status: 500 });
   },
 });
 
