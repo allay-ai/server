@@ -2,6 +2,15 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.2.0
+
+For Allay 6.2, which tells a blocked player why; older plugins show a general error.
+
+- 🚫 **Block a player.** An admin blocks a player on one server from their page in the panel, and Allay stops answering them there with `PLAYER_BLOCKED` (403) until someone unblocks them. Bans are kept by pseudonym, never by id, and outlive an erasure; “Blocked players” on the Players page lists them, erased players too.
+- 🧹 **Clear a player's session, or erase them, from their page.** The backend finds who a pseudonym is among the players who agreed to the notice or have memories there; the panel still never sees the id. Erasing by id stays for players who send theirs.
+- 🎛️ **The panel reads easier.** “Erase a player” picks the server from a list and lines its fields up; a license's long name glides back and forth instead of being cut, in the list and on its page; Active is green, Expired amber, Blocked red; the theme menu fits “System”.
+- 🗂️ A player's export says whether they're blocked there.
+
 ## 6.1.1
 
 - 🌐 **Buttons speak the answer's language.** An English question got an English answer with Russian buttons under it: the tools asked for labels “in the player's language”, which the model read as the game locale, and the prompt's examples are Russian. Now labels, button questions, mark titles, and task names follow the language of the answer, and the prompt says its Russian examples show the form only.

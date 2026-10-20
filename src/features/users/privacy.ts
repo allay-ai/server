@@ -16,22 +16,26 @@ export interface PlayerExport extends SessionExport {
   consent: Consent | null;
   /** The pseudonym the statistics know the player by. */
   pseudonym: string;
+  /** When operators stopped the player from asking on this tenant, or null. */
+  blocked_at: string | null;
   runs: Array<{ at: string; kind: string; model: string; input_tokens: number; output_tokens: number; cost: number; duration_ms: number; result: string }>;
   retention: Record<string, string>;
 }
 
 export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<PlayerExport> => {
   const pseudonym = deps.pseudonyms.of(owner.userId);
-  const [memories, consent, sessions, runs] = await Promise.all([
+  const [memories, consent, sessions, runs, bans] = await Promise.all([
     deps.memories.list(owner),
     deps.consents.get(owner),
     deps.history.export(owner),
     deps.runs?.of(pseudonym, owner.tenant, EXPORT_RUNS) ?? [],
+    deps.bans.of([pseudonym]),
   ]);
   return {
     user_id: owner.userId,
     tenant: owner.tenant,
     pseudonym,
+    blocked_at: bans.get(pseudonym)?.find((b) => b.tenant === owner.tenant)?.blocked_at ?? null,
     memories,
     consent,
     ...sessions,
@@ -51,8 +55,19 @@ export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<Playe
       session: "CHAT_TTL_SECONDS after the last question (a day by default)",
       runs: "400 days, by pseudonym",
       traces: "TRACE_DAYS (7 by default)",
+      block: "until an operator unblocks the player, by pseudonym; an erasure doesn't lift it",
     },
   };
+};
+
+/**
+ * The id behind a pseudonym on one tenant, which the panel never shows: the players who agreed to the notice there
+ * (everyone who asked since 6.1) and those with memories. Null when neither knows them.
+ */
+export const findPlayer = async (deps: Pick<AllayDeps, "consents" | "memories" | "pseudonyms">, tenant: string, pseudonym: string): Promise<string | null> => {
+  const ids = new Set([...(await deps.consents.users(tenant)), ...(await deps.memories.users(tenant))]);
+  for (const id of ids) if (deps.pseudonyms.of(id) === pseudonym) return id;
+  return null;
 };
 
 /** What an erasure removed, as counts only. */

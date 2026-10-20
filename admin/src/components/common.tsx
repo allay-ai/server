@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, CheckCircle2, CircleSlash, XCircle } from "lucide-react";
-import type { ReactNode } from "react";
-import { useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
@@ -24,13 +24,42 @@ import { dateTime, duration, relative, usd } from "@/lib/format";
 import type { Run } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+/**
+ * One line that doesn't fit glides to its end and back, like a news ticker, with a pause at each end; a line that fits
+ * stands still. Readers who asked for less motion get it cut, with the whole text on hover.
+ */
+export const Marquee = ({ children, title, className }: { children: ReactNode; title?: string; className?: string }) => {
+  const box = useRef<HTMLSpanElement>(null);
+  const line = useRef<HTMLSpanElement>(null);
+  const [shift, setShift] = useState(0);
+  useLayoutEffect(() => {
+    const measure = () => setShift(box.current && line.current ? Math.max(0, line.current.scrollWidth - box.current.clientWidth) : 0);
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (box.current) observer.observe(box.current);
+    if (line.current) observer.observe(line.current);
+    return () => observer.disconnect();
+  }, []);
+  // About 40 px a second, so a long name reads at the same pace as a short one.
+  const style = { "--marquee-shift": `-${shift}px`, "--marquee-duration": `${Math.max(4, shift / 40) * 2 + 3}s` } as CSSProperties;
+  return (
+    <span ref={box} title={shift > 0 ? title : undefined} className={cn("block overflow-hidden whitespace-nowrap", shift > 0 && "marquee-fade", className)}>
+      <span ref={line} className={cn("inline-block", shift > 0 && "marquee")} style={style}>
+        {children}
+      </span>
+    </span>
+  );
+};
+
 export const PageHeader = ({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) => (
   <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-    <div className="min-w-0">
-      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+    <div className="min-w-0 flex-1">
+      <h1 className="text-2xl font-semibold tracking-tight">
+        <Marquee title={title}>{title}</Marquee>
+      </h1>
       {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
     </div>
-    {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+    {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
   </div>
 );
 

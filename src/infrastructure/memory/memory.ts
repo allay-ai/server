@@ -20,6 +20,8 @@ export interface MemoryStore {
   clear(owner: Owner): Promise<number>;
   /** The player just asked: their memories live another MEMORY_DAYS. */
   touch(owner: Owner): Promise<void>;
+  /** The ids of every player with memories on [tenant]. */
+  users(tenant: string): Promise<string[]>;
 }
 
 export const MAX_MEMORIES = 30;
@@ -51,6 +53,9 @@ export const mongoMemories: MemoryStore = {
   async touch(owner) {
     await MemoryModel.updateMany(query(owner), { $set: { seen_at: new Date() } });
   },
+  async users(tenant) {
+    return MemoryModel.distinct("user_id", { tenant });
+  },
 };
 
 /** For tests and local runs without MongoDB. */
@@ -79,5 +84,8 @@ export const memoryMemories = (): MemoryStore => {
       return count;
     },
     async touch() {},
+    async users(tenant) {
+      return [...store.keys()].filter((key) => key.startsWith(`${tenant}\n`) && of({ tenant, userId: key.slice(tenant.length + 1) }).length).map((key) => key.slice(tenant.length + 1));
+    },
   };
 };

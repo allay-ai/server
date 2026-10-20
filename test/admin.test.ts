@@ -11,7 +11,7 @@ import { handleChat, handleToolResult } from "../src/features/chat/chat.controll
 import { handleHealth } from "../src/features/health/health.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { handleConsent, handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
-import { AUTH, scripted, testAdmin, testBilling, testDeps, text, finish } from "./helpers";
+import { AUTH, scripted, testAdmin, testBilling, testDeps, text, finish, thread } from "./helpers";
 
 const handlers = {
   handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handleLicense, handleTelegram,
@@ -44,7 +44,7 @@ const start = (options: Parameters<typeof testAdmin>[0] & { billing?: boolean } 
   const init = (headers: Record<string, string> = AUTH) =>
     fetch(`${base}/api/v2/admin/init`, { method: "POST", headers }).then(async (r) => ({ status: r.status, body: (await r.json()) as any }));
   const codeOf = (url: string) => new URL(url).searchParams.get("code")!;
-  return { admin, audit, advance, call, init, codeOf, signOut: () => (cookie = ""), session: () => cookie, deps };
+  return { admin, audit, advance, base, call, init, codeOf, signOut: () => (cookie = ""), session: () => cookie, deps };
 };
 
 describe("setup", () => {
@@ -440,6 +440,65 @@ describe("players in the panel", () => {
     expect(entry.target).toBe(`self ${pseudonym}`);
     expect(JSON.stringify(audit.entries)).not.toContain("uuid-steve");
     expect((await call("POST", "/api/admin/players/erase", { server: "anything", user_id: "x" })).status).toBe(400);
+  });
+
+  test("an admin blocks, resets, and erases a player by pseudonym, and a blocked player gets PLAYER_BLOCKED", async () => {
+    const ctx = await withOwner();
+    const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
+    Object.assign(ctx.deps, { runs });
+    const { call, deps, audit } = ctx;
+    const steve = { tenant: "self", userId: "uuid-steve" };
+    await deps.consents.give(steve, 1);
+    await deps.memories.add(steve, "base at 120 64 -300");
+    await deps.history.append(thread("uuid-steve"), { role: "user", content: "hi" });
+    const pseudonym = deps.pseudonyms.of("uuid-steve");
+    await runs.add({
+      id: "r1", at: new Date(), kind: "ask", payer: "self", server: "self", user_id: pseudonym, model: "m",
+      input_tokens: 1, output_tokens: 1, reasoning_tokens: 0, cost: 0.001, steps: 1, tools: [], searches: 0, duration_ms: 10, result: "ok",
+    });
+    expect((await call("GET", `/api/admin/players/${pseudonym}`)).body.servers).toEqual([{ server: "self", blocked_at: null, known: true }]);
+
+    expect((await call("POST", `/api/admin/players/${pseudonym}/block`, { server: "self" })).body).toEqual({ blocked: true });
+    expect((await call("GET", "/api/admin/players")).body.players[0].blocked).toBe(true);
+    const asked = await fetch(`${ctx.base}/api/v2/chat`, {
+      method: "POST",
+      headers: { ...AUTH, "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: "uuid-steve", player: { name: "Steve" }, message: "hi" }),
+    });
+    expect(asked.status).toBe(403);
+    expect(((await asked.json()) as any).error.code).toBe("PLAYER_BLOCKED");
+    // Another server's player of the same id isn't blocked: bans are per tenant.
+    expect(await deps.bans.has("license:other", pseudonym)).toBe(false);
+    expect((await call("POST", `/api/admin/players/${pseudonym}/block`, { server: "license:other" })).status).toBe(404);
+
+    expect((await call("POST", `/api/admin/players/${pseudonym}/reset`, { server: "self" })).body).toEqual({ cleared: true });
+    expect((await deps.history.load(thread("uuid-steve"))).messages).toEqual([]);
+    expect(await deps.memories.list(steve)).toHaveLength(1);
+
+    expect((await call("POST", `/api/admin/players/${pseudonym}/erase`, { server: "self" })).body).toMatchObject({ erased: true, memories: 1, runs: 1 });
+    expect(await deps.consents.get(steve)).toBeNull();
+    // The ban outlives the erasure; an unblock lifts it.
+    expect(await deps.bans.has("self", pseudonym)).toBe(true);
+    expect((await call("GET", "/api/admin/players/blocked")).body.bans).toMatchObject([{ user_id: pseudonym, server: "self" }]);
+    expect((await call("GET", `/api/admin/players/${pseudonym}`)).body).toMatchObject({ questions: 0, servers: [{ server: "self", known: false }] });
+    expect((await call("POST", `/api/admin/players/${pseudonym}/unblock`, { server: "self" })).body).toEqual({ blocked: false });
+    expect(await deps.bans.has("self", pseudonym)).toBe(false);
+
+    expect(audit.entries.map((e) => e.action)).toEqual(expect.arrayContaining(["player.block", "player.reset", "player.erase", "player.unblock"]));
+    expect(JSON.stringify(audit.entries)).not.toContain("uuid-steve");
+  });
+
+  test("a pseudonym nothing on the server can name is refused for reset and erase", async () => {
+    const ctx = await withOwner();
+    const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
+    Object.assign(ctx.deps, { runs });
+    const pseudonym = ctx.deps.pseudonyms.of("uuid-ghost");
+    await runs.add({
+      id: "r1", at: new Date(), kind: "ask", payer: "self", server: "self", user_id: pseudonym, model: "m",
+      input_tokens: 1, output_tokens: 1, reasoning_tokens: 0, cost: 0.001, steps: 1, tools: [], searches: 0, duration_ms: 10, result: "ok",
+    });
+    expect((await ctx.call("POST", `/api/admin/players/${pseudonym}/erase`, { server: "self" })).body.error.code).toBe("UNKNOWN_PLAYER");
+    expect((await ctx.call("POST", `/api/admin/players/${pseudonym}/block`, { server: "self" })).status).toBe(200);
   });
 
   test("a viewer can't erase players or see who paid", async () => {

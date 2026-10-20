@@ -17,6 +17,8 @@ export interface ConsentStore {
   give(owner: Owner, version: number): Promise<Consent>;
   /** Whether there was one to withdraw. */
   withdraw(owner: Owner): Promise<boolean>;
+  /** The ids of every player who agreed on [tenant]: since 6.1 that's everyone who asks there. */
+  users(tenant: string): Promise<string[]>;
 }
 
 export const MAX_CONSENT_VERSION = 1000;
@@ -36,6 +38,9 @@ export const mongoConsents: ConsentStore = {
   async withdraw(owner) {
     return (await ConsentModel.deleteOne(query(owner))).deletedCount > 0;
   },
+  async users(tenant) {
+    return ConsentModel.distinct("user_id", { tenant });
+  },
 };
 
 /** For tests and local runs without MongoDB. */
@@ -53,6 +58,9 @@ export const memoryConsents = (): ConsentStore => {
     },
     async withdraw(owner) {
       return store.delete(at(owner));
+    },
+    async users(tenant) {
+      return [...store.keys()].filter((key) => key.startsWith(`${tenant}\n`)).map((key) => key.slice(tenant.length + 1));
     },
   };
 };

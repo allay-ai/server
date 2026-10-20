@@ -8,6 +8,7 @@ import { redisHistory } from "../infrastructure/history/history";
 import { tracing } from "../infrastructure/observability/tracing";
 import { mongoMemories } from "../infrastructure/memory/memory";
 import { mongoConsents } from "../infrastructure/privacy/consents";
+import { mongoBans } from "../infrastructure/privacy/bans";
 import { openrouterModels } from "../infrastructure/providers/openrouter/openrouter.client";
 import { settings } from "../features/settings/settings";
 import { LoginLimiter, SetupCodes, envAdminOf } from "../features/admin/admin";
@@ -35,6 +36,7 @@ export const productionDeps = (pseudonyms: Pseudonyms): AllayDeps => {
     history: redisHistory,
     memories: mongoMemories,
     consents: mongoConsents,
+    bans: mongoBans,
     bridge,
     runs: mongoRuns,
     pseudonyms,

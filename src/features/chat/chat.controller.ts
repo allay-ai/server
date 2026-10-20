@@ -18,6 +18,8 @@ export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Ser
   if (!json.ok) return jsonError(json.error);
   const parsed = parseChatRequest(json.body, caller.tenant);
   if (!parsed.ok) return jsonError(parsed.error);
+  // A blocked player is refused before anything is paid for or kept.
+  if (await deps.bans.has(caller.tenant, deps.pseudonyms.of(parsed.context.userId))) return jsonError(apierror(API_ERRORS.PLAYER_BLOCKED));
   if (deps.bridge.active >= settings.get("MAX_ACTIVE_RUNS")) {
     return jsonError({ code: "QUEUE_ERROR", message: "Too many questions at once; try again in a minute", statusCode: 503 });
   }

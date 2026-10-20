@@ -284,6 +284,7 @@ Without a key, the request runs on the backend's own key and models. The plugin 
 | `LICENSE_REQUIRED`, `LICENSE_INVALID` | 401 | See “Who is asking” |
 | `SUBSCRIPTION_INACTIVE` | 402 | Nothing paid for now, the period ended, or the license is blocked |
 | `QUOTA_EXCEEDED` | 402 | This period's limit is spent; `resets_at` (ISO-8601) says when it refills, absent when only a new payment helps |
+| `PLAYER_BLOCKED` | 403 | Since 6.2: the backend's operators blocked this player on this server (also from `/api/v1/ask` and `/api/v1/askx`). Plugins before 6.2 show it as a general error |
 
 Before a stream these come as `{ "error": { "code", "message", "resets_at"?, "retry_after"? } }`.
 

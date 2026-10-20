@@ -7,6 +7,7 @@ import { pseudonymsWith } from "../src/infrastructure/privacy/pseudonyms";
 import type { Owner } from "../src/shared/types/owner";
 import { memoryMemories } from "../src/infrastructure/memory/memory";
 import { memoryConsents } from "../src/infrastructure/privacy/consents";
+import { memoryBans } from "../src/infrastructure/privacy/bans";
 import type { ModelFactory } from "../src/infrastructure/providers/openrouter/openrouter.client";
 import { type Billing, newLimits } from "../src/features/billing/billing";
 import type { Net } from "../src/features/billing/byok";
@@ -133,6 +134,7 @@ export const testDeps = (
     history: memoryHistory(),
     memories: memoryMemories(),
     consents: memoryConsents(),
+    bans: memoryBans(),
     bridge: new ToolBridge(options.toolTimeoutMs ?? 2_000),
     billing: options.billing ?? testBilling(),
     pseudonyms: pseudonymsWith("test"),

@@ -127,11 +127,11 @@ const UserMenu = () => {
           </span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
+      <DropdownMenuContent align="start" className="w-64">
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t("menu.theme")}</DropdownMenuLabel>
         <div className="flex gap-1 px-2 pb-2">
           {THEMES.map(({ value, icon: Icon }) => (
-            <Button key={value} size="sm" variant={theme === value ? "secondary" : "ghost"} className="flex-1" onClick={() => setTheme(value)} aria-pressed={theme === value}>
+            <Button key={value} size="sm" variant={theme === value ? "secondary" : "ghost"} className="min-w-0 flex-1 px-2" onClick={() => setTheme(value)} aria-pressed={theme === value}>
               <Icon className="size-4" aria-hidden />
               <span className="sr-only sm:not-sr-only sm:text-xs">{t(`menu.themes.${value}`)}</span>
             </Button>

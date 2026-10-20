@@ -42,6 +42,7 @@ export const API_ERRORS = {
   LICENSE_INVALID: { code: 'LICENSE_INVALID', message: 'Unknown license', statusCode: 401 },
   SUBSCRIPTION_INACTIVE: { code: 'SUBSCRIPTION_INACTIVE', message: "This server's Allay subscription isn't active", statusCode: 402 },
   QUOTA_EXCEEDED: { code: 'QUOTA_EXCEEDED', message: "This server's Allay limit is used up", statusCode: 402 },
+  PLAYER_BLOCKED: { code: 'PLAYER_BLOCKED', message: 'This player may not ask Allay on this server', statusCode: 403 },
   BILLING_UNAVAILABLE: { code: 'BILLING_UNAVAILABLE', message: 'Payments are not set up on this backend', statusCode: 503 },
 } as const;
 

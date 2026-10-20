@@ -3,12 +3,32 @@ import { z } from "zod";
 import { PSEUDONYM } from "../../infrastructure/privacy/pseudonyms";
 import { USER_ID } from "../../shared/types/owner";
 import { TENANT } from "../auth/caller";
-import { erasePlayer } from "../users/privacy";
+import { erasePlayer, findPlayer } from "../users/privacy";
 import { record } from "./admin";
-import { type Route, body, error } from "./admin.http";
+import { type Route, type Context, body, error } from "./admin.http";
 import { RANGES, type Range, statsFor } from "./stats";
 
 const eraseSchema = z.object({ server: z.string().regex(TENANT), user_id: z.string().regex(USER_ID) });
+const serverSchema = z.object({ server: z.string().regex(TENANT) });
+
+/** A player of the panel's page and one tenant they asked on, from the path and the body; a response when there's none. */
+const playerOn = async ({ deps, params, req }: Context) => {
+  const input = serverSchema.safeParse(await body(req));
+  if (!PSEUDONYM.test(params.id) || !input.success) return error(400, "BAD_REQUEST", "Name the server (self or license:<id>)");
+  // An erased player's runs no longer name them, but their ban still does, so it can be lifted.
+  const tenants = [...((await deps.runs?.tenantsOf(params.id)) ?? []), ...((await deps.bans.of([params.id])).get(params.id) ?? []).map((b) => b.tenant)];
+  if (!tenants.includes(input.data.server)) return error(404, "NOT_FOUND", "This player never asked on that server");
+  return { tenant: input.data.server, pseudonym: params.id };
+};
+
+/** The same, with the player's id the backend finds for it; only the backend ever sees that id. */
+const ownerOn = async (ctx: Context) => {
+  const player = await playerOn(ctx);
+  if (player instanceof Response) return player;
+  const userId = await findPlayer(ctx.deps, player.tenant, player.pseudonym);
+  if (!userId) return error(404, "UNKNOWN_PLAYER", "Nothing kept on that server tells who this player is; erase by their id instead");
+  return { ...player, owner: { tenant: player.tenant, userId } };
+};
 
 /** A player's id typed into the search finds their pseudonym; anything else searches pseudonyms by prefix. */
 const searchOf = (deps: { pseudonyms: { of(id: string): string } }, text?: string) => {
@@ -52,12 +72,21 @@ export const insightRoutes: Route[] = [
       const search = searchOf(deps, given);
       if (given && !search) return Response.json({ total: 0, page, limit, players: [] });
       const { players, total } = await deps.runs.players({ search, limit, skip: page * limit });
+      const bans = await deps.bans.of(players.map((p) => p.user_id));
       return Response.json({
         total,
         page,
         limit,
-        players: players.map((p) => ({ ...p, first_seen: p.first_seen.toISOString(), last_seen: p.last_seen.toISOString() })),
+        players: players.map((p) => ({ ...p, blocked: bans.has(p.user_id), first_seen: p.first_seen.toISOString(), last_seen: p.last_seen.toISOString() })),
       });
+    },
+  },
+  {
+    method: "GET",
+    path: "/players/blocked",
+    access: "viewer",
+    async handle({ deps }) {
+      return Response.json({ bans: (await deps.bans.list(200)).map(({ pseudonym, tenant, blocked_at }) => ({ user_id: pseudonym, server: tenant, blocked_at })) });
     },
   },
   {
@@ -66,20 +95,33 @@ export const insightRoutes: Route[] = [
     access: "viewer",
     async handle({ deps, params }) {
       if (!PSEUDONYM.test(params.id)) return error(404, "NOT_FOUND", "No such player");
-      const [summary, runs] = await Promise.all([
+      const [summary, runs, tenants, bans] = await Promise.all([
         deps.runs?.players({ search: params.id, limit: 1, skip: 0 }),
         deps.runs?.list({ user_id: params.id, limit: 50 }) ?? [],
+        deps.runs?.tenantsOf(params.id) ?? [],
+        deps.bans.of([params.id]),
       ]);
-      const player = summary?.players.find((p) => p.user_id === params.id);
+      const banned = bans.get(params.id) ?? [];
+      // A player erased while blocked has no runs left, only the ban.
+      const player = summary?.players.find((p) => p.user_id === params.id) ?? (banned.length ? { questions: 0, cost: 0, language: undefined, first_seen: null, last_seen: null } : null);
       if (!player) return error(404, "NOT_FOUND", "No such player");
+      // Per server: whether they're blocked there, and whether the backend can tell who they are, to reset or erase them.
+      const servers = await Promise.all(
+        [...new Set([...tenants, ...banned.map((b) => b.tenant)])].map(async (tenant) => ({
+          server: tenant,
+          blocked_at: banned.find((b) => b.tenant === tenant)?.blocked_at ?? null,
+          known: (await findPlayer(deps, tenant, params.id)) !== null,
+        })),
+      );
       // Numbers only: the panel knows players by pseudonym, and never what they asked or what Allay remembers.
       return Response.json({
         user_id: params.id,
         language: player.language ?? null,
         questions: player.questions,
         cost: player.cost,
-        first_seen: player.first_seen.toISOString(),
-        last_seen: player.last_seen.toISOString(),
+        first_seen: player.first_seen?.toISOString() ?? null,
+        last_seen: player.last_seen?.toISOString() ?? null,
+        servers,
         runs: runs.map(runView),
       });
     },
@@ -108,6 +150,63 @@ export const insightRoutes: Route[] = [
       return Response.json({ erased: true, ...erased });
     },
   },
+  {
+    method: "POST",
+    path: "/players/:id/reset",
+    access: "admin",
+    async handle(ctx) {
+      const found = await ownerOn(ctx);
+      if (found instanceof Response) return found;
+      // The same as the player's own /allay new: the session goes, memories stay.
+      await ctx.deps.history.clear(found.owner);
+      await record(ctx.admin, { actor: ctx.me!.username, action: "player.reset", target: `${found.tenant} ${found.pseudonym}`, ip: ctx.ip });
+      return Response.json({ cleared: true });
+    },
+  },
+  {
+    method: "POST",
+    path: "/players/:id/erase",
+    access: "admin",
+    async handle(ctx) {
+      const found = await ownerOn(ctx);
+      if (found instanceof Response) return found;
+      const erased = await erasePlayer(ctx.deps, found.owner);
+      await record(ctx.admin, {
+        actor: ctx.me!.username,
+        action: "player.erase",
+        target: `${found.tenant} ${found.pseudonym}`,
+        changes: [
+          { field: "memories", old: String(erased.memories), new: "0" },
+          { field: "runs", old: String(erased.runs), new: "erased" },
+        ],
+        ip: ctx.ip,
+      });
+      return Response.json({ erased: true, ...erased });
+    },
+  },
+  ...(["block", "unblock"] as const).map(
+    (action): Route => ({
+      method: "POST",
+      path: `/players/:id/${action}`,
+      access: "admin",
+      async handle(ctx) {
+        const player = await playerOn(ctx);
+        if (player instanceof Response) return player;
+        const changed =
+          action === "block" ? await ctx.deps.bans.block(player.tenant, player.pseudonym, ctx.me!.username) : await ctx.deps.bans.unblock(player.tenant, player.pseudonym);
+        if (changed) {
+          await record(ctx.admin, {
+            actor: ctx.me!.username,
+            action: `player.${action}`,
+            target: `${player.tenant} ${player.pseudonym}`,
+            changes: [{ field: "blocked", old: action === "block" ? "no" : "yes", new: action === "block" ? "yes" : "no" }],
+            ip: ctx.ip,
+          });
+        }
+        return Response.json({ blocked: action === "block" });
+      },
+    }),
+  ),
   {
     method: "GET",
     path: "/servers",

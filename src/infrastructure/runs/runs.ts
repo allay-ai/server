@@ -104,6 +104,8 @@ export interface RunStore {
   servers(options: { server?: string; limit: number }): Promise<ServerSummary[]>;
   /** The numbers of a player's runs on one tenant, newest first, for their copy of what's kept. */
   of(userId: string, server: string, limit: number): Promise<RunRecord[]>;
+  /** The tenants a player asked on, by pseudonym. */
+  tenantsOf(userId: string): Promise<string[]>;
   /**
    * Erasure on one tenant: the player's runs there keep their numbers under `erased`, and the days forget the
    * pseudonym. Returns the run ids, so their traces can go too.
@@ -284,6 +286,9 @@ export const mongoRuns: RunStore = {
   async of(userId, server, limit) {
     return RunModel.find({ user_id: userId, server }, PROJECTION).sort({ at: -1 }).limit(limit).lean<RunRecord[]>();
   },
+  async tenantsOf(userId) {
+    return RunModel.distinct("server", { user_id: userId });
+  },
   async forget(userId, server) {
     const ids = (await RunModel.find({ user_id: userId, server }, { _id: 0, id: 1 }).lean<Array<{ id: string }>>()).map((r) => r.id);
     await RunModel.updateMany({ user_id: userId, server }, { $set: { user_id: ERASED } });
@@ -379,6 +384,9 @@ export const memoryRuns = (): RunStore & { all: RunRecord[] } => {
     },
     async of(userId, server, limit) {
       return structuredClone(all.filter((r) => r.user_id === userId && r.server === server).sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, limit));
+    },
+    async tenantsOf(userId) {
+      return [...new Set(all.filter((r) => r.user_id === userId).map((r) => r.server))];
     },
     async forget(userId, server) {
       const ids: string[] = [];

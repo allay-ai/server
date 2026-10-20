@@ -116,3 +116,32 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* Marquee: a line too long for its box glides to its end and back, pausing at both ends. */
+@keyframes marquee {
+  0%,
+  15% {
+    transform: translateX(0);
+  }
+  85%,
+  100% {
+    transform: translateX(var(--marquee-shift));
+  }
+}
+.marquee {
+  animation: marquee var(--marquee-duration) ease-in-out infinite alternate;
+}
+.marquee-fade:hover .marquee {
+  animation-play-state: paused;
+}
+.marquee-fade {
+  mask-image: linear-gradient(to right, transparent, #000 0.5rem, #000 calc(100% - 0.75rem), transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee {
+    animation: none;
+  }
+  .marquee-fade {
+    text-overflow: ellipsis;
+  }
+}

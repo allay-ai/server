@@ -14,6 +14,7 @@ import type { RunKind, RunRecord, RunStore } from "../infrastructure/runs/runs";
 import { estimateTokens, type HistoryStore, maxTokens, threadOf } from "../infrastructure/history/history";
 import type { Pseudonyms } from "../infrastructure/privacy/pseudonyms";
 import type { ConsentStore } from "../infrastructure/privacy/consents";
+import type { BanStore } from "../infrastructure/privacy/bans";
 import type { TraceStore } from "../infrastructure/observability/traces";
 import type { Owner } from "../shared/types/owner";
 import type { Memory, MemoryStore } from "../infrastructure/memory/memory";
@@ -34,6 +35,8 @@ export interface AllayDeps {
   memories: MemoryStore;
   /** Which players agreed to have their data processed, as the plugin asked them. */
   consents: ConsentStore;
+  /** Players operators stopped from asking. */
+  bans: BanStore;
   bridge: ToolBridge;
   billing: Billing;
   /** Perplexity's Search API for runs on the backend's own key; without it they use the search model. */

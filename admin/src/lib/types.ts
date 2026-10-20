@@ -102,6 +102,8 @@ export interface PlayerSummary {
   /** A pseudonym (`p_…`), or `erased`. */
   user_id: string;
   language?: string;
+  /** Blocked on at least one server. */
+  blocked?: boolean;
   questions: number;
   cost: number;
   first_seen: string;
@@ -113,8 +115,11 @@ export interface PlayerDetail {
   language: string | null;
   questions: number;
   cost: number;
-  first_seen: string;
-  last_seen: string;
+  /** Null for a player erased while blocked: only the ban names them. */
+  first_seen: string | null;
+  last_seen: string | null;
+  /** Each server the player asked on: whether they're blocked there, and whether the backend can tell who they are. */
+  servers: Array<{ server: string; blocked_at: string | null; known: boolean }>;
   runs: Run[];
 }
 

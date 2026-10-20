@@ -135,16 +135,20 @@
   },
   "players": {
     "title": "Players",
-    "description": "Everyone who asked Allay, newest first, by pseudonym: the panel never shows a player's name or id.",
+    "description": "Everyone who asked Allay, newest first, by pseudonym: the panel never shows a player's name or id. Open a player to clear their session, block them, or erase them.",
     "search": "Search by pseudonym or player id",
     "none": "Nobody has asked yet.",
     "noMatch": "No player matches that.",
     "columns": { "player": "Player", "questions": "Questions", "cost": "Cost", "language": "Language", "lastSeen": "Last question" },
+    "blocked": {
+      "title": "Blocked players",
+      "description": "Allay doesn't answer them on the server named. Open a player to unblock them; a block outlives erasing their data.",
+      "since": "since {{date}}"
+    },
     "erase": {
       "title": "Erase a player",
-      "description": "When a player asks to be forgotten: their memories, session, and agents' threads go, and their runs keep only numbers.",
+      "description": "When a player sends their id and asks to be forgotten: their memories, session, and agents' threads go, and their runs keep only numbers. A player from the list is erased on their own page.",
       "server": "Server",
-      "serverHint": "self, or license:<id> on a hosted backend",
       "player": "Player id (UUID)",
       "action": "Erase",
       "confirmTitle": "Erase everything about this player on this server?",
@@ -162,7 +166,26 @@
     "firstSeen": "First question",
     "lastSeen": "Last question",
     "erased": "erased",
-    "runs": "Recent runs"
+    "runs": "Recent runs",
+    "blocked": "Blocked",
+    "actions": {
+      "title": "Actions",
+      "description": "The backend finds who this pseudonym is on the server you pick; you never see the id.",
+      "reset": "Clear session",
+      "resetTitle": "Clear this player's session?",
+      "resetText": "Allay forgets the conversation so far, as after the player's own /allay new. Their memories stay.",
+      "resetDone": "Session cleared.",
+      "block": "Block",
+      "blockTitle": "Block this player on this server?",
+      "blockText": "Allay stops answering them there until someone unblocks them. Erasing their data doesn't lift a block.",
+      "blockDone": "Player blocked.",
+      "unblock": "Unblock",
+      "unblockTitle": "Unblock this player?",
+      "unblockText": "Allay answers them on this server again.",
+      "unblockDone": "Player unblocked.",
+      "blockedSince": "Blocked since {{date}}.",
+      "unknown": "Nothing kept on this server tells who this player is (no consent and no memories), so their session can't be cleared or erased from here. Erase them by id under the list of players."
+    }
   },
   "servers": {
     "title": "Servers",

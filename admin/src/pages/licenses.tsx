@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Confirm, Definition, Empty, ErrorBox, Loading, PageHeader, Pager, StatTile, TableFrame } from "@/components/common";
+import { Confirm, Definition, Empty, ErrorBox, Loading, Marquee, PageHeader, Pager, StatTile, TableFrame } from "@/components/common";
 import { FormField } from "@/components/form-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,10 +24,21 @@ import { SearchBox } from "./players";
 
 const LIMIT = 50;
 
+// Green for paid and running, amber for a lapsed payment, plain for never paid, red for blocked.
+const STATUS_COLORS: Record<License["status"], string> = {
+  active: "border-success/30 bg-success/15 text-success",
+  expired: "border-warning/40 bg-warning/20 text-foreground",
+  unpaid: "text-muted-foreground",
+  blocked: "",
+};
+
 const StatusBadge = ({ status }: { status: License["status"] }) => {
   const { t } = useTranslation();
-  const variant = status === "active" ? "secondary" : status === "blocked" ? "destructive" : "outline";
-  return <Badge variant={variant}>{t(`licenses.status.${status}`)}</Badge>;
+  return (
+    <Badge variant={status === "blocked" ? "destructive" : "outline"} className={STATUS_COLORS[status]}>
+      {t(`licenses.status.${status}`)}
+    </Badge>
+  );
 };
 
 export const LicensesPage = () => {
@@ -68,8 +79,8 @@ export const LicensesPage = () => {
                   {query.data.licenses.map((l) => (
                     <TableRow key={l.id}>
                       <TableCell className="max-w-56">
-                        <Link to="/licenses/$id" params={{ id: l.id }} className="block truncate font-medium hover:underline">
-                          {l.name}
+                        <Link to="/licenses/$id" params={{ id: l.id }} className="block font-medium hover:underline">
+                          <Marquee title={l.name}>{l.name}</Marquee>
                         </Link>
                         <span className="font-mono text-xs text-muted-foreground">{l.id}</span>
                       </TableCell>
