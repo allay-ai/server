@@ -90,3 +90,15 @@ export const erasePlayer = async (deps: AllayDeps, owner: Owner): Promise<Erased
   const traces = (await deps.traces?.forget(runIds)) ?? 0;
   return { memories, runs: runIds.length, traces };
 };
+
+/**
+ * Erasure by pseudonym, from the panel: the whole erasure when the backend can tell who it is; otherwise nothing names
+ * the player but their runs and traces (no consent, no memories, and a session that long expired), so those go.
+ */
+export const erasePseudonym = async (deps: AllayDeps, tenant: string, pseudonym: string): Promise<Erased> => {
+  const userId = await findPlayer(deps, tenant, pseudonym);
+  if (userId) return erasePlayer(deps, { tenant, userId });
+  const runIds = (await deps.runs?.forget(pseudonym, tenant)) ?? [];
+  const traces = (await deps.traces?.forget(runIds)) ?? 0;
+  return { memories: 0, runs: runIds.length, traces };
+};

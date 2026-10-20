@@ -144,7 +144,7 @@ const ServerSelect = ({ id, value, onChange, servers }: { id: string; value: str
   </Select>
 );
 
-/** A player asked to be forgotten by their id, which the panel itself never shows; a player from the list is erased on their page. */
+/** A player asked to be forgotten: by the pseudonym from the list, or by the id they sent, which the panel itself never shows. */
 const EraseCard = () => {
   const { t } = useTranslation();
   const can = useCan();
@@ -174,7 +174,7 @@ const EraseCard = () => {
           <ServerSelect id="erase-server" value={server} onChange={setServer} servers={servers} />
         </FormField>
         <FormField id="erase-player" label={t("players.erase.player")}>
-          <Input id="erase-player" value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" autoComplete="off" spellCheck={false} />
+          <Input id="erase-player" value={userId} onChange={(e) => setUserId(e.target.value)} placeholder={t("players.erase.placeholder")} autoComplete="off" spellCheck={false} />
         </FormField>
         <Confirm
           label={t("players.erase.action")}
@@ -251,7 +251,6 @@ const PlayerActions = ({ id, servers }: { id: string; servers: PlayerDetail["ser
             text={t("players.erase.confirmText")}
             action={t("players.erase.action")}
             destructive
-            disabled={!chosen.known}
             onConfirm={() => act("erase")}
           />
         </div>

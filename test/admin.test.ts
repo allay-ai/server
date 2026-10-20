@@ -488,7 +488,7 @@ describe("players in the panel", () => {
     expect(JSON.stringify(audit.entries)).not.toContain("uuid-steve");
   });
 
-  test("a pseudonym nothing on the server can name is refused for reset and erase", async () => {
+  test("a pseudonym nothing on the server can name can't be reset, but its runs erase by pseudonym", async () => {
     const ctx = await withOwner();
     const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
     Object.assign(ctx.deps, { runs });
@@ -497,8 +497,12 @@ describe("players in the panel", () => {
       id: "r1", at: new Date(), kind: "ask", payer: "self", server: "self", user_id: pseudonym, model: "m",
       input_tokens: 1, output_tokens: 1, reasoning_tokens: 0, cost: 0.001, steps: 1, tools: [], searches: 0, duration_ms: 10, result: "ok",
     });
-    expect((await ctx.call("POST", `/api/admin/players/${pseudonym}/erase`, { server: "self" })).body.error.code).toBe("UNKNOWN_PLAYER");
+    expect((await ctx.call("POST", `/api/admin/players/${pseudonym}/reset`, { server: "self" })).body.error.code).toBe("UNKNOWN_PLAYER");
     expect((await ctx.call("POST", `/api/admin/players/${pseudonym}/block`, { server: "self" })).status).toBe(200);
+    // The card under the list takes a pseudonym too.
+    expect((await ctx.call("POST", "/api/admin/players/erase", { server: "self", user_id: pseudonym })).body).toMatchObject({ erased: true, memories: 0, runs: 1 });
+    expect(runs.all[0].user_id).toBe("erased");
+    expect(ctx.audit.entries.find((e) => e.action === "player.erase")!.target).toBe(`self ${pseudonym}`);
   });
 
   test("a viewer can't erase players or see who paid", async () => {

@@ -3,12 +3,13 @@ import { z } from "zod";
 import { PSEUDONYM } from "../../infrastructure/privacy/pseudonyms";
 import { USER_ID } from "../../shared/types/owner";
 import { TENANT } from "../auth/caller";
-import { erasePlayer, findPlayer } from "../users/privacy";
+import { type Erased, erasePlayer, erasePseudonym, findPlayer } from "../users/privacy";
 import { record } from "./admin";
 import { type Route, type Context, body, error } from "./admin.http";
 import { RANGES, type Range, statsFor } from "./stats";
 
-const eraseSchema = z.object({ server: z.string().regex(TENANT), user_id: z.string().regex(USER_ID) });
+// A pseudonym from the list, or the id a player sent with their request.
+const eraseSchema = z.object({ server: z.string().regex(TENANT), user_id: z.string().max(64).refine((id) => PSEUDONYM.test(id) || USER_ID.test(id)) });
 const serverSchema = z.object({ server: z.string().regex(TENANT) });
 
 /** A player of the panel's page and one tenant they asked on, from the path and the body; a response when there's none. */
@@ -22,11 +23,26 @@ const playerOn = async ({ deps, params, req }: Context) => {
 };
 
 /** The same, with the player's id the backend finds for it; only the backend ever sees that id. */
+/** The audit log keeps the pseudonym, not the id: it outlives the erasure by a year. */
+const erasedReply = async ({ admin, me, ip }: Context, tenant: string, pseudonym: string, erased: Erased) => {
+  await record(admin, {
+    actor: me!.username,
+    action: "player.erase",
+    target: `${tenant} ${pseudonym}`,
+    changes: [
+      { field: "memories", old: String(erased.memories), new: "0" },
+      { field: "runs", old: String(erased.runs), new: "erased" },
+    ],
+    ip,
+  });
+  return Response.json({ erased: true, ...erased });
+};
+
 const ownerOn = async (ctx: Context) => {
   const player = await playerOn(ctx);
   if (player instanceof Response) return player;
   const userId = await findPlayer(ctx.deps, player.tenant, player.pseudonym);
-  if (!userId) return error(404, "UNKNOWN_PLAYER", "Nothing kept on that server tells who this player is; erase by their id instead");
+  if (!userId) return error(404, "UNKNOWN_PLAYER", "Nothing kept on that server tells who this player is; they have nothing but runs to erase");
   return { ...player, owner: { tenant: player.tenant, userId } };
 };
 
@@ -131,23 +147,12 @@ export const insightRoutes: Route[] = [
     path: "/players/erase",
     access: "admin",
     async handle(ctx) {
-      const { deps, admin, me, ip } = ctx;
+      const { deps } = ctx;
       const input = eraseSchema.safeParse(await body(ctx.req));
-      if (!input.success) return error(400, "BAD_REQUEST", "Name the server (self or license:<id>) and the player's id");
-      const owner = { tenant: input.data.server, userId: input.data.user_id };
-      const erased = await erasePlayer(deps, owner);
-      // The audit log keeps the pseudonym, not the id: it outlives the erasure by a year.
-      await record(admin, {
-        actor: me!.username,
-        action: "player.erase",
-        target: `${owner.tenant} ${deps.pseudonyms.of(owner.userId)}`,
-        changes: [
-          { field: "memories", old: String(erased.memories), new: "0" },
-          { field: "runs", old: String(erased.runs), new: "erased" },
-        ],
-        ip,
-      });
-      return Response.json({ erased: true, ...erased });
+      if (!input.success) return error(400, "BAD_REQUEST", "Name the server (self or license:<id>) and the player's pseudonym or id");
+      const { server: tenant, user_id: given } = input.data;
+      if (PSEUDONYM.test(given)) return erasedReply(ctx, tenant, given, await erasePseudonym(deps, tenant, given));
+      return erasedReply(ctx, tenant, deps.pseudonyms.of(given), await erasePlayer(deps, { tenant, userId: given }));
     },
   },
   {
@@ -168,20 +173,9 @@ export const insightRoutes: Route[] = [
     path: "/players/:id/erase",
     access: "admin",
     async handle(ctx) {
-      const found = await ownerOn(ctx);
-      if (found instanceof Response) return found;
-      const erased = await erasePlayer(ctx.deps, found.owner);
-      await record(ctx.admin, {
-        actor: ctx.me!.username,
-        action: "player.erase",
-        target: `${found.tenant} ${found.pseudonym}`,
-        changes: [
-          { field: "memories", old: String(erased.memories), new: "0" },
-          { field: "runs", old: String(erased.runs), new: "erased" },
-        ],
-        ip: ctx.ip,
-      });
-      return Response.json({ erased: true, ...erased });
+      const player = await playerOn(ctx);
+      if (player instanceof Response) return player;
+      return erasedReply(ctx, player.tenant, player.pseudonym, await erasePseudonym(ctx.deps, player.tenant, player.pseudonym));
     },
   },
   ...(["block", "unblock"] as const).map(

@@ -147,9 +147,10 @@
     },
     "erase": {
       "title": "Erase a player",
-      "description": "When a player sends their id and asks to be forgotten: their memories, session, and agents' threads go, and their runs keep only numbers. A player from the list is erased on their own page.",
+      "description": "When a player asks to be forgotten: their memories, session, and agents' threads go, and their runs keep only numbers. Paste their pseudonym from the list, or the UUID they sent.",
       "server": "Server",
-      "player": "Player id (UUID)",
+      "player": "Pseudonym or UUID",
+      "placeholder": "p_… or a UUID",
       "action": "Erase",
       "confirmTitle": "Erase everything about this player on this server?",
       "confirmText": "This can't be undone. The audit log keeps that it happened, under the player's pseudonym.",
@@ -184,7 +185,7 @@
       "unblockText": "Allay answers them on this server again.",
       "unblockDone": "Player unblocked.",
       "blockedSince": "Blocked since {{date}}.",
-      "unknown": "Nothing kept on this server tells who this player is (no consent and no memories), so their session can't be cleared or erased from here. Erase them by id under the list of players."
+      "unknown": "Nothing kept on this server tells who this player is: no consent, no memories, and their session has long expired. Erasing removes what's left, their runs and traces."
     }
   },
   "servers": {

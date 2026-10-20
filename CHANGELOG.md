@@ -2,6 +2,10 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.2.1
+
+- 🧹 **Erase a player by pseudonym.** “Erase a player” takes the pseudonym from the list as well as a UUID, so an admin who never saw the player's id can still erase them. A player nothing on the server names (no consent, no memories) loses what's left of them, their runs' ties and traces, instead of the button staying grey.
+
 ## 6.2.0
 
 For Allay 6.2, which tells a blocked player why; older plugins show a general error.
