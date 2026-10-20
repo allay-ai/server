@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.1.0
+
+For Allay 6.1, which asks each player before their first question; older plugins work as before.
+
+- ✅ **Players' consent is kept.** `GET`, `PUT`, and `DELETE /api/v2/users/{id}/consent` read, record, and withdraw a player's agreement to the plugin's notice: which version they agreed to and when, per tenant and player like everything else. It stays until the player withdraws it or their data is erased, as proof of the agreement (GDPR art. 7(1)).
+- 🗂️ **Export, erasure, and moves know it.** A player's export carries `consent`, an erasure removes it, and `migrate retag` moves it with the memories.
+
 ## 6.0.0
 
 For Allay 6.0, which sends the credentials this version wants. **Breaking:** Allay 5.x gets `401` from this backend; update the plugin first, then the backend. A self-hosted backend needs `PLUGIN_TOKEN` in its environment and the same value in the plugin's `server.token`.

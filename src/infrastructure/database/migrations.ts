@@ -1,3 +1,4 @@
+import { ConsentModel } from "../../entities/consent/consent.model";
 import { MemoryModel } from "../../entities/memory/memory.model";
 import { logger } from "../../shared/logging/logger";
 import { AuditModel } from "../admin/audit";
@@ -37,6 +38,7 @@ export const migrate = async (options: { selfHosted: boolean; pseudonyms: Pseudo
   }
   await memories.updateMany({ seen_at: { $exists: false } }, { $set: { seen_at: options.now } });
   await MemoryModel.syncIndexes();
+  await ConsentModel.syncIndexes();
   await AuditModel.syncIndexes();
 
   const pseudonymised = await pseudonymiseRuns(options.pseudonyms);
@@ -47,6 +49,7 @@ export const migrate = async (options: { selfHosted: boolean; pseudonyms: Pseudo
 
 export interface Retagged {
   memories: number;
+  consents: number;
   runs: number;
   days: number;
   pseudonymised: number;
@@ -55,8 +58,8 @@ export interface Retagged {
 const memoriesOf = (tenant: string) => (tenant === "self" ? { $or: [{ tenant: "self" }, { tenant: { $exists: false } }] } : { tenant });
 
 /**
- * Moves one tenant's data to another, for a self-hosted backend's dump imported into a hosted one: memories and
- * runs from `self` (memories without a tenant count as `self`) become `license:<id>`. Settings, admin accounts, the
+ * Moves one tenant's data to another, for a self-hosted backend's dump imported into a hosted one: memories, consents,
+ * and runs from `self` (memories without a tenant count as `self`) become `license:<id>`. Settings, admin accounts, the
  * audit log, and traces belong to the backend, not a tenant, and stay as they are. Idempotent: a second run finds
  * nothing left to move.
  */
@@ -68,6 +71,7 @@ export const retag = async (options: { from: string; to: string; pseudonyms: Pse
   if (options.dryRun) {
     return {
       memories: await memories.countDocuments(memoriesOf(from)),
+      consents: await ConsentModel.collection.countDocuments({ tenant: from }),
       runs: await runs.countDocuments({ server: from }),
       days: await days.countDocuments({ servers: from }),
       pseudonymised: (await runs.distinct("user_id", { user_id: { $not: PSEUDONYM, $ne: ERASED } })).length,
@@ -88,10 +92,22 @@ export const retag = async (options: { from: string; to: string; pseudonyms: Pse
     }
   }
   await memories.updateMany({ seen_at: { $exists: false } }, { $set: { seen_at: options.now ?? new Date() } });
+  // A player who agreed on both keeps the newer agreement.
+  const consents = ConsentModel.collection;
+  let movedConsents = 0;
+  for await (const consent of consents.find({ tenant: from })) {
+    const there = await consents.findOne({ tenant: to, user_id: consent.user_id });
+    if (there && there.accepted_at >= consent.accepted_at) await consents.deleteOne({ _id: consent._id });
+    else {
+      if (there) await consents.deleteOne({ _id: there._id });
+      await consents.updateOne({ _id: consent._id }, { $set: { tenant: to } });
+      movedConsents++;
+    }
+  }
   const movedRuns = await runs.updateMany({ server: from }, { $set: { server: to } });
   const movedDays = await days.updateMany({ servers: from }, [{ $set: { servers: { $setUnion: [{ $setDifference: ["$servers", [from]] }, [to]] } } }]);
   const pseudonymised = await pseudonymiseRuns(options.pseudonyms);
-  return { memories: moved, runs: movedRuns.modifiedCount, days: movedDays.modifiedCount, pseudonymised };
+  return { memories: moved, consents: movedConsents, runs: movedRuns.modifiedCount, days: movedDays.modifiedCount, pseudonymised };
 };
 
 /** On a hosted backend: memories nobody can attribute to a tenant are deleted, since they reach nobody. */

@@ -2,6 +2,7 @@ import type { AllayDeps } from "../../agent/allay";
 import type { Owner } from "../../shared/types/owner";
 import type { Memory } from "../../infrastructure/memory/memory";
 import type { SessionExport } from "../../infrastructure/history/history";
+import type { Consent } from "../../infrastructure/privacy/consents";
 
 /** How many runs a player's copy lists; older ones still count in the statistics, by pseudonym. */
 const EXPORT_RUNS = 1000;
@@ -11,6 +12,8 @@ export interface PlayerExport extends SessionExport {
   user_id: string;
   tenant: string;
   memories: Memory[];
+  /** The notice the player agreed to and when, or null. */
+  consent: Consent | null;
   /** The pseudonym the statistics know the player by. */
   pseudonym: string;
   runs: Array<{ at: string; kind: string; model: string; input_tokens: number; output_tokens: number; cost: number; duration_ms: number; result: string }>;
@@ -19,8 +22,9 @@ export interface PlayerExport extends SessionExport {
 
 export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<PlayerExport> => {
   const pseudonym = deps.pseudonyms.of(owner.userId);
-  const [memories, sessions, runs] = await Promise.all([
+  const [memories, consent, sessions, runs] = await Promise.all([
     deps.memories.list(owner),
+    deps.consents.get(owner),
     deps.history.export(owner),
     deps.runs?.of(pseudonym, owner.tenant, EXPORT_RUNS) ?? [],
   ]);
@@ -29,6 +33,7 @@ export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<Playe
     tenant: owner.tenant,
     pseudonym,
     memories,
+    consent,
     ...sessions,
     runs: runs.map((r) => ({
       at: r.at.toISOString(),
@@ -42,6 +47,7 @@ export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<Playe
     })),
     retention: {
       memories: "until the player forgets them, or 365 days after their last question",
+      consent: "until the player withdraws it or their data is erased",
       session: "CHAT_TTL_SECONDS after the last question (a day by default)",
       runs: "400 days, by pseudonym",
       traces: "TRACE_DAYS (7 by default)",
@@ -57,12 +63,13 @@ export interface Erased {
 }
 
 /**
- * Forgets a player of one tenant (GDPR art. 17): memories, their session, pending task outcomes, and their agents'
+ * Forgets a player of one tenant (GDPR art. 17): memories, their consent, their session, pending task outcomes, and their agents'
  * threads go; their runs keep only numbers under `erased`; their traces go whole. The server's shared public thread
  * isn't theirs alone and expires within PUBLIC_CHAT_TTL_SECONDS by itself.
  */
 export const erasePlayer = async (deps: AllayDeps, owner: Owner): Promise<Erased> => {
   const memories = await deps.memories.clear(owner);
+  await deps.consents.withdraw(owner);
   await deps.history.erase(owner);
   const runIds = (await deps.runs?.forget(deps.pseudonyms.of(owner.userId), owner.tenant)) ?? [];
   const traces = (await deps.traces?.forget(runIds)) ?? 0;

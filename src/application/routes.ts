@@ -8,7 +8,7 @@ import type { handleChat, handleToolResult } from "../features/chat/chat.control
 import type { handleLicense } from "../features/billing/license.controller";
 import type { handleHealth } from "../features/health/health.controller";
 import type { handleTelegram } from "../features/telegram/telegram.controller";
-import type { handleMemories, handleMemory, handleSession, handleUser } from "../features/users/users.controller";
+import type { handleConsent, handleMemories, handleMemory, handleSession, handleUser } from "../features/users/users.controller";
 
 interface Handlers {
   handleAsk: typeof handleAsk;
@@ -18,6 +18,7 @@ interface Handlers {
   handleHealth: typeof handleHealth;
   handleUser: typeof handleUser;
   handleSession: typeof handleSession;
+  handleConsent: typeof handleConsent;
   handleMemories: typeof handleMemories;
   handleMemory: typeof handleMemory;
   handleLicense: typeof handleLicense;
@@ -55,6 +56,7 @@ export const routes = (deps: AllayDeps, h: Handlers): Record<string, Route> => {
     "/api/v2/chat/:runId/tools/:callId": h.handleToolResult(deps),
     "/api/v2/users/:userId": h.handleUser(deps),
     "/api/v2/users/:userId/session": h.handleSession(deps),
+    "/api/v2/users/:userId/consent": h.handleConsent(deps),
     "/api/v2/users/:userId/memories": h.handleMemories(deps),
     "/api/v2/users/:userId/memories/:memoryId": h.handleMemory(deps),
     "/api/v2/license": h.handleLicense(deps),

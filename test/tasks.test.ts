@@ -12,7 +12,7 @@ import { parseChatRequest } from "../src/features/chat/chat.types";
 import { handleHealth } from "../src/features/health/health.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { AUTOMATION_TOOLS, gameTools, offeredTools } from "../src/features/tools/game.tools";
-import { handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
+import { handleConsent, handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
 import { taskTtl, threadOf, ttlOf } from "../src/infrastructure/history/history";
 import { finish, readSse, scripted, testDeps, text, toolCall } from "./helpers";
 import { AUTH, owner, thread } from "./helpers";
@@ -20,7 +20,7 @@ import { AUTH, owner, thread } from "./helpers";
 /** Every request here comes from the tenant's own plugin; test/access.test.ts covers the ones that don't. */
 const fetch = (url: string, init: RequestInit = {}) => globalThis.fetch(url, { ...init, headers: { ...AUTH, ...(init.headers as Record<string, string> | undefined) } });
 
-const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram };
+const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handleLicense, handleTelegram };
 let server: Server<undefined> | undefined;
 
 afterEach(() => server?.stop(true));

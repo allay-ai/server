@@ -10,7 +10,7 @@ const USAGE = `Moves data between tenants, inside the backend's container:
   bun run dist/application/migrate.js retag --from self --to license:<id> [--dry-run]
   bun run dist/application/migrate.js purge-untagged
 
-retag moves memories and runs (and the days' server lists) from one tenant to another and replaces players' ids in
+retag moves memories, consents, and runs (and the days' server lists) from one tenant to another and replaces players' ids in
 the statistics with pseudonyms under this backend's SECRETS_KEY. purge-untagged deletes memories without a tenant.`;
 
 const option = (args: string[], name: string) => {

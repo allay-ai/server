@@ -228,13 +228,16 @@ The backend keeps these per tenant and `user_id` (since 6.0; before, per `user_i
 - **A task's thread** (since 5.5). Each wake of an automation agent reads and extends its own thread under the player and `task.id`: the wake's message and the agent's final text, or `(waiting)` when it ended without one. It folds like a session and lives 2 hours after the last wake (`TASK_CHAT_TTL_SECONDS`). The player's session never sees it.
 - **Memories.** Lasting facts the model saves with `remember`, kept in MongoDB until the player forgets them or, since 6.0, 365 days after their last question. They go into the system prompt with their ids.
 
-Endpoints for the plugin's `/allay new`, `/allay memory [text]`, `/allay forget`, and (since 6.0) `/allay privacy`, all with `Authorization`:
+Endpoints for the plugin's `/allay new`, `/allay memory [text]`, `/allay forget`, and (since 6.0) `/allay privacy`, and (since 6.1) the consent a player gives before their first question, all with `Authorization`:
 
 | Request | Answer |
 |---|---|
-| `GET /api/v2/users/{user_id}` | Since 6.0. `200` with everything kept about the player: `{ user_id, tenant, pseudonym, memories, session: { summary?, messages }, outcomes, tasks: { <task id>: session }, runs: [{ at, kind, model, input_tokens, output_tokens, cost, duration_ms, result }], retention }` |
-| `DELETE /api/v2/users/{user_id}` | Since 6.0. `200 { "erased": true, "memories": 3, "runs": 12, "traces": 40 }`: memories, session, pending outcomes, and agents' threads go; the player's runs keep only numbers under `erased`; their traces go. The tenant's public thread expires by itself within 2 hours |
+| `GET /api/v2/users/{user_id}` | Since 6.0. `200` with everything kept about the player: `{ user_id, tenant, pseudonym, memories, consent, session: { summary?, messages }, outcomes, tasks: { <task id>: session }, runs: [{ at, kind, model, input_tokens, output_tokens, cost, duration_ms, result }], retention }` |
+| `DELETE /api/v2/users/{user_id}` | Since 6.0. `200 { "erased": true, "memories": 3, "runs": 12, "traces": 40 }`: memories, the consent (since 6.1), session, pending outcomes, and agents' threads go; the player's runs keep only numbers under `erased`; their traces go. The tenant's public thread expires by itself within 2 hours |
 | `DELETE /api/v2/users/{user_id}/session` | `200 { "cleared": true }`; memories stay |
+| `GET /api/v2/users/{user_id}/consent` | Since 6.1. `200 { "consent": { "version": 1, "accepted_at": "ISO-8601" } }`, or `{ "consent": null }` when the player hasn't agreed |
+| `PUT /api/v2/users/{user_id}/consent` with `{ "version": 1 }` | Since 6.1. Records that the player agreed to the plugin's notice of that version (a whole number, 1–1000), replacing an older agreement: `200 { "consent": { "version", "accepted_at" } }` |
+| `DELETE /api/v2/users/{user_id}/consent` | Since 6.1. `200 { "withdrawn": true }`, or `false` when there was none. What's kept stays until erased |
 | `GET /api/v2/users/{user_id}/memories` | `200 { "memories": [{ "id": "k3f9a", "text": "…", "created_at": "ISO-8601" }] }`, oldest first |
 | `POST /api/v2/users/{user_id}/memories` with `{ "text": "3–200 chars" }` | `200 { "memory": { "id", "text", "created_at" } }`; `409 MEMORY_FULL` at 30; `400` for other text. Since 5.1 |
 | `DELETE /api/v2/users/{user_id}/memories` | `200 { "deleted": 4 }`: all of them |

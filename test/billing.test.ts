@@ -14,12 +14,12 @@ import { handleHealth } from "../src/features/health/health.controller";
 import { handleUpdate } from "../src/features/telegram/telegram.bot";
 import type { TelegramApi } from "../src/features/telegram/telegram.client";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
-import { handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
+import { handleConsent, handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
 import type { GrantRecord } from "../src/infrastructure/billing/licenses";
 import { AUTH, fakeNet, finish, readSse, scripted, testBilling, testDeps, text, toolCall } from "./helpers";
 
 const handlers = {
-  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram,
+  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handleLicense, handleTelegram,
 };
 let server: Server<undefined> | undefined;
 

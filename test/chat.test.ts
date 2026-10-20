@@ -5,7 +5,7 @@ import { handleAsk } from "../src/features/ask/ask.controller";
 import { handleAskX } from "../src/features/askx/askx.controller";
 import { handleChat, handleToolResult } from "../src/features/chat/chat.controller";
 import { handleHealth } from "../src/features/health/health.controller";
-import { handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
+import { handleConsent, handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
 import { handleLicense } from "../src/features/billing/license.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { finish, reasoning, readSse, scripted, testDeps, text, toolCall } from "./helpers";
@@ -16,7 +16,7 @@ import { type HistoryMessage, MAX_EXCHANGES, maxTokens } from "../src/infrastruc
 /** Every request here comes from the tenant's own plugin; test/access.test.ts covers the ones that don't. */
 const fetch = (url: string, init: RequestInit = {}): Promise<Response> => globalThis.fetch(url, { ...init, headers: { ...AUTH, ...(init.headers as Record<string, string> | undefined) } });
 
-const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram };
+const handlers = { handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handleLicense, handleTelegram };
 let server: Server<undefined> | undefined;
 
 afterEach(() => server?.stop(true));
@@ -431,6 +431,10 @@ describe("session and memory endpoints", () => {
     expect((await fetch(`${base}/api/v2/users/${"x".repeat(65)}/session`, { method: "DELETE" })).status).toBe(400);
     expect((await fetch(`${base}/api/v2/users/player-1/session`)).status).toBe(405);
     expect((await fetch(`${base}/api/v2/users/player-1/memories`, { method: "PUT" })).status).toBe(405);
+    const consent = `${base}/api/v2/users/player-1/consent`;
+    expect((await fetch(consent, { method: "PUT", body: JSON.stringify({ version: 0 }) })).status).toBe(400);
+    expect((await fetch(consent, { method: "PUT", body: JSON.stringify({ version: 1.5 }) })).status).toBe(400);
+    expect((await fetch(consent, { method: "POST", body: "{}" })).status).toBe(405);
   });
 
   test("a player saves a fact by hand, within the memory's limits", async () => {

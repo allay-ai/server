@@ -7,6 +7,7 @@ import { z } from "zod";
 import { MAX_MEMORY_CHARS } from "../../infrastructure/memory/memory";
 import { identify } from "../auth/caller";
 import { erasePlayer, exportPlayer } from "./privacy";
+import { MAX_CONSENT_VERSION } from "../../infrastructure/privacy/consents";
 
 type Params = { userId?: string; memoryId?: string };
 type Routed = Request & { params?: Params };
@@ -14,6 +15,7 @@ type Routed = Request & { params?: Params };
 const MEMORY_ID = /^[a-z0-9]{1,16}$/;
 // The same bounds the remember tool has.
 const MemoryBody = z.object({ text: z.string().trim().min(3).max(MAX_MEMORY_CHARS) });
+const ConsentBody = z.object({ version: z.number().int().min(1).max(MAX_CONSENT_VERSION) });
 
 const badUser = () => jsonError(apierror(API_ERRORS.BAD_REQUEST, "user_id must be 1–64 letters, digits, - or _"));
 
@@ -49,6 +51,30 @@ export const handleUser = (deps: AllayDeps) => async (req: Routed): Promise<Resp
     return noStore({ erased: true, ...erased });
   } catch (error) {
     return failed(req.method === "GET" ? "export the player's data" : "erase the player's data", error);
+  }
+};
+
+/**
+ * GET /api/v2/users/{user_id}/consent reads whether the player agreed to Allay's notice, PUT records their agreement,
+ * DELETE withdraws it: the plugin's buttons before a first question and `/allay privacy withdraw`. Data already kept
+ * stays until erased; the plugin asks again before the next question.
+ */
+export const handleConsent = (deps: AllayDeps) => async (req: Routed): Promise<Response> => {
+  if (!["GET", "PUT", "DELETE"].includes(req.method)) return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
+  const owner = await ownerOf(deps, req);
+  if (owner instanceof Response) return owner;
+  let version: number | undefined;
+  if (req.method === "PUT") {
+    const body = ConsentBody.safeParse(await req.json().catch(() => undefined));
+    if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `version must be a whole number from 1 to ${MAX_CONSENT_VERSION}`));
+    version = body.data.version;
+  }
+  try {
+    if (req.method === "GET") return noStore({ consent: await deps.consents.get(owner) });
+    if (version !== undefined) return noStore({ consent: await deps.consents.give(owner, version) });
+    return noStore({ withdrawn: await deps.consents.withdraw(owner) });
+  } catch (error) {
+    return failed("reach the consent", error);
   }
 };
 

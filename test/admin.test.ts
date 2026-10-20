@@ -10,11 +10,11 @@ import { handleLicense } from "../src/features/billing/license.controller";
 import { handleChat, handleToolResult } from "../src/features/chat/chat.controller";
 import { handleHealth } from "../src/features/health/health.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
-import { handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
+import { handleConsent, handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
 import { AUTH, scripted, testAdmin, testBilling, testDeps, text, finish } from "./helpers";
 
 const handlers = {
-  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram,
+  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handleLicense, handleTelegram,
   handleAdminInit, handleAdmin,
 };
 let server: Server<undefined> | undefined;

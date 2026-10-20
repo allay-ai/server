@@ -10,11 +10,11 @@ import { handleLicense } from "../src/features/billing/license.controller";
 import { handleChat, handleToolResult } from "../src/features/chat/chat.controller";
 import { handleHealth } from "../src/features/health/health.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
-import { handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
+import { handleConsent, handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
 import { AUTH, finish, owner, readSse, scripted, testAdmin, testBilling, testDeps, text, thread, toolCall } from "./helpers";
 
 const handlers = {
-  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleMemories, handleMemory, handleLicense, handleTelegram,
+  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handleLicense, handleTelegram,
   handleAdminInit, handleAdmin,
 };
 let servers: Array<Server<undefined>> = [];
@@ -119,6 +119,16 @@ describe("tenants never meet", () => {
     expect(((await (await fetch(url, { headers: t.A })).json()) as any).memories.map((m: any) => m.text)).toEqual(["A's secret base at 120 64 -300"]);
   });
 
+  test("B can't read, give, or withdraw A's consent, even with A's player id", async () => {
+    const t = await twoServers();
+    const url = `${t.base}/api/v2/users/player-1/consent`;
+    const given = (await (await fetch(url, { method: "PUT", headers: t.A, body: JSON.stringify({ version: 1 }) })).json()) as any;
+    expect(given.consent.version).toBe(1);
+    expect(await (await fetch(url, { headers: t.B })).json()).toEqual({ consent: null });
+    expect(await (await fetch(url, { method: "DELETE", headers: t.B })).json()).toEqual({ withdrawn: false });
+    expect(((await (await fetch(url, { headers: t.A })).json()) as any).consent).toEqual(given.consent);
+  });
+
   test("B's question with A's player id loads none of A's memories, session, or outcomes", async () => {
     const t = await twoServers();
     await t.deps.memories.add(owner("player-1", t.tenantA), "A's secret base at 120 64 -300");
@@ -186,17 +196,22 @@ describe("a player's data on request", () => {
     await readSse(await fetch(`${base}/api/v2/chat`, { method: "POST", headers: AUTH, body: JSON.stringify({ user_id: "player-1", message: "hi there" }) }));
     await readSse(await fetch(`${base}/api/v2/chat`, { method: "POST", headers: AUTH, body: JSON.stringify({ user_id: "player-2", message: "hello" }) }));
 
+    await fetch(`${base}/api/v2/users/player-1/consent`, { method: "PUT", headers: AUTH, body: JSON.stringify({ version: 2 }) });
+    await fetch(`${base}/api/v2/users/player-2/consent`, { method: "PUT", headers: AUTH, body: JSON.stringify({ version: 2 }) });
+
     const copy = (await (await fetch(`${base}/api/v2/users/player-1`, { headers: AUTH })).json()) as any;
     expect(copy.memories.map((m: any) => m.text)).toEqual(["base at 120 64 -300"]);
     expect(JSON.stringify(copy.session)).toContain("hi there");
     expect(copy.runs).toHaveLength(1);
     expect(copy.pseudonym).toMatch(/^p_[0-9a-f]{20}$/);
     expect(copy.retention).toBeDefined();
+    expect(copy.consent).toMatchObject({ version: 2 });
 
     const erased = (await (await fetch(`${base}/api/v2/users/player-1`, { method: "DELETE", headers: AUTH })).json()) as any;
     expect(erased).toMatchObject({ erased: true, memories: 1, runs: 1 });
     const after = (await (await fetch(`${base}/api/v2/users/player-1`, { headers: AUTH })).json()) as any;
-    expect(after).toMatchObject({ memories: [], session: { messages: [] }, outcomes: [], tasks: {}, runs: [] });
+    expect(after).toMatchObject({ memories: [], consent: null, session: { messages: [] }, outcomes: [], tasks: {}, runs: [] });
+    expect(await deps.consents.get(owner("player-2"))).toMatchObject({ version: 2 });
     // The run still counts, as nobody's; the other player is untouched.
     expect(deps.runs.all.map((r) => r.user_id)).toEqual(["erased", deps.pseudonyms.of("player-2")]);
     expect((await deps.history.load(thread("player-2"))).messages).not.toEqual([]);
