@@ -37,6 +37,10 @@ services:
       TOOL_TIMEOUT_MS: ${TOOL_TIMEOUT_MS:-15000}
       MAX_AGENT_STEPS: ${MAX_AGENT_STEPS:-8}
       PORT: ${PORT}
+      # Self-hosted: the token every plugin sends as server.token; at least 24 characters (openssl rand -hex 24).
+      PLUGIN_TOKEN: ${PLUGIN_TOKEN:-}
+      # The reverse proxy in front, if any: only its X-Forwarded-For counts.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       REDIS_DB: ${REDIS_DB}
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -56,8 +60,9 @@ services:
     mem_limit: 512m
     mem_reservation: 300m
     networks: [ default ]
+    # Only this machine reaches the backend; a reverse proxy with TLS publishes it, or change the address on purpose.
     ports:
-      - ${PORT}:3000
+      - 127.0.0.1:${PORT:-3000}:3000
     restart: unless-stopped
     # The key that seals secrets saved in the admin panel.
     volumes:
@@ -69,14 +74,15 @@ services:
     env_file: .env
     environment:
       MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      # With a root user MongoDB wants a password from everyone; the backend's MONGODB_URI carries it (?authSource=admin).
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:?set MONGO_INITDB_ROOT_PASSWORD in .env}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:?set MONGO_INITDB_ROOT_USERNAME in .env}
       TZ: ${TZ}
     healthcheck:
       interval: 15s
       retries: 12
       start_period: 20s
-      test: ["CMD-SHELL", "mongosh --eval 'db.runCommand(\"ping\")' --quiet | grep -q 1"]
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand(\"ping\").ok' | grep -q 1"]
       timeout: 5s
     image: mongo:8.0.34
     logging:
@@ -87,7 +93,7 @@ services:
     mem_limit: 512m
     mem_reservation: 256m
     networks: [ default ]
-    ports: [ "27017:27017" ]
+    # No ports: only the backend reaches MongoDB, inside this network.
     restart: unless-stopped
     volumes:
       - allay-server-mongo-data:/data/db
@@ -96,7 +102,7 @@ services:
       redis-server --port 6379
       --loglevel warning
       --save 20 1
-      --requirepass ${REDIS_PASSWORD}
+      --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
     container_name: allay-server-redis
     cpus: '0.5'
     env_file: [ .env ]
@@ -118,7 +124,7 @@ services:
     mem_limit: 256m
     mem_reservation: 128m
     networks: [ default ]
-    ports: [ "6379:6379" ]
+    # No ports: only the backend reaches Redis, inside this network.
     restart: unless-stopped
     user: '0'
     volumes:
