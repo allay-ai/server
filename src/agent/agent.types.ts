@@ -25,6 +25,9 @@ export interface ServerInfo {
   software?: string;
   version?: string;
   plugin_version?: string;
+  /** Since 6.6: the address players join with, when the server's owner set one in the plugin, and the game port. */
+  address?: string;
+  port?: number;
 }
 
 export const TASK_KINDS = ["chests", "furnaces", "brewing", "crafting"] as const;

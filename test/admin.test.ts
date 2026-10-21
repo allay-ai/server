@@ -606,6 +606,36 @@ describe("players in the panel", () => {
     expect(JSON.stringify(ctx.audit.entries)).not.toContain("Steve");
   });
 
+  test("the Servers page shows where a server joins and runs, and only admins see where it connects from", async () => {
+    const ctx = await withOwner();
+    const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
+    Object.assign(ctx.deps, { runs });
+    const { call, deps } = ctx;
+    await deps.consents.give({ tenant: "self", userId: "uuid-steve" }, 1);
+    const response = await fetch(`${ctx.base}/api/v2/chat`, {
+      method: "POST",
+      headers: { ...AUTH, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: "uuid-steve",
+        player: { name: "Steve" },
+        message: "hi",
+        server: { id: "srv-1", software: "Paper", version: "26.3", plugin_version: "6.4.0", address: "mc.example.com", port: 25565 },
+      }),
+    });
+    await response.text();
+    await Bun.sleep(50);
+    const [listed] = (await call("GET", "/api/admin/servers")).body.servers;
+    expect(listed).toMatchObject({ server: "self", server_id: "srv-1", address: "mc.example.com", port: 25565, software: "Paper", version: "26.3", plugin_version: "6.4.0", internal: true });
+    expect(listed.ip).toMatch(/127\.0\.0\.1|::1/);
+
+    await call("POST", "/api/admin/accounts", { username: "viewer", password: PASSWORD, role: "viewer" });
+    await call("POST", "/api/admin/logout");
+    await call("POST", "/api/admin/login", { username: "viewer", password: PASSWORD });
+    const [seen] = (await call("GET", "/api/admin/servers")).body.servers;
+    expect(seen.ip).toBeNull();
+    expect(seen.address).toBe("mc.example.com");
+  });
+
   test("full privacy keeps a player's name out of the panel, from the switch and from each question", async () => {
     const ctx = await withOwner();
     const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();

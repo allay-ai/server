@@ -15,10 +15,10 @@ const KINDS = ["ask", "askall", "askx", "task", "summary", "telegram"];
 const PAGE = 50;
 
 /** Where a run's money came from, without a key or a secret: a license, a server's own key, or this backend. */
-export const ServerLabel = ({ server, serverId }: { server: string; serverId?: string }) => {
+export const ServerLabel = ({ server, serverId, name }: { server: string; serverId?: string; name?: string | null }) => {
   const { t } = useTranslation();
   const [kind, id] = server.split(":");
-  const label = kind === "license" ? t("servers.license", { id }) : kind === "byok" ? t("servers.byok", { id }) : t("servers.self");
+  const label = name ?? (kind === "license" ? t("servers.license", { id }) : kind === "byok" ? t("servers.byok", { id }) : t("servers.self"));
   return (
     <span className="flex min-w-0 flex-col">
       {kind === "license" ? (

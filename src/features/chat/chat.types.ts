@@ -28,7 +28,17 @@ export const chatRequestSchema = z.object({
       private: z.boolean().optional(),
     })
     .optional(),
-  server: z.object({ id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(), software: text(64), version: text(64), plugin_version: text(64) }).optional(),
+  // address and port since 6.6: where players join, for the admin panel. A bad value is dropped, not refused.
+  server: z
+    .object({
+      id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
+      software: text(64),
+      version: text(64),
+      plugin_version: text(64),
+      address: z.string().trim().regex(/^[A-Za-z0-9.:\[\]-]{1,255}$/).optional().catch(undefined),
+      port: z.number().int().min(1).max(65_535).optional().catch(undefined),
+    })
+    .optional(),
   tools: z.array(z.string().max(64)).max(256).default([]),
   // Since 5.0: the server's own provider; its key comes in X-Provider-Key.
   provider: z.object({ base_url: text(512), model: text(200), search_model: text(200) }).optional(),

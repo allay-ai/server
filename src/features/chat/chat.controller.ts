@@ -6,6 +6,8 @@ import { API_ERRORS, ApiFailure, apierror } from "../../shared/types/errors";
 import { identify } from "../auth/caller";
 import { admit, payer } from "../billing/gate";
 import { settings } from "../settings/settings";
+import { trustOf } from "../settings/trust";
+import { clientAddress } from "../../shared/lib/address";
 import { parseChatRequest, toolAnswerSchema } from "./chat.types";
 import { sseResponse } from "./chat.sse";
 
@@ -26,6 +28,23 @@ export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Ser
   const admitted = await admit(deps.billing, req.headers, parsed.provider, caller);
   if (!admitted.ok) return jsonError(admitted.error.toApiError());
   const { admission } = admitted;
+  // Where the server connects from and what it runs, for the panel; never in the log.
+  const info = parsed.context.server;
+  deps.servers
+    ?.seen(
+      {
+        tenant: caller.tenant,
+        server_id: info?.id ?? "",
+        ip: clientAddress(req, server, trustOf(settings)),
+        ...(info?.address ? { address: info.address } : {}),
+        ...(info?.port ? { port: info.port } : {}),
+        ...(info?.software ? { software: info.software } : {}),
+        ...(info?.version ? { version: info.version } : {}),
+        ...(info?.plugin_version ? { plugin_version: info.plugin_version } : {}),
+      },
+      new Date(),
+    )
+    .catch((error) => logger.warn(`Couldn't note a server of ${caller.tenant}: ${String(error)}`));
 
   // Runs outlast Bun's idle timeout while the model thinks; pings keep proxies happy instead.
   server?.timeout(req, 0);

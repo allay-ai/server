@@ -178,6 +178,19 @@ export interface ServerSummary {
   players: number;
   cost: number;
   last_seen: string;
+  /** The license's name, for servers on one. */
+  name: string | null;
+  /** Where players join, when the plugin's config says (Allay 6.4). */
+  address: string | null;
+  port: number | null;
+  software: string | null;
+  version: string | null;
+  plugin_version: string | null;
+  /** Where the server connects from; admins only. */
+  ip: string | null;
+  /** The server shares a private network with the backend, so its address says little. */
+  internal: boolean | null;
+  first_seen: string | null;
 }
 
 export interface TraceSummary {

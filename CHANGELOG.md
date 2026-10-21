@@ -2,6 +2,10 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.6.0
+
+- 🌐 **Servers show where they are.** The Servers page and a license's page show each server's join address and game port (from Allay 6.4's `server.address`), the game software and version, the plugin's version, and when it first asked. Admins also see the address each server connects from, marked **internal** when it shares a private network with the backend. A server on a license shows the license's name. Kept 400 days after the server's last question.
+
 ## 6.5.0
 
 For Allay 6.3, which adds the full privacy switch; older plugins work as before.

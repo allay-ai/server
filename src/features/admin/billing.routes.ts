@@ -5,6 +5,7 @@ import { quotaOf } from "../billing/plans";
 import { LicenseRefundFailure, refundLicense, refundPayment } from "../telegram/telegram.bot";
 import { allows, record } from "./admin";
 import { type Context, type Route, body, error } from "./admin.http";
+import { serversView } from "./insight.routes";
 
 const DAY = 86_400_000;
 
@@ -169,7 +170,7 @@ export const billingRoutes: Route[] = [
           .sort((a, b) => a.starts.getTime() - b.starts.getTime())
           .map((g) => ({ id: g.id, payment: g.payment ?? null, budget: usd(g.budget), spent: usd(g.spent), starts: iso(g.starts), ends: iso(g.ends) })),
         payments: payments.map((p) => paymentView(p, seesPayers(ctx))),
-        servers: servers.map((s) => ({ ...s, last_seen: s.last_seen.toISOString() })),
+        servers: await serversView(ctx, servers),
       });
     }),
   },

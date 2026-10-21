@@ -50,6 +50,8 @@ Headers: `Content-Type: application/json`, `Accept: text/event-stream`, `X-Plugi
 
 `player.dimension` (optional, since 5.1) is the dimension the player stood in when they asked: `overworld`, `the_nether`, or `the_end`. The prompt tells the model, so a place named without a dimension lands where the player is; any other value is dropped.
 
+`server.address` and `server.port` (optional, since 6.6) say where players join: the address the server's owner set in the plugin and the game port. The admin panel shows them with the address the request came from; a bad value is dropped, not refused.
+
 `player.private` (optional, since 6.5) is `true` while the player has full privacy on. The backend then keeps no name, UUID, or operator status for the admin panel and forgets what it had, so the panel knows the player by pseudonym only; memories, the session, and traces work as before.
 
 `tools` lists the client tools this plugin offers (server admins can switch some off). The backend registers only those for this run. The plugin lists operator tools only when the asking player is an operator, and the backend drops them anyway when `player.op` is false. An `askx` run gets only the tools that read the game: no actions (`point_to`, `show_marks`, `reminders`, `goals`, notes, buttons, books, automations) and no operator tools. Since 5.5 the backend also sorts the automation tools by mode (see “Automation agents”): `ask` keeps `start_task`, `message_task`, and `cancel_task` and drops the ones only agents use; a public `ask` drops those three too.

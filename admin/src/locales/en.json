@@ -240,12 +240,27 @@
   },
   "servers": {
     "title": "Servers",
-    "description": "Minecraft servers that asked, by who pays: a license, the server's own key, or this backend.",
+    "description": "Minecraft servers that asked, by who pays: a license, the server's own key, or this backend. The address is where players join, when the plugin's config gives it; admins also see the address each server connects from.",
     "none": "No server has asked yet.",
     "license": "License {{id}}",
     "byok": "Own key {{id}}",
     "self": "This backend's key",
-    "columns": { "server": "Server", "questions": "Questions", "players": "Players", "cost": "Cost", "lastSeen": "Last question" }
+    "columns": {
+      "server": "Server",
+      "address": "Address",
+      "ip": "Connects from",
+      "runs": "Runs",
+      "questions": "Questions",
+      "players": "Players",
+      "cost": "Cost",
+      "lastSeen": "Last question"
+    },
+    "plugin": "Allay {{version}}",
+    "internal": "internal",
+    "internalHint": "This server reaches the backend over a private network they share, so the address says nothing about where players join.",
+    "noAddress": "Not given: server.address in the plugin's config (Allay 6.4)",
+    "since": "First question",
+    "firstSeen": "First question {{date}}"
   },
   "runs": {
     "title": "Runs",

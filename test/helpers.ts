@@ -9,6 +9,7 @@ import { memoryMemories } from "../src/infrastructure/memory/memory";
 import { memoryConsents } from "../src/infrastructure/privacy/consents";
 import { memoryBans } from "../src/infrastructure/privacy/bans";
 import { memoryPlayers } from "../src/infrastructure/privacy/players";
+import { memoryServers } from "../src/infrastructure/servers/servers";
 import type { ModelFactory } from "../src/infrastructure/providers/openrouter/openrouter.client";
 import { type Billing, newLimits } from "../src/features/billing/billing";
 import type { Net } from "../src/features/billing/byok";
@@ -140,6 +141,7 @@ export const testDeps = (
     billing: options.billing ?? testBilling(),
     pseudonyms: pseudonymsWith("test"),
     players: memoryPlayers(),
+    servers: memoryServers(),
     models: (({ search, provider, model }) => {
       deps.lastProvider = provider;
       if (search) {

@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -20,6 +20,7 @@ import { showErrors } from "@/lib/forms";
 import { useCan } from "@/lib/session";
 import type { License, Payment, ServerSummary } from "@/lib/types";
 import { PaymentsTable } from "./payments";
+import { ServerIp, ServerRuns, joinAddress } from "./servers";
 import { SearchBox } from "./players";
 
 const LIMIT = 50;
@@ -438,11 +439,21 @@ export const LicensePage = () => {
               <Card className="py-2">
                 <CardContent className="flex flex-col divide-y px-4">
                   {data.servers.map((s) => (
-                    <div key={s.server_id ?? s.server} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                      <span className="font-mono text-xs">{s.server_id ?? t("licenses.unknownServer")}</span>
-                      <span className="text-muted-foreground">
-                        {t("licenses.serverLine", { questions: number(s.questions), players: number(s.players), cost: usd(s.cost), seen: relative(s.last_seen) })}
-                      </span>
+                    <div key={s.server_id ?? s.server} className="flex flex-col gap-3 py-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-mono text-xs">{s.server_id ?? t("licenses.unknownServer")}</span>
+                        <span className="text-muted-foreground">
+                          {t("licenses.serverLine", { questions: number(s.questions), players: number(s.players), cost: usd(s.cost), seen: relative(s.last_seen) })}
+                        </span>
+                      </div>
+                      <Definition
+                        items={[
+                          [t("servers.columns.address"), joinAddress(s) ?? t("servers.noAddress")],
+                          ...(can("admin") ? [[t("servers.columns.ip"), <ServerIp key="ip" server={s} />] as [string, ReactNode]] : []),
+                          [t("servers.columns.runs"), <ServerRuns key="runs" server={s} />],
+                          [t("servers.since"), dateTime(s.first_seen)],
+                        ]}
+                      />
                     </div>
                   ))}
                 </CardContent>

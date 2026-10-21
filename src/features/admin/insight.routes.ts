@@ -7,9 +7,11 @@ import { USER_ID } from "../../shared/types/owner";
 import { TENANT } from "../auth/caller";
 import { type Erased, erasePlayer, erasePseudonym, findPlayer } from "../users/privacy";
 import { serverName } from "../billing/billing";
-import { record } from "./admin";
+import { allows, record } from "./admin";
 import { type Route, type Context, body, error } from "./admin.http";
 import { RANGES, type Range, statsFor } from "./stats";
+import type { ServerSummary } from "../../infrastructure/runs/runs";
+import { inRanges, rangesOf } from "../../shared/lib/address";
 import { headKey, headOf } from "./heads";
 import { PROFILE_RUNS, profileOf } from "./profile";
 
@@ -68,6 +70,42 @@ const whoOf = async (deps: AllayDeps, pseudonyms: string[]): Promise<(id: string
     const player = known.get(id)?.[0];
     return player ? { name: player.name, uuid: player.user_id } : null;
   };
+};
+
+/** Private, loopback, and link-local ranges: a server there shares a network with the backend, like Moonlands with allay.chat. */
+const INTERNAL = rangesOf("10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16, ::1/128, fc00::/7, fe80::/10");
+
+/**
+ * Servers from the runs with what the directory knows: the address players join with, the game and plugin versions,
+ * and the license's name. The address a server connects from may be someone's home, so only admins see it.
+ */
+export const serversView = async (ctx: Context, servers: ServerSummary[]) => {
+  const { deps } = ctx;
+  const known = (await deps.servers?.list()) ?? [];
+  const admins = !!ctx.me && allows(ctx.me.role, "admin");
+  const names = new Map<string, string>();
+  if (deps.billing.enabled) {
+    for (const id of new Set(servers.filter((s) => s.server.startsWith("license:")).map((s) => s.server.slice("license:".length)))) {
+      const license = await deps.billing.licenses.get(id).catch(() => null);
+      if (license) names.set(`license:${id}`, serverName(license));
+    }
+  }
+  return servers.map((s) => {
+    const entry = known.find((k) => k.tenant === s.server && k.server_id === (s.server_id ?? ""));
+    return {
+      ...s,
+      last_seen: s.last_seen.toISOString(),
+      name: names.get(s.server) ?? null,
+      address: entry?.address ?? null,
+      port: entry?.port ?? null,
+      software: entry?.software ?? null,
+      version: entry?.version ?? null,
+      plugin_version: entry?.plugin_version ?? null,
+      ip: admins ? (entry?.ip ?? null) : null,
+      internal: entry ? inRanges(entry.ip, INTERNAL) : null,
+      first_seen: entry?.first_seen.toISOString() ?? null,
+    };
+  });
 };
 
 const runView = (run: RunRecord, who: (id: string) => Who = () => null) => ({ ...run, at: run.at.toISOString(), player: who(run.user_id) });
@@ -285,10 +323,11 @@ export const insightRoutes: Route[] = [
     method: "GET",
     path: "/servers",
     access: "viewer",
-    async handle({ deps, url }) {
+    async handle(ctx) {
+      const { deps, url } = ctx;
       if (!deps.runs) return error(503, "NO_RUNS", "This backend keeps no statistics");
       const servers = await deps.runs.servers({ server: url.searchParams.get("server") ?? undefined, limit: limitOf(url, 500) });
-      return Response.json({ servers: servers.map((s) => ({ ...s, last_seen: s.last_seen.toISOString() })) });
+      return Response.json({ servers: await serversView(ctx, servers) });
     },
   },
   {

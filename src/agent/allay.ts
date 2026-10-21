@@ -16,6 +16,7 @@ import type { Pseudonyms } from "../infrastructure/privacy/pseudonyms";
 import type { ConsentStore } from "../infrastructure/privacy/consents";
 import type { BanStore } from "../infrastructure/privacy/bans";
 import type { PlayerDirectory } from "../infrastructure/privacy/players";
+import type { ServerDirectory } from "../infrastructure/servers/servers";
 import type { TraceStore } from "../infrastructure/observability/traces";
 import type { Owner } from "../shared/types/owner";
 import type { Memory, MemoryStore } from "../infrastructure/memory/memory";
@@ -52,6 +53,8 @@ export interface AllayDeps {
   pseudonyms: Pseudonyms;
   /** Who each pseudonym is, so the panel can name players; none where the panel isn't kept. */
   players?: PlayerDirectory;
+  /** Where each Minecraft server connects from and what it runs, for the panel. */
+  servers?: ServerDirectory;
   /** Mastra's traces, so a player's erasure reaches them too; none without tracing. */
   traces?: TraceStore;
 }
