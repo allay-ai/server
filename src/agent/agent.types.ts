@@ -15,6 +15,8 @@ export interface PlayerInfo {
   op?: boolean;
   /** Where the player stands when they ask; the model needs it to place “here” and coordinates without a dimension. */
   dimension?: Dimension;
+  /** Full privacy: the admin panel knows the player by pseudonym only, without their name, UUID, or face. */
+  private?: boolean;
 }
 
 export interface ServerInfo {

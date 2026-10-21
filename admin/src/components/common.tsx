@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, CheckCircle2, CircleSlash, UserRound, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleSlash, XCircle } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -115,22 +115,17 @@ export const Pager = ({ page, total, limit, onPage }: { page: number; total: num
 
 /** A button that asks first; for anything that deletes, refunds, or blocks. */
 /**
- * A player's face from their skin, which the backend fetches and caches; a plain figure when it has none, as for
- * players nothing names any more.
+ * A player's face from their skin, which the backend fetches and caches; Steve's when the panel doesn't know who they
+ * are: players from before 6.4, those with full privacy on, and faces the skin service didn't give.
  */
 export const PlayerHead = ({ id, size = 24, className, known = true }: { id: string; size?: number; className?: string; known?: boolean }) => {
   const [failed, setFailed] = useState(false);
   const style = { width: size, height: size };
-  // Without a name the backend has no skin to look up, so the figure saves a request that would fail.
-  if (failed || !known || !id.startsWith("p_"))
-    return (
-      <span className={cn("flex shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground", className)} style={style} aria-hidden>
-        <UserRound style={{ width: size * 0.6, height: size * 0.6 }} />
-      </span>
-    );
+  // Without a name the backend has no skin to look up, so Steve saves a request that would fail.
+  const own = !failed && known && id.startsWith("p_");
   return (
     <img
-      src={`${API_BASE}/players/${encodeURIComponent(id)}/head`}
+      src={own ? `${API_BASE}/players/${encodeURIComponent(id)}/head` : "./steve.png"}
       alt=""
       loading="lazy"
       className={cn("shrink-0 rounded-sm bg-muted [image-rendering:pixelated]", className)}

@@ -18,8 +18,15 @@ export const chatRequestSchema = z.object({
   locale: text(16),
   timezone: text(64),
   // dimension since 5.1: where the player stands when they ask. Unknown values are dropped, not refused, for future dimensions.
+  // private since 6.5: the player turned on full privacy, so the admin panel doesn't learn their name.
   player: z
-    .object({ name: z.string().min(1).max(32), uuid: text(36), op: z.boolean().optional(), dimension: z.enum(DIMENSIONS).optional().catch(undefined) })
+    .object({
+      name: z.string().min(1).max(32),
+      uuid: text(36),
+      op: z.boolean().optional(),
+      dimension: z.enum(DIMENSIONS).optional().catch(undefined),
+      private: z.boolean().optional(),
+    })
     .optional(),
   server: z.object({ id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(), software: text(64), version: text(64), plugin_version: text(64) }).optional(),
   tools: z.array(z.string().max(64)).max(256).default([]),

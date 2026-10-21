@@ -11,11 +11,11 @@ import { handleLicense } from "../src/features/billing/license.controller";
 import { handleChat, handleToolResult } from "../src/features/chat/chat.controller";
 import { handleHealth } from "../src/features/health/health.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
-import { handleConsent, handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
+import { handleConsent, handleMemories, handleMemory, handlePrivacy, handleSession, handleUser } from "../src/features/users/users.controller";
 import { AUTH, scripted, testAdmin, testBilling, testDeps, text, finish, thread } from "./helpers";
 
 const handlers = {
-  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handleLicense, handleTelegram,
+  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handlePrivacy, handleMemories, handleMemory, handleLicense, handleTelegram,
   handleAdminInit, handleAdmin,
 };
 let server: Server<undefined> | undefined;
@@ -604,6 +604,41 @@ describe("players in the panel", () => {
     expect((await call("GET", "/api/admin/runs")).body.runs[0].player).toBeNull();
     expect((await call("POST", "/api/admin/players/erase", { server: "self", user_id: "Some Body" })).status).toBe(404);
     expect(JSON.stringify(ctx.audit.entries)).not.toContain("Steve");
+  });
+
+  test("full privacy keeps a player's name out of the panel, from the switch and from each question", async () => {
+    const ctx = await withOwner();
+    const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
+    Object.assign(ctx.deps, { runs });
+    const { call, deps } = ctx;
+    await deps.consents.give({ tenant: "self", userId: "uuid-steve" }, 1);
+    const pseudonym = deps.pseudonyms.of("uuid-steve");
+    const ask = async (player: Record<string, unknown>) => {
+      const response = await fetch(`${ctx.base}/api/v2/chat`, {
+        method: "POST",
+        headers: { ...AUTH, "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: "uuid-steve", player, message: "hi" }),
+      });
+      await response.text();
+      await Bun.sleep(50);
+    };
+    await ask({ name: "Steve" });
+    expect(await deps.players!.get("self", pseudonym)).not.toBeNull();
+
+    const privacy = (full: unknown, headers: Record<string, string> = AUTH) =>
+      fetch(`${ctx.base}/api/v2/users/uuid-steve/privacy`, { method: "PUT", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ full }) });
+    expect(await (await privacy(true)).json()).toEqual({ full: true, forgotten: true });
+    expect(await deps.players!.get("self", pseudonym)).toBeNull();
+    expect((await privacy("yes")).status).toBe(400);
+    expect((await privacy(true, {})).status).toBe(401);
+
+    await ask({ name: "Steve", private: true });
+    expect(await deps.players!.get("self", pseudonym)).toBeNull();
+    expect((await call("GET", "/api/admin/runs")).body.runs[0].player).toBeNull();
+    // Off: the next question names the player again.
+    expect(await (await privacy(false)).json()).toEqual({ full: false, forgotten: false });
+    await ask({ name: "Steve" });
+    expect((await deps.players!.get("self", pseudonym))!.name).toBe("Steve");
   });
 
   test("players from before 6.4 get their names from a list of names and UUIDs", async () => {

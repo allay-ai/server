@@ -16,6 +16,7 @@ const MEMORY_ID = /^[a-z0-9]{1,16}$/;
 // The same bounds the remember tool has.
 const MemoryBody = z.object({ text: z.string().trim().min(3).max(MAX_MEMORY_CHARS) });
 const ConsentBody = z.object({ version: z.number().int().min(1).max(MAX_CONSENT_VERSION) });
+const PrivacyBody = z.object({ full: z.boolean() });
 
 const badUser = () => jsonError(apierror(API_ERRORS.BAD_REQUEST, "user_id must be 1–64 letters, digits, - or _"));
 
@@ -126,5 +127,24 @@ export const handleMemory = (deps: AllayDeps) => async (req: Routed): Promise<Re
     return Response.json({ deleted: 1 });
   } catch (error) {
     return failed("forget the memory", error);
+  }
+};
+
+/**
+ * PUT /api/v2/users/{user_id}/privacy with `{ full }`: the player turned full privacy on or off in the plugin. On, the
+ * admin panel forgets their name, UUID, and face at once, and questions that carry `player.private` keep it so. Off
+ * changes nothing until their next question names them again. The plugin keeps the switch; the backend keeps no flag.
+ */
+export const handlePrivacy = (deps: AllayDeps) => async (req: Routed): Promise<Response> => {
+  if (req.method !== "PUT") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
+  const owner = await ownerOf(deps, req);
+  if (owner instanceof Response) return owner;
+  const body = PrivacyBody.safeParse(await req.json().catch(() => undefined));
+  if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, "full must be true or false"));
+  try {
+    const forgotten = body.data.full ? ((await deps.players?.forget(owner.tenant, deps.pseudonyms.of(owner.userId))) ?? false) : false;
+    return noStore({ full: body.data.full, forgotten });
+  } catch (error) {
+    return failed("change the player's privacy", error);
   }
 };

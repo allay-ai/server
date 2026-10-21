@@ -180,7 +180,9 @@ const report = (deps: AllayDeps, context: RunContext, options: Pick<RunOptions, 
     ...run,
   };
   deps.runs.add(record).catch((error) => logger.warn(`Couldn't keep the numbers of run ${options.runId}: ${String(error)}`));
-  if (kind !== "summary" && context.player?.name) {
+  if (kind !== "summary" && context.player?.private) {
+    deps.players?.forget(context.tenant, record.user_id).catch((error) => logger.warn(`Couldn't forget the player of run ${options.runId}: ${String(error)}`));
+  } else if (kind !== "summary" && context.player?.name) {
     deps.players
       ?.seen({ tenant: context.tenant, pseudonym: record.user_id, user_id: context.userId, name: context.player.name.slice(0, 32), ...(context.player.op === undefined ? {} : { op: context.player.op }) }, run.at)
       .catch((error) => logger.warn(`Couldn't note the player of run ${options.runId}: ${String(error)}`));

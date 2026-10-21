@@ -9,7 +9,7 @@ import { handleChat, handleToolResult } from "../features/chat/chat.controller";
 import { handleLicense } from "../features/billing/license.controller";
 import { handleHealth } from "../features/health/health.controller";
 import { handleTelegram, startTelegram, watchTelegram } from "../features/telegram/telegram.controller";
-import { handleConsent, handleMemories, handleMemory, handleSession, handleUser } from "../features/users/users.controller";
+import { handleConsent, handleMemories, handleMemory, handlePrivacy, handleSession, handleUser } from "../features/users/users.controller";
 import { logger } from "../shared/logging/logger";
 import { connect as mongoConnect, disconnect as mongoDisconnect } from "../infrastructure/database/mongodb.client";
 import { settings } from "../features/settings/settings";
@@ -48,7 +48,7 @@ const server = serve({
   // Questions are 2000 characters, tool results a few dozen kilobytes; nothing needs Bun's 128 MB default.
   maxRequestBodySize: 2 * 1024 * 1024,
   routes: routes(deps, {
-    handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory,
+    handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handlePrivacy,
     handleLicense, handleTelegram, handleAdminInit, handleAdmin, adminPages: adminPages(),
   }),
   error: (error: Error) => {

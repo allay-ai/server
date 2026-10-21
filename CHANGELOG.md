@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.5.0
+
+For Allay 6.3, which adds the full privacy switch; older plugins work as before.
+
+- 🕶️ **Full privacy.** A question with `player.private` keeps the player's name, UUID, and face out of the admin panel, and forgets what the panel had; `PUT /api/v2/users/{id}/privacy` with `{ "full": true }` does it at once when the player flips the switch. Memories, the session, and traces work as before.
+- 🙂 **Steve for the unknown.** Players the panel can't name (before 6.4, or with full privacy on) show Steve's head instead of a blank figure.
+
 ## 6.4.0
 
 - 🏷️ **The panel names players.** Each question from the plugin notes the player's name, UUID, and operator status per server in a directory, so the Players page, runs, the dashboard, and a player's page show names instead of pseudonyms. Players from before 6.4 keep their pseudonym until their next question. A rename shows everywhere at once, and an erasure takes the name off every run. The directory lives 400 days after a player's last question, a player's export includes their name, and the audit log still keeps pseudonyms only.

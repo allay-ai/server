@@ -8,7 +8,7 @@ import type { handleChat, handleToolResult } from "../features/chat/chat.control
 import type { handleLicense } from "../features/billing/license.controller";
 import type { handleHealth } from "../features/health/health.controller";
 import type { handleTelegram } from "../features/telegram/telegram.controller";
-import type { handleConsent, handleMemories, handleMemory, handleSession, handleUser } from "../features/users/users.controller";
+import type { handleConsent, handleMemories, handleMemory, handlePrivacy, handleSession, handleUser } from "../features/users/users.controller";
 
 interface Handlers {
   handleAsk: typeof handleAsk;
@@ -24,6 +24,8 @@ interface Handlers {
   handleLicense: typeof handleLicense;
   handleTelegram: typeof handleTelegram;
   handleAdminInit?: typeof handleAdminInit;
+  /** Since 6.5; tests that don't touch it leave it out. */
+  handlePrivacy?: typeof handlePrivacy;
   handleAdmin?: typeof handleAdmin;
   /** The panel's built pages, served at /admin. */
   adminPages?: (req: Request) => Promise<Response>;
@@ -57,6 +59,7 @@ export const routes = (deps: AllayDeps, h: Handlers): Record<string, Route> => {
     "/api/v2/users/:userId": h.handleUser(deps),
     "/api/v2/users/:userId/session": h.handleSession(deps),
     "/api/v2/users/:userId/consent": h.handleConsent(deps),
+    ...(h.handlePrivacy ? { "/api/v2/users/:userId/privacy": h.handlePrivacy(deps) } : {}),
     "/api/v2/users/:userId/memories": h.handleMemories(deps),
     "/api/v2/users/:userId/memories/:memoryId": h.handleMemory(deps),
     "/api/v2/license": h.handleLicense(deps),
