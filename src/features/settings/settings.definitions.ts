@@ -55,8 +55,6 @@ export interface BoolSetting extends Base {
 
 export type SettingDefinition = StringSetting | SecretSetting | NumberSetting | EnumSetting | BoolSetting;
 
-const selfHostedEnv = () => ["1", "true", "yes"].includes((process.env.SELFHOSTED || "").toLowerCase());
-
 /** PLAN_STARS=week=1,month=1,year=1 from before 5.7 sets the three prices at once. */
 const planStars = (plan: string) => (env: Record<string, string | undefined>) => {
   if (env[`PLAN_${plan.toUpperCase()}_STARS`]) return env[`PLAN_${plan.toUpperCase()}_STARS`];
@@ -101,11 +99,11 @@ export const DEFINITIONS = {
   TRACE_SAMPLE: {
     type: "number",
     group: "tracing",
-    default: () => (selfHostedEnv() ? 1 : 0.1),
+    default: 1,
     min: 0,
     max: 1,
     restart: true,
-    description: "The share of runs traced, 0 turns tracing off; 1 self-hosted, 0.1 hosted by default",
+    description: "The share of runs traced, 0 turns tracing off; every run by default",
   },
   TRACE_DAYS: { type: "int", group: "tracing", default: 7, min: 1, max: 365, restart: true, description: "How long traces stay, in days" },
 
