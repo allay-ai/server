@@ -196,6 +196,120 @@ const ExtendDialog = ({ id, onDone }: { id: string; onDone: () => Promise<void> 
   );
 };
 
+/**
+ * Deleting a license. Nobody's money in it: one confirmation. Someone paid and has no refund: the dialog sends them to
+ * the refund first, and only an owner may go on, after a warning about the payer's rights and a second agreement.
+ */
+const DeleteDialog = ({ id, stars, payments, onRefund }: { id: string; stars: number; payments: number; onRefund: () => Promise<void> }) => {
+  const { t } = useTranslation();
+  const can = useCan();
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<"ask" | "force">("ask");
+  const [agreed, setAgreed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const paid = payments > 0;
+  const reset = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      setStep("ask");
+      setAgreed(false);
+    }
+  };
+  const remove = async (force: boolean) => {
+    setBusy(true);
+    try {
+      await api(`/licenses/${encodeURIComponent(id)}`, { method: "DELETE", body: { force } });
+      toast.success(t("licenses.deleted"));
+      reset(false);
+      await client.invalidateQueries({ queryKey: ["licenses"] });
+      await navigate({ to: "/licenses", search: {} });
+    } catch (error) {
+      showErrors(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open={open} onOpenChange={reset}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10">
+          {t("licenses.delete")}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        {!paid ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>{t("licenses.deleteTitle")}</DialogTitle>
+              <DialogDescription>{t("licenses.deleteText")}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => reset(false)} disabled={busy}>
+                {t("common.cancel")}
+              </Button>
+              <Button variant="destructive" onClick={() => remove(false)} disabled={busy}>
+                {t("licenses.delete")}
+              </Button>
+            </DialogFooter>
+          </>
+        ) : step === "ask" ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>{t("licenses.paidTitle")}</DialogTitle>
+              <DialogDescription>{t("licenses.paidText", { stars: number(stars), count: payments })}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex-col gap-2 sm:flex-row">
+              <Button variant="outline" onClick={() => reset(false)} disabled={busy}>
+                {t("common.cancel")}
+              </Button>
+              {can("owner") && (
+                <Button variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" onClick={() => setStep("force")} disabled={busy}>
+                  {t("licenses.deleteAnyway")}
+                </Button>
+              )}
+              <Button
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await onRefund();
+                    reset(false);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                disabled={busy}
+              >
+                {t("licenses.refund")}
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>{t("licenses.forceTitle")}</DialogTitle>
+              <DialogDescription>{t("licenses.forceText", { stars: number(stars), count: payments })}</DialogDescription>
+            </DialogHeader>
+            <label className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
+              <input type="checkbox" className="mt-0.5 size-4 accent-destructive" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+              <span>{t("licenses.forceAgree")}</span>
+            </label>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setStep("ask")} disabled={busy}>
+                {t("common.previous")}
+              </Button>
+              <Button variant="destructive" onClick={() => remove(true)} disabled={busy || !agreed}>
+                {t("licenses.forceAction")}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 interface LicenseDetail {
   license: License;
   grants: Array<{ id: string; payment: string | null; budget: number; spent: number; starts: string; ends: string }>;
@@ -280,6 +394,11 @@ export const LicensePage = () => {
                       onConfirm={refund}
                     />
                   )}
+                </div>
+              )}
+              {can("admin") && (
+                <div className="flex flex-wrap gap-2 border-t pt-4">
+                  <DeleteDialog id={id} stars={unrefunded.reduce((sum, p) => sum + p.stars, 0)} payments={unrefunded.length} onRefund={refund} />
                 </div>
               )}
             </CardContent>

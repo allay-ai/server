@@ -123,6 +123,7 @@ const revoked = () => error(409, "REVOKED", "This license is revoked");
 
 const grantSchema = z.object({ usd: z.number().positive().max(1_000), days: z.number().int().min(1).max(366) });
 const extendSchema = z.object({ days: z.number().int().min(1).max(366) });
+const deleteSchema = z.object({ force: z.boolean().optional() });
 
 export const billingRoutes: Route[] = [
   {
@@ -273,6 +274,37 @@ export const billingRoutes: Route[] = [
         ip: ctx.ip,
       });
       return Response.json({ revoked: true, stars: done.stars, payments: done.payments });
+    }),
+  },
+  {
+    method: "DELETE",
+    path: "/licenses/:id",
+    access: "admin",
+    handle: hosted(async (ctx) => {
+      const license = await licenseOr404(ctx);
+      if (!license) return error(404, "NOT_FOUND", "No such license");
+      const input = deleteSchema.safeParse((await body(ctx.req)) ?? {});
+      if (!input.success) return error(400, "BAD_REQUEST", "force is true or false");
+      const { billing } = ctx.deps;
+      const unrefunded = (await billing.licenses.payments({ license: license.id, limit: 1_000 })).filter((p) => !p.refunded_at);
+      const stars = unrefunded.reduce((sum, p) => sum + p.stars, 0);
+      // Someone paid and hasn't got the Stars back: refund first, or an owner deletes it anyway and owns the consequences.
+      if (unrefunded.length && !input.data.force) {
+        return error(409, "PAID", "Someone paid for this license; refund it first, or delete it anyway", { stars, payments: unrefunded.length });
+      }
+      if (unrefunded.length && !allows(ctx.me!.role, "owner")) return error(403, "FORBIDDEN", "Only an owner can delete a paid license without a refund");
+      await billing.licenses.remove(license.id);
+      await record(ctx.admin, {
+        actor: ctx.me!.username,
+        action: "license.delete",
+        target: license.id,
+        changes: [
+          { field: "name", old: serverName(license), new: "" },
+          ...(unrefunded.length ? [{ field: "unrefunded", old: `${stars} Stars in ${unrefunded.length} payments`, new: "kept by us" }] : []),
+        ],
+        ip: ctx.ip,
+      });
+      return Response.json({ deleted: true, forced: unrefunded.length > 0 });
     }),
   },
   {

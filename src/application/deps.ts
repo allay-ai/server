@@ -9,6 +9,7 @@ import { tracing } from "../infrastructure/observability/tracing";
 import { mongoMemories } from "../infrastructure/memory/memory";
 import { mongoConsents } from "../infrastructure/privacy/consents";
 import { mongoBans } from "../infrastructure/privacy/bans";
+import { mongoPlayers } from "../infrastructure/privacy/players";
 import { openrouterModels } from "../infrastructure/providers/openrouter/openrouter.client";
 import { settings } from "../features/settings/settings";
 import { LoginLimiter, SetupCodes, envAdminOf } from "../features/admin/admin";
@@ -40,6 +41,7 @@ export const productionDeps = (pseudonyms: Pseudonyms): AllayDeps => {
     bridge,
     runs: mongoRuns,
     pseudonyms,
+    players: mongoPlayers,
     traces: mastra ? mongoTraces : undefined,
     get perplexity() {
       const apiKey = settings.get("PERPLEXITY_API_KEY");

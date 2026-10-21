@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { ColumnChart, LineAreaChart, RankBars } from "@/components/charts";
-import { Empty, ErrorBox, Loading, PageHeader, StatTile, TableFrame } from "@/components/common";
+import { ColumnChart, LineAreaChart, RankBars, StackedColumnChart } from "@/components/charts";
+import { Empty, ErrorBox, Loading, PageHeader, PlayerLink, StatTile, TableFrame } from "@/components/common";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -75,10 +75,66 @@ export const DashboardPage = () => {
                 <ChartCard title={t("dashboard.charts.players")}>
                   <LineAreaChart data={stats.series} x="t" tick={tick} y="players" label={t("dashboard.players")} format={(v) => compact(v)} color={3} integer />
                 </ChartCard>
-                <ChartCard title={t("dashboard.charts.errors")}>
-                  <ColumnChart data={stats.series} x="t" tick={tick} y="errors" label={t("dashboard.errors")} format={(v) => compact(v)} color={2} />
+                <ChartCard title={t("dashboard.charts.errors")} description={t("dashboard.charts.errorsHint")}>
+                  <StackedColumnChart
+                    data={stats.series}
+                    x="t"
+                    tick={tick}
+                    series={[
+                      { key: "errors", label: t("runs.results.error"), color: 2 },
+                      { key: "cancelled", label: t("runs.results.cancelled"), color: 4 },
+                    ]}
+                    format={(v) => compact(v)}
+                  />
+                </ChartCard>
+                <ChartCard title={t("dashboard.charts.tokens")}>
+                  <StackedColumnChart
+                    data={stats.series}
+                    x="t"
+                    tick={tick}
+                    series={[
+                      { key: "input_tokens", label: t("dashboard.tokensIn"), color: 1 },
+                      { key: "output_tokens", label: t("dashboard.tokensOut"), color: 3 },
+                    ]}
+                    format={(v) => compact(v)}
+                  />
+                </ChartCard>
+                <ChartCard title={t("dashboard.charts.latency")} description={stats.approximate ? t("dashboard.charts.latencyHint") : undefined}>
+                  <LineAreaChart data={stats.series.map((p) => ({ ...p, p50_ms: p.p50_ms ?? 0 }))} x="t" tick={tick} y="p50_ms" label={t("dashboard.p50")} format={(v) => duration(v)} color={5} />
+                </ChartCard>
+                <ChartCard title={t("dashboard.charts.perQuestion")}>
+                  <LineAreaChart
+                    data={stats.series.map((p) => ({ t: p.t, per: p.questions ? p.cost / p.questions : 0 }))}
+                    x="t"
+                    tick={tick}
+                    y="per"
+                    label={t("dashboard.cost")}
+                    format={usd}
+                    axisFormat={usdTick}
+                    color={4}
+                  />
+                </ChartCard>
+                <ChartCard title={t("dashboard.charts.searches")}>
+                  <ColumnChart data={stats.series} x="t" tick={tick} y="searches" label={t("dashboard.charts.searches")} format={(v) => compact(v)} color={3} />
                 </ChartCard>
               </div>
+              {stats.top_players.length > 0 && (
+                <ChartCard title={t("dashboard.topPlayers")} description={t("dashboard.topPlayersHint")}>
+                  <ol className="grid gap-x-6 gap-y-2 px-2 sm:grid-cols-2">
+                    {stats.top_players.map((p, i) => (
+                      <li key={p.user_id} className="flex min-w-0 items-center gap-3 text-sm">
+                        <span className="tabular w-5 shrink-0 text-right text-muted-foreground">{i + 1}</span>
+                        <span className="min-w-0 flex-1 truncate">
+                          <PlayerLink id={p.user_id} player={p.player} head />
+                        </span>
+                        <span className="tabular shrink-0 text-muted-foreground">
+                          {t("dashboard.questionCount", { count: p.questions })} · {usd(p.cost)}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </ChartCard>
+              )}
               <div className="grid gap-4 lg:grid-cols-2">
                 <ChartCard title={t("dashboard.models")} description={t("dashboard.modelsHint")}>
                   <div className="px-2">

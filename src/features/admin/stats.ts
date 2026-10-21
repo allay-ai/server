@@ -11,8 +11,14 @@ export interface Point {
   t: string;
   questions: number;
   errors: number;
+  cancelled: number;
   cost: number;
   players: number;
+  input_tokens: number;
+  output_tokens: number;
+  searches: number;
+  /** The typical answer time of the hour or day; over days, the bound of its bucket. */
+  p50_ms: number | null;
 }
 
 export interface Stats {
@@ -65,7 +71,18 @@ const top = <T extends { name: string }>(entries: T[], by: (t: T) => number, n: 
 export const statsOfRuns = (runs: RunRecord[], now: Date): Stats => {
   const end = Math.floor(now.getTime() / HOUR) * HOUR + HOUR;
   const start = end - 24 * HOUR;
-  const buckets = Array.from({ length: 24 }, (_, i) => ({ t: new Date(start + i * HOUR).toISOString(), questions: 0, errors: 0, cost: 0, users: new Set<string>() }));
+  const buckets = Array.from({ length: 24 }, (_, i) => ({
+    t: new Date(start + i * HOUR).toISOString(),
+    questions: 0,
+    errors: 0,
+    cancelled: 0,
+    cost: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    searches: 0,
+    users: new Set<string>(),
+    times: [] as number[],
+  }));
   const models = new Map<string, { name: string; runs: number; cost: number }>();
   const tools = new Map<string, { name: string; calls: number; failed: number }>();
   const kinds: Record<string, number> = {};
@@ -84,6 +101,8 @@ export const statsOfRuns = (runs: RunRecord[], now: Date): Stats => {
     if (at < start || at >= end) continue;
     const bucket = buckets[Math.floor((at - start) / HOUR)];
     bucket.cost += run.cost;
+    bucket.input_tokens += run.input_tokens;
+    bucket.output_tokens += run.output_tokens;
     cost += run.cost;
     input += run.input_tokens;
     output += run.output_tokens;
@@ -99,12 +118,17 @@ export const statsOfRuns = (runs: RunRecord[], now: Date): Stats => {
     players.add(run.user_id);
     servers.add(run.server_id ?? run.server);
     durations.push(run.duration_ms);
+    bucket.times.push(run.duration_ms);
     searches += run.searches;
+    bucket.searches += run.searches;
     if (run.result === "error") {
       errors++;
       bucket.errors++;
     }
-    if (run.result === "cancelled") cancelled++;
+    if (run.result === "cancelled") {
+      cancelled++;
+      bucket.cancelled++;
+    }
     for (const call of run.tools) {
       const tool = tools.get(call.name) ?? { name: call.name, calls: 0, failed: 0 };
       tool.calls++;
@@ -116,7 +140,7 @@ export const statsOfRuns = (runs: RunRecord[], now: Date): Stats => {
   return {
     range: "24h",
     step: "hour",
-    series: buckets.map(({ users, ...b }) => ({ ...b, cost: round(b.cost), players: users.size })),
+    series: buckets.map(({ users, times, ...b }) => ({ ...b, cost: round(b.cost), players: users.size, p50_ms: percentile(times.sort((x, y) => x - y), 50) })),
     totals: {
       questions,
       errors,
@@ -156,7 +180,7 @@ export const statsOfDays = (range: Exclude<Range, "24h">, days: DayRollup[], now
   const totals = { questions: 0, errors: 0, cancelled: 0, cost: 0, searches: 0, input: 0, output: 0 };
   const series = keys.map((key): Point => {
     const day = byDay.get(key);
-    if (!day) return { t: `${key}T00:00:00.000Z`, questions: 0, errors: 0, cost: 0, players: 0 };
+    if (!day) return { t: `${key}T00:00:00.000Z`, questions: 0, errors: 0, cancelled: 0, cost: 0, players: 0, input_tokens: 0, output_tokens: 0, searches: 0, p50_ms: null };
     totals.questions += day.questions ?? 0;
     totals.errors += day.errors ?? 0;
     totals.cancelled += day.cancelled ?? 0;
@@ -177,10 +201,25 @@ export const statsOfDays = (range: Exclude<Range, "24h">, days: DayRollup[], now
       tool.failed += t.failed ?? 0;
       tools.set(name, tool);
     }
-    for (const [i, n] of Object.entries(day.durations ?? {})) histogram[Number(i)] += n;
+    const own = DURATION_BUCKETS.map(() => 0);
+    for (const [i, n] of Object.entries(day.durations ?? {})) {
+      histogram[Number(i)] += n;
+      own[Number(i)] += n;
+    }
     for (const p of day.players ?? []) players.add(p);
     for (const s of day.servers ?? []) servers.add(s);
-    return { t: `${key}T00:00:00.000Z`, questions: day.questions ?? 0, errors: day.errors ?? 0, cost: round(day.cost ?? 0), players: day.player_count ?? day.players?.length ?? 0 };
+    return {
+      t: `${key}T00:00:00.000Z`,
+      questions: day.questions ?? 0,
+      errors: day.errors ?? 0,
+      cancelled: day.cancelled ?? 0,
+      cost: round(day.cost ?? 0),
+      players: day.player_count ?? day.players?.length ?? 0,
+      input_tokens: day.input_tokens ?? 0,
+      output_tokens: day.output_tokens ?? 0,
+      searches: day.searches ?? 0,
+      p50_ms: bucketPercentile(own, 50),
+    };
   });
   return {
     range,

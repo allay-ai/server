@@ -8,6 +8,7 @@ import type { Owner } from "../src/shared/types/owner";
 import { memoryMemories } from "../src/infrastructure/memory/memory";
 import { memoryConsents } from "../src/infrastructure/privacy/consents";
 import { memoryBans } from "../src/infrastructure/privacy/bans";
+import { memoryPlayers } from "../src/infrastructure/privacy/players";
 import type { ModelFactory } from "../src/infrastructure/providers/openrouter/openrouter.client";
 import { type Billing, newLimits } from "../src/features/billing/billing";
 import type { Net } from "../src/features/billing/byok";
@@ -138,6 +139,7 @@ export const testDeps = (
     bridge: new ToolBridge(options.toolTimeoutMs ?? 2_000),
     billing: options.billing ?? testBilling(),
     pseudonyms: pseudonymsWith("test"),
+    players: memoryPlayers(),
     models: (({ search, provider, model }) => {
       deps.lastProvider = provider;
       if (search) {

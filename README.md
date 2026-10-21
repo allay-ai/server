@@ -13,7 +13,7 @@
 - **Agents that do the chores.** Sorting chests, smelting, brewing, and crafting run as automation agents that report back.
 - **Fresh facts and exact math.** Web search when a question needs it, and calculations at 64 significant digits.
 - **A memory per player.** A session for follow-ups, plus up to 30 lasting facts the player controls.
-- **Privacy by design.** Every request says which server sends it, and a server reaches only its own players. Game tools see only the asker, the admin panel knows players by pseudonym and never shows what anyone asked, and each player can get a copy of their data or have it erased.
+- **Privacy by design.** Every request says which server sends it, and a server reaches only its own players. Game tools see only the asker, the admin panel names players but never shows what anyone asked, and each player can get a copy of their data or have it erased.
 - **An admin panel.** Every setting, accounts with roles, and statistics on questions, cost, models, and tools.
 - **Your key, your rules.** Bring any OpenAI-compatible key, subscribe in Telegram Stars, or self-host with no limits.
 

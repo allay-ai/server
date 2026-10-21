@@ -1,15 +1,20 @@
 import { RUN_KINDS, type RunKind, type RunRecord } from "../../infrastructure/runs/runs";
 import { z } from "zod";
 import { PSEUDONYM } from "../../infrastructure/privacy/pseudonyms";
+import { NAME_SEARCH } from "../../infrastructure/privacy/players";
+import type { AllayDeps } from "../../agent/allay";
 import { USER_ID } from "../../shared/types/owner";
 import { TENANT } from "../auth/caller";
 import { type Erased, erasePlayer, erasePseudonym, findPlayer } from "../users/privacy";
+import { serverName } from "../billing/billing";
 import { record } from "./admin";
 import { type Route, type Context, body, error } from "./admin.http";
 import { RANGES, type Range, statsFor } from "./stats";
+import { headKey, headOf } from "./heads";
+import { PROFILE_RUNS, profileOf } from "./profile";
 
-// A pseudonym from the list, or the id a player sent with their request.
-const eraseSchema = z.object({ server: z.string().regex(TENANT), user_id: z.string().max(64).refine((id) => PSEUDONYM.test(id) || USER_ID.test(id)) });
+// A pseudonym from the list, a player's name, or the id a player sent with their request.
+const eraseSchema = z.object({ server: z.string().regex(TENANT), user_id: z.string().max(64).refine((id) => PSEUDONYM.test(id) || USER_ID.test(id) || NAME_SEARCH.test(id)) });
 const serverSchema = z.object({ server: z.string().regex(TENANT) });
 
 /** A player of the panel's page and one tenant they asked on, from the path and the body; a response when there's none. */
@@ -22,8 +27,7 @@ const playerOn = async ({ deps, params, req }: Context) => {
   return { tenant: input.data.server, pseudonym: params.id };
 };
 
-/** The same, with the player's id the backend finds for it; only the backend ever sees that id. */
-/** The audit log keeps the pseudonym, not the id: it outlives the erasure by a year. */
+/** The audit log keeps the pseudonym, not the name or the id: it outlives the erasure by a year. */
 const erasedReply = async ({ admin, me, ip }: Context, tenant: string, pseudonym: string, erased: Erased) => {
   await record(admin, {
     actor: me!.username,
@@ -46,14 +50,32 @@ const ownerOn = async (ctx: Context) => {
   return { ...player, owner: { tenant: player.tenant, userId } };
 };
 
-/** A player's id typed into the search finds their pseudonym; anything else searches pseudonyms by prefix. */
-const searchOf = (deps: { pseudonyms: { of(id: string): string } }, text?: string) => {
-  if (!text) return undefined;
-  if (PSEUDONYM.test(text) || /^p_[0-9a-f]{0,20}$/.test(text)) return text;
-  return USER_ID.test(text) ? deps.pseudonyms.of(text) : undefined;
+/** A pseudonym's start searches pseudonyms; anything else finds players by the start of their name, or by their id. */
+const searchOf = async (deps: AllayDeps, text?: string): Promise<{ search?: string; ids?: string[] }> => {
+  if (!text) return {};
+  if (PSEUDONYM.test(text) || /^p_[0-9a-f]{0,20}$/.test(text)) return { search: text };
+  const ids = new Set(NAME_SEARCH.test(text) ? ((await deps.players?.search(text, { limit: 500 })) ?? []).map((p) => p.pseudonym) : []);
+  if (USER_ID.test(text)) ids.add(deps.pseudonyms.of(text));
+  return { ids: [...ids] };
 };
 
-const runView = (run: RunRecord) => ({ ...run, at: run.at.toISOString() });
+type Who = { name: string; uuid: string } | null;
+
+/** Who each pseudonym is, by the newest name the directory has for it on any server. */
+const whoOf = async (deps: AllayDeps, pseudonyms: string[]): Promise<(id: string) => Who> => {
+  const known = (await deps.players?.of(pseudonyms.filter((p) => PSEUDONYM.test(p)))) ?? new Map();
+  return (id) => {
+    const player = known.get(id)?.[0];
+    return player ? { name: player.name, uuid: player.user_id } : null;
+  };
+};
+
+const runView = (run: RunRecord, who: (id: string) => Who = () => null) => ({ ...run, at: run.at.toISOString(), player: who(run.user_id) });
+
+const runsView = async (deps: AllayDeps, runs: RunRecord[]) => {
+  const who = await whoOf(deps, runs.map((r) => r.user_id));
+  return runs.map((run) => runView(run, who));
+};
 
 const limitOf = (url: URL, max = 100) => Math.min(max, Math.max(1, Number(url.searchParams.get("limit")) || 50));
 
@@ -73,7 +95,13 @@ export const insightRoutes: Route[] = [
       if (!deps.runs) return error(503, "NO_RUNS", "This backend keeps no statistics");
       const range = (url.searchParams.get("range") ?? "7d") as Range;
       if (!RANGES.includes(range)) return error(400, "BAD_REQUEST", `range is one of ${RANGES.join(", ")}`);
-      return Response.json(await statsFor(deps.runs, range, admin.now()));
+      const now = admin.now();
+      const stats = await statsFor(deps.runs, range, now);
+      // The busiest players of the range, by name where the directory knows them.
+      const from = range === "24h" ? new Date(now.getTime() - 86_400_000) : new Date(stats.series[0]?.t ?? now);
+      const { players } = await deps.runs.players({ from, sort: "questions", limit: 8, skip: 0 });
+      const who = await whoOf(deps, players.map((p) => p.user_id));
+      return Response.json({ ...stats, top_players: players.map((p) => ({ user_id: p.user_id, player: who(p.user_id), questions: p.questions, cost: p.cost })) });
     },
   },
   {
@@ -85,15 +113,21 @@ export const insightRoutes: Route[] = [
       const limit = limitOf(url);
       const page = Math.max(0, Number(url.searchParams.get("page")) || 0);
       const given = url.searchParams.get("search")?.trim().slice(0, 64) || undefined;
-      const search = searchOf(deps, given);
-      if (given && !search) return Response.json({ total: 0, page, limit, players: [] });
-      const { players, total } = await deps.runs.players({ search, limit, skip: page * limit });
-      const bans = await deps.bans.of(players.map((p) => p.user_id));
+      const search = await searchOf(deps, given);
+      if (search.ids?.length === 0) return Response.json({ total: 0, page, limit, players: [] });
+      const { players, total } = await deps.runs.players({ ...search, limit, skip: page * limit });
+      const [bans, who] = await Promise.all([deps.bans.of(players.map((p) => p.user_id)), whoOf(deps, players.map((p) => p.user_id))]);
       return Response.json({
         total,
         page,
         limit,
-        players: players.map((p) => ({ ...p, blocked: bans.has(p.user_id), first_seen: p.first_seen.toISOString(), last_seen: p.last_seen.toISOString() })),
+        players: players.map((p) => ({
+          ...p,
+          player: who(p.user_id),
+          blocked: bans.has(p.user_id),
+          first_seen: p.first_seen.toISOString(),
+          last_seen: p.last_seen.toISOString(),
+        })),
       });
     },
   },
@@ -102,44 +136,85 @@ export const insightRoutes: Route[] = [
     path: "/players/blocked",
     access: "viewer",
     async handle({ deps }) {
-      return Response.json({ bans: (await deps.bans.list(200)).map(({ pseudonym, tenant, blocked_at }) => ({ user_id: pseudonym, server: tenant, blocked_at })) });
+      const bans = await deps.bans.list(200);
+      const who = await whoOf(deps, bans.map((b) => b.pseudonym));
+      return Response.json({ bans: bans.map(({ pseudonym, tenant, blocked_at }) => ({ user_id: pseudonym, player: who(pseudonym), server: tenant, blocked_at })) });
+    },
+  },
+  {
+    method: "GET",
+    path: "/players/lookup",
+    access: "viewer",
+    async handle({ deps, url }) {
+      // The erase form's picker: players of one server by the start of their name, or the newest ones.
+      const server = url.searchParams.get("server") ?? undefined;
+      const text = url.searchParams.get("q")?.trim().slice(0, 32) ?? "";
+      if ((server && !TENANT.test(server)) || (text && !NAME_SEARCH.test(text) && !USER_ID.test(text) && !PSEUDONYM.test(text))) return Response.json({ players: [] });
+      const found = (await deps.players?.search(text, { tenant: server, limit: 10 })) ?? [];
+      return Response.json({
+        players: found.map((p) => ({ user_id: p.pseudonym, name: p.name, uuid: p.user_id, server: p.tenant, last_seen: p.last_seen.toISOString() })),
+      });
     },
   },
   {
     method: "GET",
     path: "/players/:id",
     access: "viewer",
-    async handle({ deps, params }) {
+    async handle({ deps, admin, params }) {
       if (!PSEUDONYM.test(params.id)) return error(404, "NOT_FOUND", "No such player");
-      const [summary, runs, tenants, bans] = await Promise.all([
+      const [summary, runs, tenants, bans, known] = await Promise.all([
         deps.runs?.players({ search: params.id, limit: 1, skip: 0 }),
-        deps.runs?.list({ user_id: params.id, limit: 50 }) ?? [],
+        deps.runs?.list({ user_id: params.id, limit: PROFILE_RUNS }) ?? [],
         deps.runs?.tenantsOf(params.id) ?? [],
         deps.bans.of([params.id]),
+        deps.players?.of([params.id]),
       ]);
       const banned = bans.get(params.id) ?? [];
+      const entries = known?.get(params.id) ?? [];
       // A player erased while blocked has no runs left, only the ban.
       const player = summary?.players.find((p) => p.user_id === params.id) ?? (banned.length ? { questions: 0, cost: 0, language: undefined, first_seen: null, last_seen: null } : null);
       if (!player) return error(404, "NOT_FOUND", "No such player");
-      // Per server: whether they're blocked there, and whether the backend can tell who they are, to reset or erase them.
+      // Per server: the name there, whether they're blocked there, and whether the backend can tell who they are, to reset or erase them.
       const servers = await Promise.all(
-        [...new Set([...tenants, ...banned.map((b) => b.tenant)])].map(async (tenant) => ({
-          server: tenant,
-          blocked_at: banned.find((b) => b.tenant === tenant)?.blocked_at ?? null,
-          known: (await findPlayer(deps, tenant, params.id)) !== null,
-        })),
+        [...new Set([...tenants, ...banned.map((b) => b.tenant)])].map(async (tenant) => {
+          const entry = entries.find((e) => e.tenant === tenant);
+          return {
+            server: tenant,
+            name: entry?.name ?? null,
+            op: entry?.op ?? null,
+            first_seen: entry?.first_seen.toISOString() ?? null,
+            blocked_at: banned.find((b) => b.tenant === tenant)?.blocked_at ?? null,
+            known: (await findPlayer(deps, tenant, params.id)) !== null,
+          };
+        }),
       );
-      // Numbers only: the panel knows players by pseudonym, and never what they asked or what Allay remembers.
+      const newest = entries[0];
+      const who = () => (newest ? { name: newest.name, uuid: newest.user_id } : null);
+      // Numbers and names only: never what the player asked or what Allay remembers.
       return Response.json({
         user_id: params.id,
+        player: who(),
+        op: newest?.op ?? null,
         language: player.language ?? null,
         questions: player.questions,
         cost: player.cost,
         first_seen: player.first_seen?.toISOString() ?? null,
         last_seen: player.last_seen?.toISOString() ?? null,
         servers,
-        runs: runs.map(runView),
+        profile: profileOf(runs, admin.now()),
+        runs: runs.slice(0, 50).map((run) => runView(run, who)),
       });
+    },
+  },
+  {
+    method: "GET",
+    path: "/players/:id/head",
+    access: "viewer",
+    async handle({ deps, params }) {
+      const player = PSEUDONYM.test(params.id) ? (await deps.players?.of([params.id]))?.get(params.id)?.[0] : undefined;
+      const head = player ? await headOf(headKey(player.user_id, player.name)) : null;
+      if (!head) return error(404, "NOT_FOUND", "No face for this player");
+      return new Response(head.body, { headers: { "Content-Type": head.type, "Cache-Control": "private, max-age=21600" } });
     },
   },
   {
@@ -152,6 +227,11 @@ export const insightRoutes: Route[] = [
       if (!input.success) return error(400, "BAD_REQUEST", "Name the server (self or license:<id>) and the player's pseudonym or id");
       const { server: tenant, user_id: given } = input.data;
       if (PSEUDONYM.test(given)) return erasedReply(ctx, tenant, given, await erasePseudonym(deps, tenant, given));
+      // A name the directory knows on that server, matched whole; the picker sends pseudonyms, typing may send a name.
+      const named = NAME_SEARCH.test(given) ? ((await deps.players?.search(given, { tenant, limit: 50 })) ?? []).filter((p) => p.name.toLowerCase() === given.toLowerCase()) : [];
+      if (named.length > 1) return error(409, "AMBIGUOUS", "Several players had that name on that server; pick one from the list");
+      if (named.length === 1) return erasedReply(ctx, tenant, named[0].pseudonym, await erasePseudonym(deps, tenant, named[0].pseudonym));
+      if (!USER_ID.test(given)) return error(404, "NOT_FOUND", "No player had that name on that server");
       return erasedReply(ctx, tenant, deps.pseudonyms.of(given), await erasePlayer(deps, { tenant, userId: given }));
     },
   },
@@ -228,7 +308,7 @@ export const insightRoutes: Route[] = [
         before: beforeOf(url),
         limit: limitOf(url),
       });
-      return Response.json({ runs: runs.map(runView) });
+      return Response.json({ runs: await runsView(deps, runs) });
     },
   },
   {
@@ -239,7 +319,11 @@ export const insightRoutes: Route[] = [
       const run = await deps.runs?.get(params.id);
       if (!run) return error(404, "NOT_FOUND", "No such run");
       const trace = await admin.traces?.get(run.id).catch(() => null);
-      return Response.json({ run: runView(run), trace_id: trace?.trace.trace_id ?? null });
+      const [view] = await runsView(deps, [run]);
+      // The license's name, so the page says whose server it was.
+      const licenseId = run.server.startsWith("license:") ? run.server.slice("license:".length) : null;
+      const license = licenseId && deps.billing.enabled ? await deps.billing.licenses.get(licenseId).catch(() => null) : null;
+      return Response.json({ run: view, trace_id: trace?.trace.trace_id ?? null, server_name: license ? serverName(license) : null, span_count: trace?.spans.length ?? null });
     },
   },
   {
@@ -259,7 +343,7 @@ export const insightRoutes: Route[] = [
       const found = await admin.traces?.get(params.id);
       if (!found) return error(404, "NOT_FOUND", "No such trace; traces live a few days and only for sampled runs");
       const run = found.trace.run_id ? await deps.runs?.get(found.trace.run_id) : null;
-      return Response.json({ ...found, run: run ? runView(run) : null });
+      return Response.json({ ...found, run: run ? (await runsView(deps, [run]))[0] : null });
     },
   },
 ];

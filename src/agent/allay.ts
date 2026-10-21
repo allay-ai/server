@@ -15,6 +15,7 @@ import { estimateTokens, type HistoryStore, maxTokens, threadOf } from "../infra
 import type { Pseudonyms } from "../infrastructure/privacy/pseudonyms";
 import type { ConsentStore } from "../infrastructure/privacy/consents";
 import type { BanStore } from "../infrastructure/privacy/bans";
+import type { PlayerDirectory } from "../infrastructure/privacy/players";
 import type { TraceStore } from "../infrastructure/observability/traces";
 import type { Owner } from "../shared/types/owner";
 import type { Memory, MemoryStore } from "../infrastructure/memory/memory";
@@ -49,6 +50,8 @@ export interface AllayDeps {
   runs?: RunStore;
   /** Turns a player's id into what `runs` keeps instead: a keyed digest, never the id itself. */
   pseudonyms: Pseudonyms;
+  /** Who each pseudonym is, so the panel can name players; none where the panel isn't kept. */
+  players?: PlayerDirectory;
   /** Mastra's traces, so a player's erasure reaches them too; none without tracing. */
   traces?: TraceStore;
 }
@@ -161,8 +164,8 @@ const kindOf = (context: RunContext): RunKind => {
 };
 
 /**
- * Hands a run's numbers to the statistics; they never hold a word of the question or the answer, nor the player's
- * name or id: the player is a keyed digest, so the panel can count them without knowing who they are.
+ * Hands a run's numbers to the statistics; they never hold a word of the question or the answer. The run knows the
+ * player by a keyed digest; the directory says who that is, so a rename or an erasure reaches every run at once.
  */
 const report = (deps: AllayDeps, context: RunContext, options: Pick<RunOptions, "runId" | "payer">, run: Omit<RunRecord, "id" | "kind" | "payer" | "server" | "server_id" | "user_id" | "language">, kind = kindOf(context)) => {
   if (!deps.runs) return;
@@ -177,6 +180,11 @@ const report = (deps: AllayDeps, context: RunContext, options: Pick<RunOptions, 
     ...run,
   };
   deps.runs.add(record).catch((error) => logger.warn(`Couldn't keep the numbers of run ${options.runId}: ${String(error)}`));
+  if (kind !== "summary" && context.player?.name) {
+    deps.players
+      ?.seen({ tenant: context.tenant, pseudonym: record.user_id, user_id: context.userId, name: context.player.name.slice(0, 32), ...(context.player.op === undefined ? {} : { op: context.player.op }) }, run.at)
+      .catch((error) => logger.warn(`Couldn't note the player of run ${options.runId}: ${String(error)}`));
+  }
 };
 
 const compact = async (context: RunContext, deps: AllayDeps, spend?: (usd: number) => void, foldAt?: number, options?: Pick<RunOptions, "runId" | "payer">) => {

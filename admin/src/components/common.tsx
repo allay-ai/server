@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, CheckCircle2, CircleSlash, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleSlash, UserRound, XCircle } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -19,9 +19,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ApiError } from "@/lib/api";
-import { dateTime, duration, relative, usd } from "@/lib/format";
-import type { Run } from "@/lib/types";
+import { API_BASE, ApiError } from "@/lib/api";
+import { compact, dateTime, duration, relative, usd } from "@/lib/format";
+import type { Run, Who } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -114,13 +114,40 @@ export const Pager = ({ page, total, limit, onPage }: { page: number; total: num
 };
 
 /** A button that asks first; for anything that deletes, refunds, or blocks. */
-/** A player as the panel knows them: a pseudonym that links to their numbers, or nobody once they were erased. */
-export const PlayerLink = ({ id }: { id: string }) => {
+/**
+ * A player's face from their skin, which the backend fetches and caches; a plain figure when it has none, as for
+ * players nothing names any more.
+ */
+export const PlayerHead = ({ id, size = 24, className, known = true }: { id: string; size?: number; className?: string; known?: boolean }) => {
+  const [failed, setFailed] = useState(false);
+  const style = { width: size, height: size };
+  // Without a name the backend has no skin to look up, so the figure saves a request that would fail.
+  if (failed || !known || !id.startsWith("p_"))
+    return (
+      <span className={cn("flex shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground", className)} style={style} aria-hidden>
+        <UserRound style={{ width: size * 0.6, height: size * 0.6 }} />
+      </span>
+    );
+  return (
+    <img
+      src={`${API_BASE}/players/${encodeURIComponent(id)}/head`}
+      alt=""
+      loading="lazy"
+      className={cn("shrink-0 rounded-sm bg-muted [image-rendering:pixelated]", className)}
+      style={style}
+      onError={() => setFailed(true)}
+    />
+  );
+};
+
+/** A player as the panel knows them: their name when the directory has it, their pseudonym otherwise, or nobody once erased. */
+export const PlayerLink = ({ id, player, head = false }: { id: string; player?: Who; head?: boolean }) => {
   const { t } = useTranslation();
   if (id === "erased") return <span className="text-muted-foreground">{t("player.erased")}</span>;
   return (
-    <Link to="/players/$id" params={{ id }} className="font-mono text-xs hover:underline">
-      {id}
+    <Link to="/players/$id" params={{ id }} className="inline-flex max-w-full min-w-0 items-center gap-2 hover:underline" title={player ? `${player.name} · ${id}` : id}>
+      {head && <PlayerHead id={id} size={20} known={!!player} />}
+      {player ? <span className="truncate font-medium">{player.name}</span> : <span className="truncate font-mono text-xs">{id}</span>}
     </Link>
   );
 };
@@ -225,6 +252,8 @@ export const RunsTable = ({ runs, showPlayer = true }: { runs: Run[]; showPlayer
             <TableHead>{t("runs.columns.kind")}</TableHead>
             {showPlayer && <TableHead>{t("runs.columns.player")}</TableHead>}
             <TableHead className="hidden md:table-cell">{t("runs.columns.model")}</TableHead>
+            <TableHead className="hidden text-right lg:table-cell">{t("runs.columns.tokens")}</TableHead>
+            <TableHead className="hidden text-right lg:table-cell">{t("runs.columns.tools")}</TableHead>
             <TableHead className="text-right">{t("runs.columns.duration")}</TableHead>
             <TableHead className="hidden text-right sm:table-cell">{t("runs.columns.cost")}</TableHead>
             <TableHead>{t("runs.columns.result")}</TableHead>
@@ -240,11 +269,18 @@ export const RunsTable = ({ runs, showPlayer = true }: { runs: Run[]; showPlayer
               </TableCell>
               <TableCell>{t(`runs.kinds.${run.kind}`)}</TableCell>
               {showPlayer && (
-                <TableCell className="max-w-40 truncate">
-                  <PlayerLink id={run.user_id} />
+                <TableCell className="max-w-48">
+                  <PlayerLink id={run.user_id} player={run.player} head />
                 </TableCell>
               )}
               <TableCell className="hidden max-w-56 truncate font-mono text-xs md:table-cell">{run.model}</TableCell>
+              <TableCell className="tabular hidden text-right whitespace-nowrap lg:table-cell" title={`${run.input_tokens} / ${run.output_tokens}`}>
+                {compact(run.input_tokens)} / {compact(run.output_tokens)}
+              </TableCell>
+              <TableCell className="tabular hidden text-right lg:table-cell">
+                {run.tools.length}
+                {run.tools.some((tool) => !tool.ok) && <span className="ml-1 text-destructive">({run.tools.filter((tool) => !tool.ok).length})</span>}
+              </TableCell>
               <TableCell className="tabular text-right whitespace-nowrap">{duration(run.duration_ms)}</TableCell>
               <TableCell className="tabular hidden text-right sm:table-cell">{usd(run.cost)}</TableCell>
               <TableCell>

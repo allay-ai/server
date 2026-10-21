@@ -1,5 +1,5 @@
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { type ChartConfig, ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 
 interface SeriesChartProps<T> {
   data: T[];
@@ -31,6 +31,52 @@ export const ColumnChart = <T,>({ data, x, tick, y, label, format, color = 1, ax
         <YAxis {...axis} width={48} tickFormatter={(v: number) => (axisFormat ?? format)(v)} allowDecimals={false} />
         <ChartTooltip cursor={{ fillOpacity: 0.4 }} content={<ChartTooltipContent labelFormatter={(_, payload) => tick(String(payload?.[0]?.payload?.[x] ?? ""))} formatter={(value) => <span className="tabular font-medium">{format(Number(value))}</span>} hideIndicator />} />
         <Bar dataKey={y as never} fill={`var(--color-${y})`} radius={[4, 4, 0, 0]} maxBarSize={24} animationDuration={400} />
+      </BarChart>
+    </ChartContainer>
+  );
+};
+
+/** Two or three counts that add up, stacked in one column per point, with a legend since the title names the sum. */
+export const StackedColumnChart = <T,>({
+  data,
+  x,
+  tick,
+  series,
+  format,
+  axisFormat,
+}: {
+  data: T[];
+  x: keyof T & string;
+  tick: (value: string) => string;
+  series: Array<{ key: keyof T & string; label: string; color: 1 | 2 | 3 | 4 | 5 }>;
+  format: (value: number) => string;
+  axisFormat?: (value: number) => string;
+}) => {
+  const config = Object.fromEntries(series.map((s) => [s.key, { label: s.label, color: `var(--chart-${s.color})` }])) satisfies ChartConfig;
+  return (
+    <ChartContainer config={config} className="aspect-auto h-56 w-full">
+      <BarChart data={data} margin={{ left: 0, right: 4, top: 8 }} barCategoryGap={2}>
+        <CartesianGrid vertical={false} />
+        <XAxis dataKey={x as never} {...axis} tickFormatter={tick} minTickGap={24} />
+        <YAxis {...axis} width={48} tickFormatter={(v: number) => (axisFormat ?? format)(v)} allowDecimals={false} />
+        <ChartTooltip
+          cursor={{ fillOpacity: 0.4 }}
+          content={
+            <ChartTooltipContent
+              labelFormatter={(_, payload) => tick(String(payload?.[0]?.payload?.[x] ?? ""))}
+              formatter={(value, name) => (
+                <span className="flex w-full justify-between gap-3">
+                  <span className="text-muted-foreground">{config[name as string]?.label}</span>
+                  <span className="tabular font-medium">{format(Number(value))}</span>
+                </span>
+              )}
+            />
+          }
+        />
+        <ChartLegend content={<ChartLegendContent />} />
+        {series.map((s, i) => (
+          <Bar key={s.key} dataKey={s.key as never} stackId="a" fill={`var(--color-${s.key})`} radius={i === series.length - 1 ? [4, 4, 0, 0] : 0} maxBarSize={24} animationDuration={400} />
+        ))}
       </BarChart>
     </ChartContainer>
   );

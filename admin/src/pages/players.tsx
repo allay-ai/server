@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { ColumnChart, RankBars } from "@/components/charts";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Confirm, Definition, Empty, ErrorBox, Loading, PageHeader, Pager, PlayerLink, RunsTable, StatTile, TableFrame } from "@/components/common";
+import { Confirm, Definition, Empty, ErrorBox, Loading, PageHeader, Pager, PlayerHead, PlayerLink, RunsTable, StatTile, TableFrame } from "@/components/common";
 import { FormField } from "@/components/form-field";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,10 +13,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api, post } from "@/lib/api";
-import { dateTime, number, relative, usd } from "@/lib/format";
+import { compact, dateTime, duration, number, percent, relative, shortDate, usd } from "@/lib/format";
 import { showErrors } from "@/lib/forms";
 import { useCan } from "@/lib/session";
-import type { PlayerDetail, PlayerSummary, ServerSummary } from "@/lib/types";
+import type { FoundPlayer, PlayerDetail, PlayerSummary, ServerSummary } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { ServerLabel } from "./runs";
 
 const LIMIT = 50;
@@ -64,27 +66,44 @@ export const PlayersPage = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">{t("players.columns.skin")}</TableHead>
                     <TableHead>{t("players.columns.player")}</TableHead>
+                    <TableHead className="hidden text-right md:table-cell">{t("players.columns.servers")}</TableHead>
                     <TableHead className="text-right">{t("players.columns.questions")}</TableHead>
-                    <TableHead className="text-right">{t("players.columns.cost")}</TableHead>
-                    <TableHead className="hidden sm:table-cell">{t("players.columns.language")}</TableHead>
+                    <TableHead className="hidden text-right lg:table-cell">{t("players.columns.errors")}</TableHead>
+                    <TableHead className="hidden text-right lg:table-cell">{t("players.columns.tokens")}</TableHead>
+                    <TableHead className="hidden text-right xl:table-cell">{t("players.columns.avgTime")}</TableHead>
+                    <TableHead className="hidden text-right sm:table-cell">{t("players.columns.cost")}</TableHead>
+                    <TableHead className="hidden md:table-cell">{t("players.columns.language")}</TableHead>
+                    <TableHead className="hidden xl:table-cell">{t("players.columns.firstSeen")}</TableHead>
                     <TableHead>{t("players.columns.lastSeen")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {query.data.players.map((p) => (
                     <TableRow key={p.user_id}>
+                      <TableCell>
+                        <PlayerHead id={p.user_id} size={32} known={!!p.player} />
+                      </TableCell>
                       <TableCell className="max-w-56">
                         <span className="flex items-center gap-2">
-                          <span className="truncate">
-                            <PlayerLink id={p.user_id} />
+                          <span className="flex min-w-0 flex-col">
+                            <PlayerLink id={p.user_id} player={p.player} />
+                            {p.player && <span className="truncate font-mono text-xs text-muted-foreground">{p.user_id}</span>}
                           </span>
                           {p.blocked && <Badge variant="destructive">{t("player.blocked")}</Badge>}
                         </span>
                       </TableCell>
+                      <TableCell className="tabular hidden text-right md:table-cell">{number(p.servers)}</TableCell>
                       <TableCell className="tabular text-right">{number(p.questions)}</TableCell>
-                      <TableCell className="tabular text-right">{usd(p.cost)}</TableCell>
-                      <TableCell className="hidden sm:table-cell">{p.language ?? "—"}</TableCell>
+                      <TableCell className={cn("tabular hidden text-right lg:table-cell", p.errors > 0 && "text-destructive")}>{number(p.errors)}</TableCell>
+                      <TableCell className="tabular hidden text-right whitespace-nowrap lg:table-cell">{compact(p.input_tokens + p.output_tokens)}</TableCell>
+                      <TableCell className="tabular hidden text-right whitespace-nowrap xl:table-cell">{duration(p.avg_ms)}</TableCell>
+                      <TableCell className="tabular hidden text-right sm:table-cell">{usd(p.cost)}</TableCell>
+                      <TableCell className="hidden md:table-cell">{p.language ?? "—"}</TableCell>
+                      <TableCell className="hidden whitespace-nowrap xl:table-cell" title={dateTime(p.first_seen)}>
+                        {relative(p.first_seen)}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap" title={dateTime(p.last_seen)}>
                         {relative(p.last_seen)}
                       </TableCell>
@@ -105,7 +124,10 @@ export const PlayersPage = () => {
 /** Everyone blocked on some server, erased players too, so a block can always be lifted from their page. */
 const BlockedCard = () => {
   const { t } = useTranslation();
-  const query = useQuery({ queryKey: ["players", "blocked"], queryFn: () => api<{ bans: Array<{ user_id: string; server: string; blocked_at: string }> }>("/players/blocked") });
+  const query = useQuery({
+    queryKey: ["players", "blocked"],
+    queryFn: () => api<{ bans: Array<{ user_id: string; player: PlayerSummary["player"]; server: string; blocked_at: string }> }>("/players/blocked"),
+  });
   if (!query.data?.bans.length) return null;
   return (
     <Card className="mt-6 gap-4">
@@ -116,7 +138,7 @@ const BlockedCard = () => {
       <CardContent className="flex flex-col divide-y">
         {query.data.bans.map((ban) => (
           <div key={`${ban.server} ${ban.user_id}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-            <PlayerLink id={ban.user_id} />
+            <PlayerLink id={ban.user_id} player={ban.player} head />
             <span className="flex flex-wrap gap-x-2 text-muted-foreground">
               <ServerLabel server={ban.server} />
               <span>{t("players.blocked.since", { date: dateTime(ban.blocked_at) })}</span>
@@ -144,7 +166,116 @@ const ServerSelect = ({ id, value, onChange, servers }: { id: string; value: str
   </Select>
 );
 
-/** A player asked to be forgotten: by the pseudonym from the list, or by the id they sent, which the panel itself never shows. */
+/**
+ * A combobox over the players the backend knows on one server: type the start of a name, pick the right face. What's
+ * typed and not picked goes as it is, so a UUID or a pseudonym still works.
+ */
+const PlayerPicker = ({
+  id,
+  server,
+  text,
+  picked,
+  onText,
+  onPick,
+  placeholder,
+}: {
+  id: string;
+  server: string;
+  text: string;
+  picked: FoundPlayer | null;
+  onText: (text: string) => void;
+  onPick: (player: FoundPlayer | null) => void;
+  placeholder: string;
+}) => {
+  const { t } = useTranslation();
+  const list = useId();
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const [query, setQuery] = useState(text);
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(text.trim()), 200);
+    return () => clearTimeout(timer);
+  }, [text]);
+  const found = useQuery({
+    queryKey: ["players", "lookup", server, query],
+    queryFn: () => api<{ players: FoundPlayer[] }>(`/players/lookup?server=${encodeURIComponent(server)}&q=${encodeURIComponent(query)}`),
+    enabled: open,
+    placeholderData: (previous) => previous,
+  });
+  const options = found.data?.players ?? [];
+  const pick = (player: FoundPlayer) => {
+    onPick(player);
+    onText(player.name);
+    setOpen(false);
+  };
+  return (
+    <div className="relative">
+      <div className="relative">
+        {picked && <PlayerHead id={picked.user_id} size={20} className="absolute top-1/2 left-2.5 -translate-y-1/2" />}
+        <Input
+          id={id}
+          role="combobox"
+          aria-expanded={open && options.length > 0}
+          aria-controls={list}
+          aria-autocomplete="list"
+          aria-activedescendant={open && options[active] ? `${list}-${active}` : undefined}
+          value={text}
+          onChange={(e) => {
+            onText(e.target.value);
+            onPick(null);
+            setActive(0);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setOpen(true);
+              setActive((i) => Math.min(options.length - 1, i + 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setActive((i) => Math.max(0, i - 1));
+            } else if (e.key === "Enter" && open && options[active]) {
+              e.preventDefault();
+              pick(options[active]);
+            } else if (e.key === "Escape") setOpen(false);
+          }}
+          placeholder={placeholder}
+          autoComplete="off"
+          spellCheck={false}
+          className={cn(picked && "pl-9")}
+        />
+      </div>
+      {open && (options.length > 0 || (found.isFetched && query)) && (
+        <ul id={list} role="listbox" className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+          {options.length === 0 && <li className="px-2 py-1.5 text-sm text-muted-foreground">{t("players.erase.noMatch")}</li>}
+          {options.map((player, i) => (
+            <li
+              key={`${player.server} ${player.user_id}`}
+              id={`${list}-${i}`}
+              role="option"
+              aria-selected={i === active}
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setActive(i)}
+              onClick={() => pick(player)}
+              className={cn("flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm", i === active && "bg-accent text-accent-foreground")}
+            >
+              <PlayerHead id={player.user_id} size={24} />
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate font-medium">{player.name}</span>
+                <span className="truncate font-mono text-xs text-muted-foreground">{player.uuid}</span>
+              </span>
+              <span className="ml-auto shrink-0 text-xs text-muted-foreground">{relative(player.last_seen)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+/** A player asked to be forgotten: picked by name from the server's players, or by the UUID or pseudonym they sent. */
 const EraseCard = () => {
   const { t } = useTranslation();
   const can = useCan();
@@ -152,12 +283,14 @@ const EraseCard = () => {
   const known = useQuery({ queryKey: ["servers"], queryFn: () => api<{ servers: ServerSummary[] }>("/servers"), enabled: can("admin") });
   const servers = [...new Set(["self", ...(known.data?.servers.map((s) => s.server).filter((s) => s === "self" || s.startsWith("license:")) ?? [])])];
   const [server, setServer] = useState("self");
-  const [userId, setUserId] = useState("");
+  const [text, setText] = useState("");
+  const [picked, setPicked] = useState<FoundPlayer | null>(null);
   const erase = useMutation({
-    mutationFn: () => post<{ memories: number; runs: number }>("/players/erase", { server: server.trim(), user_id: userId.trim() }),
+    mutationFn: () => post<{ memories: number; runs: number }>("/players/erase", { server: server.trim(), user_id: picked?.user_id ?? text.trim() }),
     onSuccess: async (result) => {
       toast.success(t("players.erase.done", { memories: result.memories, runs: result.runs }));
-      setUserId("");
+      setText("");
+      setPicked(null);
       await client.invalidateQueries({ queryKey: ["players"] });
     },
     onError: (error) => showErrors(error),
@@ -171,18 +304,26 @@ const EraseCard = () => {
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto] sm:items-end">
         <FormField id="erase-server" label={t("players.erase.server")}>
-          <ServerSelect id="erase-server" value={server} onChange={setServer} servers={servers} />
+          <ServerSelect
+            id="erase-server"
+            value={server}
+            onChange={(value) => {
+              setServer(value);
+              setPicked(null);
+            }}
+            servers={servers}
+          />
         </FormField>
         <FormField id="erase-player" label={t("players.erase.player")}>
-          <Input id="erase-player" value={userId} onChange={(e) => setUserId(e.target.value)} placeholder={t("players.erase.placeholder")} autoComplete="off" spellCheck={false} />
+          <PlayerPicker id="erase-player" server={server} text={text} picked={picked} onText={setText} onPick={setPicked} placeholder={t("players.erase.placeholder")} />
         </FormField>
         <Confirm
           label={t("players.erase.action")}
-          title={t("players.erase.confirmTitle")}
+          title={picked ? t("players.erase.confirmNamed", { name: picked.name }) : t("players.erase.confirmTitle")}
           text={t("players.erase.confirmText")}
           action={t("players.erase.action")}
           destructive
-          disabled={!server.trim() || !userId.trim()}
+          disabled={!server.trim() || !text.trim()}
           onConfirm={() => erase.mutateAsync()}
         />
       </CardContent>
@@ -261,6 +402,8 @@ const PlayerActions = ({ id, servers }: { id: string; servers: PlayerDetail["ser
   );
 };
 
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
 export const PlayerPage = () => {
   const { t } = useTranslation();
   const can = useCan();
@@ -268,30 +411,131 @@ export const PlayerPage = () => {
   const query = useQuery({ queryKey: ["player", id], queryFn: () => api<PlayerDetail>(`/players/${encodeURIComponent(id)}`) });
   const player = query.data;
   const blocked = player?.servers.some((s) => s.blocked_at);
+  const profile = player?.profile;
   return (
     <>
-      <PageHeader title={id} description={t("player.description")} actions={blocked && <Badge variant="destructive">{t("player.blocked")}</Badge>} />
+      <PageHeader
+        title={player?.player?.name ?? id}
+        description={player?.player ? <span className="font-mono text-xs break-all">{id}</span> : t("player.description")}
+        actions={blocked && <Badge variant="destructive">{t("player.blocked")}</Badge>}
+      />
       {query.isPending && <Loading />}
       {query.error && <ErrorBox error={query.error} />}
-      {player && (
+      {player && profile && (
         <div className="flex flex-col gap-6">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatTile label={t("player.questions")} value={number(player.questions)} />
-            <StatTile label={t("player.cost")} value={usd(player.cost)} />
-          </div>
           <Card className="gap-4">
+            <CardContent className="flex flex-col gap-5 sm:flex-row sm:items-start">
+              <PlayerHead id={id} size={96} className="rounded-md" known={!!player.player} />
+              <div className="min-w-0 flex-1">
+                <Definition
+                  items={[
+                    [t("player.name"), player.player?.name ?? t("player.noName")],
+                    [t("player.uuid"), player.player ? <span key="u" className="font-mono text-xs">{player.player.uuid}</span> : "—"],
+                    [t("player.pseudonym"), <span key="p" className="font-mono text-xs">{id}</span>],
+                    [t("player.op"), player.op === null ? "—" : player.op ? t("common.yes") : t("common.no")],
+                    [t("player.language"), player.language ?? "—"],
+                    [t("player.firstSeen"), dateTime(player.first_seen)],
+                    [t("player.lastSeen"), dateTime(player.last_seen)],
+                    [t("player.serverCount"), number(player.servers.length)],
+                  ]}
+                />
+                {!player.player && <p className="mt-4 text-sm text-muted-foreground">{t("player.nameLater")}</p>}
+              </div>
+            </CardContent>
+          </Card>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <StatTile label={t("player.questions")} value={number(player.questions)} hint={t("player.searches", { count: profile.searches })} />
+            <StatTile label={t("player.cost")} value={usd(player.cost)} hint={t("dashboard.perQuestion", { cost: usd(player.questions ? player.cost / player.questions : 0) })} />
+            <StatTile label={t("player.errors")} value={percent(player.questions ? profile.errors / player.questions : 0)} hint={t("dashboard.errorCount", { count: profile.errors })} />
+            <StatTile label={t("dashboard.p50")} value={duration(profile.p50_ms)} hint={t("player.p95", { time: duration(profile.p95_ms) })} />
+            <StatTile label={t("dashboard.tokensIn")} value={compact(profile.input_tokens)} />
+            <StatTile label={t("dashboard.tokensOut")} value={compact(profile.output_tokens)} hint={t("player.reasoning", { count: compact(profile.reasoning_tokens) })} />
+            <StatTile label={t("player.toolCalls")} value={number(profile.tool_calls)} hint={t("player.toolFailures", { count: profile.tool_failures })} />
+            <StatTile label={t("player.cancelled")} value={number(profile.cancelled)} />
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card className="min-w-0 gap-3">
+              <CardHeader>
+                <CardTitle className="text-base">{t("player.activity")}</CardTitle>
+                <CardDescription>{t("player.activityHint")}</CardDescription>
+              </CardHeader>
+              <CardContent className="px-2 sm:px-4">
+                <ColumnChart data={profile.activity} x="t" tick={shortDate} y="questions" label={t("player.questions")} format={(v) => compact(v)} />
+              </CardContent>
+            </Card>
+            <Card className="min-w-0 gap-3">
+              <CardHeader>
+                <CardTitle className="text-base">{t("player.hours")}</CardTitle>
+                <CardDescription>{t("player.hoursHint")}</CardDescription>
+              </CardHeader>
+              <CardContent className="px-2 sm:px-4">
+                <ColumnChart
+                  data={HOURS.map((h) => ({ t: String(h), questions: profile.hours[h] ?? 0 }))}
+                  x="t"
+                  tick={(h) => `${h.padStart(2, "0")}:00`}
+                  y="questions"
+                  label={t("player.questions")}
+                  format={(v) => compact(v)}
+                  color={3}
+                />
+              </CardContent>
+            </Card>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Card className="min-w-0 gap-3">
+              <CardHeader>
+                <CardTitle className="text-base">{t("dashboard.kinds")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {Object.keys(profile.kinds).length ? (
+                  <RankBars rows={Object.entries(profile.kinds).map(([kind, n]) => ({ name: t(`runs.kinds.${kind}`), value: n }))} format={(v) => number(v)} mono={false} />
+                ) : (
+                  <span className="text-sm text-muted-foreground">—</span>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="min-w-0 gap-3">
+              <CardHeader>
+                <CardTitle className="text-base">{t("dashboard.models")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {profile.models.length ? (
+                  <RankBars rows={profile.models.map((m) => ({ name: m.name, value: m.runs, note: usd(m.cost) }))} format={(v) => t("dashboard.runCount", { count: v })} />
+                ) : (
+                  <span className="text-sm text-muted-foreground">—</span>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="min-w-0 gap-3">
+              <CardHeader>
+                <CardTitle className="text-base">{t("dashboard.tools")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {profile.tools.length ? (
+                  <RankBars rows={profile.tools.map((tool) => ({ name: tool.name, value: tool.calls, note: tool.failed ? t("player.failedNote", { count: tool.failed }) : undefined }))} format={(v) => number(v)} />
+                ) : (
+                  <span className="text-sm text-muted-foreground">{t("dashboard.noTools")}</span>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+          <Card className="gap-3">
             <CardHeader>
-              <CardTitle className="text-base">{t("player.details")}</CardTitle>
+              <CardTitle className="text-base">{t("player.servers")}</CardTitle>
               <CardDescription>{t("player.privacy")}</CardDescription>
             </CardHeader>
-            <CardContent>
-              <Definition
-                items={[
-                  [t("player.language"), player.language ?? "—"],
-                  [t("player.firstSeen"), dateTime(player.first_seen)],
-                  [t("player.lastSeen"), dateTime(player.last_seen)],
-                ]}
-              />
+            <CardContent className="flex flex-col divide-y">
+              {player.servers.map((s) => (
+                <div key={s.server} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <ServerLabel server={s.server} />
+                    {s.name && <span className="text-muted-foreground">{t("player.as", { name: s.name })}</span>}
+                    {s.op && <Badge variant="outline">{t("player.opBadge")}</Badge>}
+                    {s.blocked_at && <Badge variant="destructive">{t("player.blocked")}</Badge>}
+                  </span>
+                  <span className="text-muted-foreground">{s.first_seen ? t("player.since", { date: dateTime(s.first_seen) }) : ""}</span>
+                </div>
+              ))}
             </CardContent>
           </Card>
           {can("admin") && <PlayerActions key={id} id={id} servers={player.servers} />}

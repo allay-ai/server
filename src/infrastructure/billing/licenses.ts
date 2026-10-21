@@ -47,6 +47,8 @@ export interface LicenseStore {
   moveEnd(grantId: string, ends: Date): Promise<void>;
   /** How many licenses stopped renewal since a time. */
   stoppedSince(from: Date): Promise<number>;
+  /** Deletes a license and its budget windows; its payments stay as the record of money that moved. */
+  remove(id: string): Promise<boolean>;
 }
 
 const id = () => crypto.randomUUID().replace(/-/g, "");
@@ -140,6 +142,11 @@ export const mongoLicenses: LicenseStore = {
   async stoppedSince(from) {
     return LicenseModel.countDocuments({ stopped_at: { $gte: from } });
   },
+  async remove(licenseId) {
+    const { deletedCount } = await LicenseModel.deleteOne({ id: licenseId });
+    await GrantModel.deleteMany({ license: licenseId });
+    return deletedCount > 0;
+  },
 };
 
 /** For tests and local runs without MongoDB. */
@@ -217,6 +224,10 @@ export const memoryLicenses = (): LicenseStore => {
     },
     async stoppedSince(from) {
       return [...licenses.values()].filter((l) => l.stopped_at && l.stopped_at >= from).length;
+    },
+    async remove(licenseId) {
+      for (let i = grants.length - 1; i >= 0; i--) if (grants[i].license === licenseId) grants.splice(i, 1);
+      return licenses.delete(licenseId);
     },
   };
 };

@@ -67,9 +67,30 @@ export interface PlayerSummary {
   user_id: string;
   language?: string;
   questions: number;
+  errors: number;
   cost: number;
+  input_tokens: number;
+  output_tokens: number;
+  searches: number;
+  /** The mean time of an answer. */
+  avg_ms: number;
+  /** How many tenants the player asked on. */
+  servers: number;
   first_seen: Date;
   last_seen: Date;
+}
+
+export interface PlayerQuery {
+  /** A pseudonym's start. */
+  search?: string;
+  /** Exactly these pseudonyms, as a search by name finds them. */
+  ids?: string[];
+  /** Only questions since then; the summary counts those alone. */
+  from?: Date;
+  /** Newest first by default; `questions` ranks the busiest first. */
+  sort?: "last_seen" | "questions";
+  limit: number;
+  skip: number;
 }
 
 export interface ServerSummary {
@@ -100,7 +121,7 @@ export interface RunStore {
   /** Runs since a time, for the last day's hourly charts. */
   since(from: Date): Promise<RunRecord[]>;
   days(from: string, to: string): Promise<DayRollup[]>;
-  players(options: { search?: string; limit: number; skip: number }): Promise<{ players: PlayerSummary[]; total: number }>;
+  players(options: PlayerQuery): Promise<{ players: PlayerSummary[]; total: number }>;
   servers(options: { server?: string; limit: number }): Promise<ServerSummary[]>;
   /** The numbers of a player's runs on one tenant, newest first, for their copy of what's kept. */
   of(userId: string, server: string, limit: number): Promise<RunRecord[]>;
@@ -240,8 +261,9 @@ export const mongoRuns: RunStore = {
   async days(from, to) {
     return (await DayModel.find({ day: { $gte: from, $lte: to } }, PROJECTION).sort({ day: 1 }).lean<DayRollup[]>()).map(decodeDay);
   },
-  async players({ search, limit, skip }) {
-    const match = { kind: { $ne: "summary" }, user_id: search ? { $regex: `^${escape(search)}` } : { $ne: ERASED } };
+  async players({ search, ids, from, sort = "last_seen", limit, skip }) {
+    const user = ids ? { $in: ids } : search ? { $regex: `^${escape(search)}` } : { $ne: ERASED };
+    const match = { kind: { $ne: "summary" }, user_id: user, ...(from ? { at: { $gte: from } } : {}) };
     const [result] = await RunModel.aggregate<{ players: PlayerSummary[]; total: Array<{ n: number }> }>([
       { $match: match },
       { $sort: { at: 1 } },
@@ -250,14 +272,26 @@ export const mongoRuns: RunStore = {
           _id: "$user_id",
           language: { $last: "$language" },
           questions: { $sum: 1 },
+          errors: { $sum: { $cond: [{ $eq: ["$result", "error"] }, 1, 0] } },
           cost: { $sum: "$cost" },
+          input_tokens: { $sum: "$input_tokens" },
+          output_tokens: { $sum: "$output_tokens" },
+          searches: { $sum: "$searches" },
+          avg_ms: { $avg: "$duration_ms" },
+          servers: { $addToSet: "$server" },
           first_seen: { $first: "$at" },
           last_seen: { $last: "$at" },
         },
       },
       {
         $facet: {
-          players: [{ $sort: { last_seen: -1 } }, { $skip: skip }, { $limit: limit }, { $addFields: { user_id: "$_id" } }, { $project: { _id: 0 } }],
+          players: [
+            { $sort: sort === "questions" ? { questions: -1, last_seen: -1 } : { last_seen: -1 } },
+            { $skip: skip },
+            { $limit: limit },
+            { $addFields: { user_id: "$_id", servers: { $size: "$servers" }, avg_ms: { $round: [{ $ifNull: ["$avg_ms", 0] }, 0] } } },
+            { $project: { _id: 0 } },
+          ],
           total: [{ $count: "n" }],
         },
       },
@@ -345,22 +379,35 @@ export const memoryRuns = (): RunStore & { all: RunRecord[] } => {
     async days(from, to) {
       return [...days.values()].filter((d) => d.day >= from && d.day <= to).sort((a, b) => a.day.localeCompare(b.day)).map((d) => decodeDay(structuredClone(d)));
     },
-    async players({ search, limit, skip }) {
-      const byUser = new Map<string, PlayerSummary>();
+    async players({ search, ids, from, sort = "last_seen", limit, skip }) {
+      const byUser = new Map<string, PlayerSummary & { tenants: Set<string>; time: number }>();
       for (const run of [...all].sort((a, b) => a.at.getTime() - b.at.getTime())) {
-        if (run.kind === "summary") continue;
-        if (search ? !run.user_id.startsWith(search) : run.user_id === ERASED) continue;
+        if (run.kind === "summary" || (from && run.at < from)) continue;
+        if (ids ? !ids.includes(run.user_id) : search ? !run.user_id.startsWith(search) : run.user_id === ERASED) continue;
         const known = byUser.get(run.user_id);
+        const tenants = (known?.tenants ?? new Set<string>()).add(run.server);
+        const questions = (known?.questions ?? 0) + 1;
+        const time = (known?.time ?? 0) + run.duration_ms;
         byUser.set(run.user_id, {
           user_id: run.user_id,
           language: run.language ?? known?.language,
-          questions: (known?.questions ?? 0) + 1,
+          questions,
+          errors: (known?.errors ?? 0) + (run.result === "error" ? 1 : 0),
           cost: (known?.cost ?? 0) + run.cost,
+          input_tokens: (known?.input_tokens ?? 0) + run.input_tokens,
+          output_tokens: (known?.output_tokens ?? 0) + run.output_tokens,
+          searches: (known?.searches ?? 0) + run.searches,
+          avg_ms: Math.round(time / questions),
+          servers: tenants.size,
+          tenants,
+          time,
           first_seen: known?.first_seen ?? run.at,
           last_seen: run.at,
         });
       }
-      const players = [...byUser.values()].sort((a, b) => b.last_seen.getTime() - a.last_seen.getTime());
+      const players = [...byUser.values()]
+        .map(({ tenants: _, time: __, ...p }) => p)
+        .sort((a, b) => (sort === "questions" ? b.questions - a.questions : 0) || b.last_seen.getTime() - a.last_seen.getTime());
       return { players: players.slice(skip, skip + limit), total: players.length };
     },
     async servers({ server, limit }) {

@@ -2,13 +2,13 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Definition, ErrorBox, Loading, PageHeader, PlayerLink, ResultBadge, RunsTable } from "@/components/common";
+import { Definition, ErrorBox, Loading, PageHeader, PlayerHead, PlayerLink, ResultBadge, RunsTable, StatTile } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
-import { dateTime, duration, number, usd } from "@/lib/format";
+import { compact, dateTime, duration, number, percent, usd } from "@/lib/format";
 import type { Run } from "@/lib/types";
 
 const KINDS = ["ask", "askall", "askx", "task", "summary", "telegram"];
@@ -109,8 +109,13 @@ export const RunsPage = () => {
 export const RunPage = () => {
   const { t } = useTranslation();
   const { id } = useParams({ from: "/app/runs/$id" });
-  const query = useQuery({ queryKey: ["run", id], queryFn: () => api<{ run: Run; trace_id: string | null }>(`/runs/${encodeURIComponent(id)}`) });
+  const query = useQuery({
+    queryKey: ["run", id],
+    queryFn: () => api<{ run: Run; trace_id: string | null; server_name: string | null; span_count: number | null }>(`/runs/${encodeURIComponent(id)}`),
+  });
   const run = query.data?.run;
+  const tokens = run ? run.input_tokens + run.output_tokens : 0;
+  const failed = run?.tools.filter((tool) => !tool.ok).length ?? 0;
   return (
     <>
       <PageHeader title={t("run.title")} description={<span className="font-mono text-xs break-all">{id}</span>} />
@@ -118,25 +123,38 @@ export const RunPage = () => {
       {query.error && <ErrorBox error={query.error} />}
       {run && (
         <div className="flex flex-col gap-6">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <StatTile label={t("run.duration")} value={duration(run.duration_ms)} hint={t("run.perStep", { time: duration(run.steps ? Math.round(run.duration_ms / run.steps) : null) })} />
+            <StatTile label={t("run.cost")} value={usd(run.cost)} hint={tokens ? t("run.perThousand", { cost: usd((run.cost / tokens) * 1000) }) : undefined} />
+            <StatTile label={t("run.tokens")} value={compact(tokens)} hint={run.duration_ms ? t("run.speed", { rate: number(run.output_tokens / (run.duration_ms / 1000), 1) }) : undefined} />
+            <StatTile label={t("run.toolCalls")} value={number(run.tools.length)} hint={run.tools.length ? t("run.toolFailures", { rate: percent(failed / run.tools.length) }) : undefined} />
+          </div>
           <Card className="gap-4">
             <CardHeader className="flex flex-row items-start justify-between gap-3">
-              <div>
-                <CardTitle className="text-base">{t(`runs.kinds.${run.kind}`)}</CardTitle>
-                <CardDescription>{dateTime(run.at)}</CardDescription>
+              <div className="flex items-center gap-3">
+                <PlayerHead id={run.user_id} size={40} known={!!run.player} />
+                <div>
+                  <CardTitle className="text-base">{t(`runs.kinds.${run.kind}`)}</CardTitle>
+                  <CardDescription>{dateTime(run.at)}</CardDescription>
+                </div>
               </div>
               <ResultBadge result={run.result} code={run.error_code} />
             </CardHeader>
             <CardContent>
               <Definition
                 items={[
-                  [t("run.player"), <PlayerLink key="p" id={run.user_id} />],
+                  [t("run.player"), <PlayerLink key="p" id={run.user_id} player={run.player} />],
+                  [t("run.uuid"), run.player ? <span key="u" className="font-mono text-xs">{run.player.uuid}</span> : "—"],
                   [t("run.server"), <ServerLabel key="s" server={run.server} serverId={run.server_id} />],
+                  [t("run.serverName"), query.data?.server_name ?? "—"],
+                  [t("run.payer"), t(`run.payers.${run.payer}`)],
                   [t("run.model"), <span key="m" className="font-mono text-xs">{run.model}</span>],
                   [t("run.language"), run.language ?? "—"],
-                  [t("run.duration"), duration(run.duration_ms)],
-                  [t("run.cost"), usd(run.cost)],
                   [t("run.steps"), number(run.steps)],
+                  [t("run.searches"), number(run.searches)],
                   [t("run.tokens"), t("run.tokenSplit", { input: number(run.input_tokens), output: number(run.output_tokens), reasoning: number(run.reasoning_tokens) })],
+                  [t("run.spans"), query.data?.span_count === null || query.data?.span_count === undefined ? "—" : number(query.data.span_count)],
+                  [t("run.errorCode"), run.error_code ? <span key="e" className="font-mono text-xs">{run.error_code}</span> : "—"],
                 ]}
               />
             </CardContent>

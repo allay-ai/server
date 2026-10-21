@@ -46,9 +46,17 @@ export interface Point {
   t: string;
   questions: number;
   errors: number;
+  cancelled: number;
   cost: number;
   players: number;
+  input_tokens: number;
+  output_tokens: number;
+  searches: number;
+  p50_ms: number | null;
 }
+
+/** Who a pseudonym is, from the name and id of the player's last question; null when nothing names them. */
+export type Who = { name: string; uuid: string } | null;
 
 export interface Stats {
   range: string;
@@ -73,6 +81,7 @@ export interface Stats {
   kinds: Record<string, number>;
   models: Array<{ name: string; runs: number; cost: number }>;
   tools: Array<{ name: string; calls: number; failed: number }>;
+  top_players: Array<{ user_id: string; player: Who; questions: number; cost: number }>;
 }
 
 export interface Run {
@@ -84,6 +93,7 @@ export interface Run {
   server_id?: string;
   /** A pseudonym (`p_…`), or `erased`. */
   user_id: string;
+  player: Who;
   language?: string;
   model: string;
   input_tokens: number;
@@ -101,26 +111,63 @@ export interface Run {
 export interface PlayerSummary {
   /** A pseudonym (`p_…`), or `erased`. */
   user_id: string;
+  player: Who;
   language?: string;
   /** Blocked on at least one server. */
   blocked?: boolean;
   questions: number;
+  errors: number;
   cost: number;
+  input_tokens: number;
+  output_tokens: number;
+  searches: number;
+  avg_ms: number;
+  servers: number;
   first_seen: string;
   last_seen: string;
 }
 
+export interface Profile {
+  errors: number;
+  cancelled: number;
+  input_tokens: number;
+  output_tokens: number;
+  reasoning_tokens: number;
+  searches: number;
+  tool_calls: number;
+  tool_failures: number;
+  p50_ms: number | null;
+  p95_ms: number | null;
+  activity: Array<{ t: string; questions: number; errors: number; cost: number }>;
+  kinds: Record<string, number>;
+  models: Array<{ name: string; runs: number; cost: number }>;
+  tools: Array<{ name: string; calls: number; failed: number }>;
+  hours: number[];
+}
+
 export interface PlayerDetail {
   user_id: string;
+  player: Who;
+  op: boolean | null;
   language: string | null;
   questions: number;
   cost: number;
   /** Null for a player erased while blocked: only the ban names them. */
   first_seen: string | null;
   last_seen: string | null;
-  /** Each server the player asked on: whether they're blocked there, and whether the backend can tell who they are. */
-  servers: Array<{ server: string; blocked_at: string | null; known: boolean }>;
+  /** Each server the player asked on: their name there, whether they're blocked there, and whether the backend can tell who they are. */
+  servers: Array<{ server: string; name: string | null; op: boolean | null; first_seen: string | null; blocked_at: string | null; known: boolean }>;
+  profile: Profile;
   runs: Run[];
+}
+
+/** A player the erase form's picker offers. */
+export interface FoundPlayer {
+  user_id: string;
+  name: string;
+  uuid: string;
+  server: string;
+  last_seen: string;
 }
 
 export interface ServerSummary {

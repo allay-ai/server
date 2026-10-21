@@ -127,7 +127,8 @@ export const adminRouter = (routes: Route[]) => {
         }
         try {
           const response = await route.handle(ctx);
-          response.headers.set("Cache-Control", "no-store");
+          // Only a player's face says how long it may be cached; everything else is live.
+          if (!response.headers.has("Cache-Control")) response.headers.set("Cache-Control", "no-store");
           return response;
         } catch (failure) {
           logger.error(`Admin ${req.method} ${path} failed: ${failure instanceof Error ? failure.message : String(failure)}`);
