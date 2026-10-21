@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { Empty, ErrorBox, Loading, PageHeader, TableFrame } from "@/components/common";
+import { Empty, ErrorBox, Loading, Marquee, PageHeader, TableFrame } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
@@ -41,6 +41,33 @@ export const ServerRuns = ({ server }: { server: ServerSummary }) => {
   );
 };
 
+/**
+ * A server as the panel heads it: the name its owner gave it, or its random id, then where players join (or where it
+ * connects from) past a middle dot, and its MOTD a line below in smaller type.
+ */
+export const ServerTitle = ({ server }: { server: ServerSummary }) => {
+  const where = joinAddress(server) ?? (server.internal ? null : server.ip);
+  return (
+    <span className="flex min-w-0 flex-col">
+      <span className="flex min-w-0 items-baseline gap-1.5">
+        {server.name ? (
+          <Marquee title={server.name} className="min-w-0 font-medium">
+            {server.name}
+          </Marquee>
+        ) : (
+          <span className="truncate font-mono text-xs">{server.server_id ?? "—"}</span>
+        )}
+        {where && <span className="shrink-0 text-xs text-muted-foreground">· {where}</span>}
+      </span>
+      {server.motd && (
+        <Marquee title={server.motd} className="text-xs text-muted-foreground">
+          {server.motd}
+        </Marquee>
+      )}
+    </span>
+  );
+};
+
 export const ServersPage = () => {
   const { t } = useTranslation();
   const can = useCan();
@@ -60,7 +87,6 @@ export const ServersPage = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("servers.columns.server")}</TableHead>
-                  <TableHead className="hidden md:table-cell">{t("servers.columns.address")}</TableHead>
                   {admin && <TableHead className="hidden lg:table-cell">{t("servers.columns.ip")}</TableHead>}
                   <TableHead className="hidden lg:table-cell">{t("servers.columns.runs")}</TableHead>
                   <TableHead className="text-right">{t("servers.columns.questions")}</TableHead>
@@ -72,10 +98,12 @@ export const ServersPage = () => {
               <TableBody>
                 {query.data.servers.map((s) => (
                   <TableRow key={`${s.server}/${s.server_id ?? ""}`}>
-                    <TableCell className="max-w-56">
-                      <ServerLabel server={s.server} serverId={s.server_id} name={s.name} />
+                    <TableCell className="max-w-64">
+                      <ServerTitle server={s} />
+                      <span className="text-xs text-muted-foreground">
+                        <ServerLabel server={s.server} />
+                      </span>
                     </TableCell>
-                    <TableCell className="hidden max-w-48 truncate font-mono text-xs md:table-cell">{joinAddress(s) ?? <span className="font-sans text-muted-foreground">—</span>}</TableCell>
                     {admin && (
                       <TableCell className="hidden lg:table-cell">
                         <ServerIp server={s} />

@@ -178,8 +178,10 @@ export interface ServerSummary {
   players: number;
   cost: number;
   last_seen: string;
-  /** The license's name, for servers on one. */
+  /** The name its owner gave the server (`server.name`, Allay 6.5); null shows the server's random id. */
   name: string | null;
+  /** The server's MOTD without formatting codes. */
+  motd: string | null;
   /** Where players join, when the plugin's config says (Allay 6.4). */
   address: string | null;
   port: number | null;
@@ -220,7 +222,10 @@ export interface Span {
 
 export interface License {
   id: string;
+  /** The server's MOTD from /allay link, or the id. */
   name: string;
+  /** The license's server as the panel heads it: its own name, where players join, and its MOTD. */
+  server: { name: string | null; address: string | null; motd: string | null } | null;
   created_at: string | null;
   plan: string | null;
   status: "active" | "expired" | "unpaid" | "blocked" | "revoked";

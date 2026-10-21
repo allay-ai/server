@@ -253,7 +253,7 @@
       "questions": "Questions",
       "players": "Players",
       "cost": "Cost",
-      "lastSeen": "Last question"
+      "lastSeen": "Last seen"
     },
     "plugin": "Allay {{version}}",
     "internal": "internal",

@@ -2,6 +2,7 @@ import type { Server } from "bun";
 import type { AllayDeps } from "../agent/allay";
 import type { handleAdmin } from "../features/admin/admin.controller";
 import type { handleAdminInit } from "../features/admin/init.controller";
+import type { handleServer } from "../features/servers/server.controller";
 import type { handleAsk } from "../features/ask/ask.controller";
 import type { handleAskX } from "../features/askx/askx.controller";
 import type { handleChat, handleToolResult } from "../features/chat/chat.controller";
@@ -26,6 +27,8 @@ interface Handlers {
   handleAdminInit?: typeof handleAdminInit;
   /** Since 6.5; tests that don't touch it leave it out. */
   handlePrivacy?: typeof handlePrivacy;
+  /** Since 6.7. */
+  handleServer?: typeof handleServer;
   handleAdmin?: typeof handleAdmin;
   /** The panel's built pages, served at /admin. */
   adminPages?: (req: Request) => Promise<Response>;
@@ -59,6 +62,7 @@ export const routes = (deps: AllayDeps, h: Handlers): Record<string, Route> => {
     "/api/v2/users/:userId": h.handleUser(deps),
     "/api/v2/users/:userId/session": h.handleSession(deps),
     "/api/v2/users/:userId/consent": h.handleConsent(deps),
+    ...(h.handleServer ? { "/api/v2/server": h.handleServer(deps) } : {}),
     ...(h.handlePrivacy ? { "/api/v2/users/:userId/privacy": h.handlePrivacy(deps) } : {}),
     "/api/v2/users/:userId/memories": h.handleMemories(deps),
     "/api/v2/users/:userId/memories/:memoryId": h.handleMemory(deps),

@@ -79,9 +79,14 @@ const INTERNAL = rangesOf("10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/
  * Servers from the runs with what the directory knows: the address players join with, the game and plugin versions,
  * and the license's name. The address a server connects from may be someone's home, so only admins see it.
  */
-export const serversView = async (ctx: Context, servers: ServerSummary[]) => {
+export const serversView = async (ctx: Context, asked: ServerSummary[], tenant?: string) => {
   const { deps } = ctx;
-  const known = (await deps.servers?.list()) ?? [];
+  const known = (await deps.servers?.list(tenant)) ?? [];
+  // A server that registered but hasn't asked yet shows too, with nothing counted.
+  const quiet = known
+    .filter((k) => !asked.some((s) => s.server === k.tenant && (s.server_id ?? "") === k.server_id))
+    .map((k): ServerSummary => ({ server: k.tenant, ...(k.server_id ? { server_id: k.server_id } : {}), payer: k.tenant === "self" ? "self" : "license", questions: 0, players: 0, cost: 0, last_seen: k.last_seen }));
+  const servers = [...asked, ...quiet];
   const admins = !!ctx.me && allows(ctx.me.role, "admin");
   const names = new Map<string, string>();
   if (deps.billing.enabled) {
@@ -95,7 +100,9 @@ export const serversView = async (ctx: Context, servers: ServerSummary[]) => {
     return {
       ...s,
       last_seen: s.last_seen.toISOString(),
-      name: names.get(s.server) ?? null,
+      // The server's own name; the license's, from /allay link, is its MOTD.
+      name: entry?.name ?? null,
+      motd: entry?.motd ?? names.get(s.server) ?? null,
       address: entry?.address ?? null,
       port: entry?.port ?? null,
       software: entry?.software ?? null,
@@ -326,8 +333,9 @@ export const insightRoutes: Route[] = [
     async handle(ctx) {
       const { deps, url } = ctx;
       if (!deps.runs) return error(503, "NO_RUNS", "This backend keeps no statistics");
-      const servers = await deps.runs.servers({ server: url.searchParams.get("server") ?? undefined, limit: limitOf(url, 500) });
-      return Response.json({ servers: await serversView(ctx, servers) });
+      const tenant = url.searchParams.get("server") ?? undefined;
+      const servers = await deps.runs.servers({ server: tenant, limit: limitOf(url, 500) });
+      return Response.json({ servers: await serversView(ctx, servers, tenant) });
     },
   },
   {

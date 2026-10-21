@@ -51,11 +51,15 @@ export const Marquee = ({ children, title, className }: { children: ReactNode; t
   );
 };
 
-export const PageHeader = ({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) => (
+/** [after] follows the title past a middle dot, in plain ink: a server's address after its name. */
+export const PageHeader = ({ title, after, description, actions }: { title: string; after?: ReactNode; description?: ReactNode; actions?: ReactNode }) => (
   <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
     <div className="min-w-0 flex-1">
-      <h1 className="text-2xl font-semibold tracking-tight">
-        <Marquee title={title}>{title}</Marquee>
+      <h1 className="flex min-w-0 items-baseline gap-2 text-2xl font-semibold tracking-tight">
+        <Marquee title={title} className="min-w-0">
+          {title}
+        </Marquee>
+        {after && <span className="shrink-0 text-base font-normal text-muted-foreground">· {after}</span>}
       </h1>
       {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
     </div>

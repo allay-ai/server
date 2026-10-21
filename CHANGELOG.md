@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.7.0
+
+For Allay 6.5, which registers its server; older plugins show up by their id, as before.
+
+- 🏷️ **Servers have names.** `PUT /api/v2/server` registers a server at the plugin's start with the name its owner set (`server.name`), its MOTD, address, and versions. A name belongs to one server on the backend: another tenant's server gets `409 NAME_TAKEN`, and a server of the same tenant takes the name over, as after a reinstall. A server without a name shows its random id.
+- 🪧 **Headings read like a server list.** The Servers page, the licenses, and a license's page head each server with its name, then its domain or IP past a middle dot, and its MOTD a line below in smaller type. Registered servers show before their first question, and the Servers page's last column says when each was last seen.
+
 ## 6.6.0
 
 - 🌐 **Servers show where they are.** The Servers page and a license's page show each server's join address and game port (from Allay 6.4's `server.address`), the game software and version, the plugin's version, and when it first asked. Admins also see the address each server connects from, marked **internal** when it shares a private network with the backend. A server on a license shows the license's name. Kept 400 days after the server's last question.

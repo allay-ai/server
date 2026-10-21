@@ -20,7 +20,7 @@ import { showErrors } from "@/lib/forms";
 import { useCan } from "@/lib/session";
 import type { License, Payment, ServerSummary } from "@/lib/types";
 import { PaymentsTable } from "./payments";
-import { ServerIp, ServerRuns, joinAddress } from "./servers";
+import { ServerIp, ServerRuns, ServerTitle, joinAddress } from "./servers";
 import { SearchBox } from "./players";
 
 const LIMIT = 50;
@@ -81,9 +81,17 @@ export const LicensesPage = () => {
                   {query.data.licenses.map((l) => (
                     <TableRow key={l.id}>
                       <TableCell className="max-w-56">
-                        <Link to="/licenses/$id" params={{ id: l.id }} className="block font-medium hover:underline">
-                          <Marquee title={l.name}>{l.name}</Marquee>
+                        <Link to="/licenses/$id" params={{ id: l.id }} className="flex min-w-0 items-baseline gap-1.5 hover:underline">
+                          <Marquee title={l.server?.name ?? l.name} className="min-w-0 font-medium">
+                            {l.server?.name ?? l.name}
+                          </Marquee>
+                          {l.server?.address && <span className="shrink-0 text-xs text-muted-foreground">· {l.server.address}</span>}
                         </Link>
+                        {l.server?.name && (l.server.motd ?? l.name) !== l.id && (
+                          <Marquee title={l.server.motd ?? l.name} className="text-xs text-muted-foreground">
+                            {l.server.motd ?? l.name}
+                          </Marquee>
+                        )}
                         <span className="font-mono text-xs text-muted-foreground">{l.id}</span>
                       </TableCell>
                       <TableCell>
@@ -349,7 +357,17 @@ export const LicensePage = () => {
   const unrefunded = data?.payments.filter((p) => !p.refunded_at) ?? [];
   return (
     <>
-      <PageHeader title={license?.name ?? id} description={<span className="font-mono text-xs">{id}</span>} actions={license && <StatusBadge status={license.status} />} />
+      <PageHeader
+        title={license?.server?.name ?? license?.name ?? id}
+        after={license?.server?.address}
+        description={
+          <span className="flex min-w-0 flex-col gap-0.5">
+            {license?.server?.name && <Marquee title={license.server.motd ?? license.name}>{license.server.motd ?? license.name}</Marquee>}
+            <span className="font-mono text-xs">{id}</span>
+          </span>
+        }
+        actions={license && <StatusBadge status={license.status} />}
+      />
       {query.isPending && <Loading />}
       {query.error && <ErrorBox error={query.error} />}
       {data && license && (
@@ -441,7 +459,7 @@ export const LicensePage = () => {
                   {data.servers.map((s) => (
                     <div key={s.server_id ?? s.server} className="flex flex-col gap-3 py-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-mono text-xs">{s.server_id ?? t("licenses.unknownServer")}</span>
+                        {s.server_id ? <ServerTitle server={s} /> : <span className="font-mono text-xs">{t("licenses.unknownServer")}</span>}
                         <span className="text-muted-foreground">
                           {t("licenses.serverLine", { questions: number(s.questions), players: number(s.players), cost: usd(s.cost), seen: relative(s.last_seen) })}
                         </span>

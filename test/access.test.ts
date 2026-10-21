@@ -11,10 +11,11 @@ import { handleChat, handleToolResult } from "../src/features/chat/chat.controll
 import { handleHealth } from "../src/features/health/health.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { handleConsent, handleMemories, handleMemory, handlePrivacy, handleSession, handleUser } from "../src/features/users/users.controller";
+import { handleServer } from "../src/features/servers/server.controller";
 import { AUTH, finish, owner, readSse, scripted, testAdmin, testBilling, testDeps, text, thread, toolCall } from "./helpers";
 
 const handlers = {
-  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handlePrivacy, handleMemories, handleMemory, handleLicense, handleTelegram,
+  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handlePrivacy, handleServer, handleMemories, handleMemory, handleLicense, handleTelegram,
   handleAdminInit, handleAdmin,
 };
 let servers: Array<Server<undefined>> = [];
@@ -117,6 +118,25 @@ describe("tenants never meet", () => {
     expect(JSON.stringify(copy)).not.toContain("120 64 -300");
     // A still has it.
     expect(((await (await fetch(url, { headers: t.A })).json()) as any).memories.map((m: any) => m.text)).toEqual(["A's secret base at 120 64 -300"]);
+  });
+
+  test("a server name belongs to one tenant: B can't take A's, and A moves it between its own servers", async () => {
+    const t = await twoServers();
+    const register = (headers: Record<string, string>, body: Record<string, unknown>) =>
+      fetch(`${t.base}/api/v2/server`, { method: "PUT", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const info = { software: "Paper", version: "26.3", plugin_version: "6.5.0", motd: "☾ Moonlands ☾", address: "mc.example.com", port: 25565 };
+    expect(await (await register(t.A, { id: "a-1", name: "Moonlands", ...info })).json()).toEqual({ registered: true, name: "Moonlands" });
+    const taken = await register(t.B, { id: "b-1", name: "moonlands" });
+    expect(taken.status).toBe(409);
+    expect(((await taken.json()) as any).error.code).toBe("NAME_TAKEN");
+    expect((await register(t.B, { id: "b-1", name: "x" })).status).toBe(400);
+    expect((await register(t.B, { id: "b-1", name: "Sunlands" })).status).toBe(200);
+    // A reinstalled: its new server id takes the name, the old entry loses it.
+    expect((await register(t.A, { id: "a-2", name: "Moonlands" })).status).toBe(200);
+    const servers = await t.deps.servers!.list(t.tenantA);
+    expect(servers.find((s) => s.server_id === "a-2")).toMatchObject({ name: "Moonlands" });
+    expect(servers.find((s) => s.server_id === "a-1")!.name).toBeUndefined();
+    expect(servers.find((s) => s.server_id === "a-1")).toMatchObject({ motd: "☾ Moonlands ☾", address: "mc.example.com", software: "Paper" });
   });
 
   test("B can't read, give, or withdraw A's consent, even with A's player id", async () => {

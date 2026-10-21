@@ -6,6 +6,7 @@ import { LicenseRefundFailure, refundLicense, refundPayment } from "../telegram/
 import { allows, record } from "./admin";
 import { type Context, type Route, body, error } from "./admin.http";
 import { serversView } from "./insight.routes";
+import type { KnownServer } from "../../infrastructure/servers/servers";
 
 const DAY = 86_400_000;
 
@@ -21,7 +22,14 @@ const usd = (n: number) => Math.round(n * 1_000_000) / 1_000_000;
 /** Telegram ids are personal data: admins and owners see them, viewers don't need them. */
 const seesPayers = (ctx: Context) => !!ctx.me && allows(ctx.me.role, "admin");
 
-const licenseView = async (billing: Billing, license: LicenseRecord, grants?: GrantRecord[], payers = true) => {
+/** The license's server as the panel heads it: the newest one with a name, else the newest one. */
+const headOf = (license: LicenseRecord, known: KnownServer[]) => {
+  const own = known.filter((s) => s.tenant === `license:${license.id}`);
+  const server = own.find((s) => s.name) ?? own[0];
+  return server ? { name: server.name ?? null, address: server.address ?? null, motd: server.motd ?? null } : null;
+};
+
+const licenseView = async (billing: Billing, license: LicenseRecord, grants?: GrantRecord[], payers = true, known: KnownServer[] = []) => {
   const now = billing.now();
   const windows = grants ?? (await billing.licenses.grants(license.id));
   const quota = quotaOf(windows, now);
@@ -29,6 +37,7 @@ const licenseView = async (billing: Billing, license: LicenseRecord, grants?: Gr
   return {
     id: license.id,
     name: serverName(license),
+    server: headOf(license, known),
     created_at: iso(license.created_at),
     plan: license.plan ?? null,
     status: license.revoked_at ? "revoked" : license.blocked_at ? "blocked" : quota.active ? "active" : license.last_payment_at ? "expired" : "unpaid",
@@ -148,7 +157,8 @@ export const billingRoutes: Route[] = [
       const page = Math.max(0, Number(url.searchParams.get("page")) || 0);
       const search = url.searchParams.get("search")?.trim().slice(0, 64) || undefined;
       const { licenses, total } = await deps.billing.licenses.list({ search, limit, skip: page * limit });
-      return Response.json({ total, page, limit, licenses: await Promise.all(licenses.map((l) => licenseView(deps.billing, l, undefined, seesPayers(ctx)))) });
+      const known = (await deps.servers?.list()) ?? [];
+      return Response.json({ total, page, limit, licenses: await Promise.all(licenses.map((l) => licenseView(deps.billing, l, undefined, seesPayers(ctx), known))) });
     }),
   },
   {
@@ -165,12 +175,12 @@ export const billingRoutes: Route[] = [
         ctx.deps.runs?.servers({ server: `license:${license.id}`, limit: 100 }) ?? [],
       ]);
       return Response.json({
-        license: await licenseView(billing, license, grants, seesPayers(ctx)),
+        license: await licenseView(billing, license, grants, seesPayers(ctx), (await ctx.deps.servers?.list(`license:${license.id}`)) ?? []),
         grants: grants
           .sort((a, b) => a.starts.getTime() - b.starts.getTime())
           .map((g) => ({ id: g.id, payment: g.payment ?? null, budget: usd(g.budget), spent: usd(g.spent), starts: iso(g.starts), ends: iso(g.ends) })),
         payments: payments.map((p) => paymentView(p, seesPayers(ctx))),
-        servers: await serversView(ctx, servers),
+        servers: await serversView(ctx, servers, `license:${license.id}`),
       });
     }),
   },
