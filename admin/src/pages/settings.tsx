@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Download, FlaskConical, Lock, RotateCcw, TriangleAlert, XCircle } from "lucide-react";
+import { CheckCircle2, Download, FlaskConical, Lock, RotateCcw, Sparkles, TriangleAlert, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, type UseFormReturn, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -22,6 +22,12 @@ import type { SettingField, SettingsView } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type FormValues = Record<string, string | boolean>;
+
+/** The model Allay is tuned for: fast, cheap, and good with tools. */
+const RECOMMENDED_MODEL = "~anthropic/claude-haiku-latest";
+
+/** An option of a choice in words, or the option itself where it needs none. */
+const optionLabel = (t: (key: string, options?: Record<string, unknown>) => string, key: string, option: string) => t(`settings.options.${key}.${option}`, { defaultValue: option });
 
 const GROUP_ORDER = ["model", "search", "limits", "sessions", "tracing", "billing", "telegram", "address", "access"];
 /** Which check each group offers, and the fields it reads from the form. */
@@ -166,10 +172,12 @@ const FieldRow = ({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__default">{field.default ? t("settings.defaultOption", { value: field.default }) : t("settings.unsetOption")}</SelectItem>
+              <SelectItem value="__default">
+                {field.default ? t("settings.defaultOption", { value: optionLabel(t, field.key, String(field.default)) }) : t("settings.unsetOption")}
+              </SelectItem>
               {field.options!.map((option) => (
                 <SelectItem key={option} value={option}>
-                  {option}
+                  {optionLabel(t, field.key, option)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -191,13 +199,22 @@ const FieldRow = ({
       />
     );
   }
+  const model = field.key === "OPENROUTER_API_MODEL";
+  const current = String(form.watch(field.key) || field.default || "");
   return (
     <div className="flex flex-col gap-2 border-b py-4 last:border-b-0">
       <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor={field.key} className="font-mono text-xs font-medium break-all">
-          {field.key}
+        <label htmlFor={field.key} className="text-sm font-medium">
+          {t(`settings.names.${field.key}`, { defaultValue: field.key })}
         </label>
+        <code className="font-mono text-[11px] break-all text-muted-foreground">{field.key}</code>
         <SourceBadge field={field} />
+        {model && current === RECOMMENDED_MODEL && (
+          <Badge variant="outline" className="gap-1 border-success/40 text-success">
+            <Sparkles className="size-3" aria-hidden />
+            {t("settings.recommended")}
+          </Badge>
+        )}
         {field.restart && (
           <Badge variant="outline" className="gap-1 border-warning/50">
             <TriangleAlert className="size-3 text-warning" aria-hidden />
@@ -207,6 +224,14 @@ const FieldRow = ({
       </div>
       <p className="text-sm text-muted-foreground">{label}</p>
       {control}
+      {model && !disabled && current !== RECOMMENDED_MODEL && (
+        <div>
+          <Button type="button" variant="outline" size="sm" onClick={() => form.setValue(field.key, RECOMMENDED_MODEL, { shouldDirty: true, shouldValidate: true })}>
+            <Sparkles className="size-3.5" aria-hidden />
+            {t("settings.useRecommended", { model: RECOMMENDED_MODEL })}
+          </Button>
+        </div>
+      )}
       {(field.type === "int" || field.type === "number") && !locked && (
         <p className="text-xs text-muted-foreground">{t("settings.range", { min: number(field.min!, 3), max: number(field.max!, 3), value: field.default })}</p>
       )}
@@ -259,7 +284,10 @@ const EnvironmentCard = ({ view }: { view: SettingsView }) => {
     [t("settings.environment.version"), env.version],
     [t("settings.environment.mode"), env.selfhosted ? t("settings.environment.selfhosted") : t("settings.environment.hosted")],
     [t("settings.environment.database"), env.mongodb_database ?? "—"],
-    [t("settings.environment.secretsKey"), env.secrets_key === "env" ? "SECRETS_KEY" : "/data/secrets.key"],
+    [
+      t("settings.environment.secretsKey"),
+      `${env.secrets_key === "env" ? "SECRETS_KEY" : "/data/secrets.key"}${env.secrets_key_last4 ? ` · ••••${env.secrets_key_last4}` : ""}`,
+    ],
     [t("settings.environment.envAdmin"), env.env_admin ? t("common.yes") : t("common.no")],
     [t("settings.environment.port"), String(env.port)],
   ];

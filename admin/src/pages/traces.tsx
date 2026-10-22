@@ -1,13 +1,13 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Empty, ErrorBox, Loading, PageHeader, ResultBadge, TableFrame } from "@/components/common";
+import { Empty, ErrorBox, Loading, PageHeader, PlayerLink, ResultBadge, ServerButton, TableFrame, rowLink } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
-import { dateTime, duration, number, relative, usd } from "@/lib/format";
+import { compact, dateTime, duration, number, relative, usd } from "@/lib/format";
 import type { Run, Span, TraceSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +17,7 @@ const length = (start: string, end: string | null) => (end ? new Date(end).getTi
 
 export const TracesPage = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const query = useInfiniteQuery({
     queryKey: ["traces"],
     initialPageParam: "",
@@ -39,24 +40,47 @@ export const TracesPage = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t("traces.columns.started")}</TableHead>
-                    <TableHead>{t("traces.columns.run")}</TableHead>
+                    <TableHead>{t("traces.columns.kind")}</TableHead>
+                    <TableHead className="hidden sm:table-cell">{t("traces.columns.player")}</TableHead>
+                    <TableHead className="hidden xl:table-cell">{t("traces.columns.server")}</TableHead>
+                    <TableHead className="hidden 2xl:table-cell">{t("traces.columns.model")}</TableHead>
+                    <TableHead className="hidden text-right md:table-cell">{t("traces.columns.steps")}</TableHead>
+                    <TableHead className="hidden text-right lg:table-cell">{t("traces.columns.tokens")}</TableHead>
+                    <TableHead className="hidden text-right md:table-cell">{t("traces.columns.cost")}</TableHead>
                     <TableHead className="text-right">{t("traces.columns.duration")}</TableHead>
                     <TableHead>{t("traces.columns.result")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {traces.map((trace) => (
-                    <TableRow key={trace.trace_id}>
-                      <TableCell className="whitespace-nowrap">
-                        <Link to="/traces/$id" params={{ id: trace.trace_id }} className="font-medium hover:underline" title={dateTime(trace.started_at)}>
-                          {relative(trace.started_at)}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="max-w-40 truncate font-mono text-xs">{trace.run_id ?? "—"}</TableCell>
-                      <TableCell className="tabular text-right">{duration(length(trace.started_at, trace.ended_at))}</TableCell>
-                      <TableCell>{trace.ok ? <ResultBadge result="ok" /> : <ResultBadge result="error" />}</TableCell>
-                    </TableRow>
-                  ))}
+                  {traces.map((trace) => {
+                    const run = trace.run;
+                    const failed = run?.tools.filter((tool) => !tool.ok).length ?? 0;
+                    return (
+                      <TableRow key={trace.trace_id} {...rowLink(() => navigate({ to: "/traces/$id", params: { id: trace.trace_id } }))}>
+                        <TableCell className="whitespace-nowrap">
+                          <Link to="/traces/$id" params={{ id: trace.trace_id }} className="font-medium hover:underline" title={dateTime(trace.started_at)}>
+                            {relative(trace.started_at)}
+                          </Link>
+                        </TableCell>
+                        <TableCell>{run ? t(`runs.kinds.${run.kind}`) : <span className="text-muted-foreground">{t("traces.noRun")}</span>}</TableCell>
+                        <TableCell className="hidden max-w-44 sm:table-cell">{run && <PlayerLink id={run.user_id} player={run.player} head />}</TableCell>
+                        <TableCell className="hidden max-w-44 xl:table-cell">{run && <ServerButton server={run} name={run.server_name} />}</TableCell>
+                        <TableCell className="hidden max-w-48 truncate font-mono text-xs 2xl:table-cell">{run?.model}</TableCell>
+                        <TableCell className="tabular hidden text-right whitespace-nowrap md:table-cell">
+                          {run && (
+                            <>
+                              {t("traces.stepsTools", { steps: number(run.steps), tools: number(run.tools.length) })}
+                              {failed > 0 && <span className="ml-1 text-destructive">({failed})</span>}
+                            </>
+                          )}
+                        </TableCell>
+                        <TableCell className="tabular hidden text-right whitespace-nowrap lg:table-cell">{run && `${compact(run.input_tokens)} / ${compact(run.output_tokens)}`}</TableCell>
+                        <TableCell className="tabular hidden text-right md:table-cell">{run && usd(run.cost)}</TableCell>
+                        <TableCell className="tabular text-right whitespace-nowrap">{duration(length(trace.started_at, trace.ended_at))}</TableCell>
+                        <TableCell>{run ? <ResultBadge result={run.result} code={run.error_code} /> : trace.ok ? <ResultBadge result="ok" /> : <ResultBadge result="error" />}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </TableFrame>
@@ -108,7 +132,7 @@ export const TracePage = () => {
                 <div>
                   <CardTitle className="text-base">
                     <Link to="/runs/$id" params={{ id: data.run.id }} className="hover:underline">
-                      {t(`runs.kinds.${data.run.kind}`)} · {data.run.user_id}
+                      {t(`runs.kinds.${data.run.kind}`)} · {data.run.player?.name ?? data.run.user_id}
                     </Link>
                   </CardTitle>
                   <CardDescription>
