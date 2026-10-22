@@ -32,7 +32,7 @@ The backend of Allay, an AI helper for Minecraft players and a Telegram bot. A M
 
 The tool bridge keeps pending calls in memory, so the backend runs as one instance.
 
-Sessions and panel sessions expire exactly by `expires_at`: every read asks for a time after now, a read that misses deletes an expired document, and a write onto an expired session starts it over. The TTL indexes only collect garbage, since MongoDB's monitor runs about once a minute. Since 6.8 there's no Redis: a backend that still has `REDIS_URL` or `REDIS_HOST` moves its sessions into MongoDB once at start (`moveRedisSessions`, marked in `migrations`).
+Sessions and panel sessions expire exactly by `expires_at`: every read asks for a time after now, a read that misses deletes an expired document, and a write onto an expired session starts it over. The TTL indexes only collect garbage, since MongoDB's monitor runs about once a minute. Since 6.8 there's no Redis; 6.8.0 alone moved the old sessions over.
 
 The build bundles `src/features/tools/calc.worker.ts` next to the entrypoint; `exact-calculations.tool.ts` finds it by a computed name so the bundler leaves the path alone. Keep both in `bun run build`.
 

@@ -2,6 +2,11 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.8.1
+
+- 🧹 **The move out of Redis is gone.** 6.8.0 moved every session it found; from 6.8.1 the backend never looks for Redis. Coming from 6.7 or older, start 6.8.0 once with Redis first, or players' conversations simply start over and admins sign in again.
+- 🗑️ Two unused models from the first version are gone, and with them the last mention of the `uuid` package.
+
 ## 6.8.0
 
 For Allay 6.6, which keeps players' deaths; older plugins answer about the last death only, as before. **Upgrading from 6.7:** start it once with Redis still configured, then remove Redis (see below).
