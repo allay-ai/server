@@ -53,6 +53,21 @@ if (MONGODB) {
   });
 }
 
+if (MONGODB) {
+  test("MongoDB holds sessions and outcomes sealed: no word of them in the clear", async () => {
+    clock.time = Date.UTC(2026, 9, 22);
+    const history = mongoHistory(now);
+    await history.append(thread("sealed"), { role: "user", content: "where is my diamond stash" }, { role: "assistant", content: "behind the waterfall" });
+    await history.noteOutcome(owner("sealed"), "[Automation «Furnaces» finished]");
+    const raw = JSON.stringify([await SessionModel.collection.findOne({ key: thread("sealed").key }), await OutcomesModel.collection.findOne({ key: thread("sealed").key })]);
+    expect(raw).not.toContain("diamond");
+    expect(raw).not.toContain("waterfall");
+    expect(raw).not.toContain("Furnaces");
+    expect((await history.load(thread("sealed"))).messages.map((m) => m.content)).toEqual(["where is my diamond stash", "behind the waterfall"]);
+    expect(await history.takeOutcomes(owner("sealed"))).toEqual(["[Automation «Furnaces» finished]"]);
+  });
+}
+
 describe.each(stores)("the %s session store", (name, make) => {
   beforeEach(async () => {
     clock.time = Date.UTC(2026, 9, 22);

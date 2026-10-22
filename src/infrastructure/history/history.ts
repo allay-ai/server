@@ -3,6 +3,7 @@ import { Schema, model } from "mongoose";
 import { settings } from "../../features/settings/settings";
 import { logger } from "../../shared/logging/logger";
 import type { Owner } from "../../shared/types/owner";
+import { type Sealed, openJson, sealJson } from "../crypto/data";
 
 export type { Owner };
 
@@ -101,10 +102,11 @@ const isMessage = (value: unknown): value is HistoryMessage => {
   return ["user", "assistant", "tool"].includes(message?.role as string) && (typeof message.content === "string" || Array.isArray(message.content));
 };
 
-/** One exchange per entry; entries from before 5.5 hold a single text message each. */
-const parse = (raw: string): HistoryMessage[] | undefined => {
+/** One exchange per entry, sealed since 6.9; entries from before 5.5 hold a single text message each. */
+const parse = (raw: string | Sealed): HistoryMessage[] | undefined => {
   try {
-    const value = JSON.parse(raw);
+    const value = typeof raw === "string" ? JSON.parse(raw) : openJson<{ messages?: unknown; role?: unknown; content?: unknown }>(raw);
+    if (!value) return undefined;
     if (Array.isArray(value.messages)) return value.messages.filter(isMessage);
     if ((value.role === "user" || value.role === "assistant") && typeof value.content === "string") {
       return [{ role: value.role, content: value.content }];
@@ -131,30 +133,33 @@ const keepOf = (exchanges: HistoryMessage[][], foldAt: number): number | undefin
   return kept < exchanges.length ? kept : undefined;
 };
 
-const exchangesOf = (raw: string[]) => raw.map(parse).filter((m): m is HistoryMessage[] => !!m);
+const exchangesOf = (raw: Array<string | Sealed>) => raw.map(parse).filter((m): m is HistoryMessage[] => !!m);
 
-/** A conversation: exchanges newest first as JSON, so tool results with any keys fit, and the summary beside them. */
+/**
+ * A conversation: exchanges newest first, each sealed on its own so a push needs no read, and the sealed summary beside
+ * them. Strings are exchanges from before 6.9, in the clear; they expire within CHAT_TTL_SECONDS.
+ */
 interface SessionDoc {
   key: string;
   /** A new id whenever the session starts over, so a fold that began before /ask new can't write into the next one. */
   started: string;
-  summary?: string;
-  exchanges: string[];
+  summary?: string | Sealed;
+  exchanges: Array<string | Sealed>;
   expires_at: Date;
 }
 
 /** How an automation ended, kept by the player's private thread until their next question. */
 interface OutcomesDoc {
   key: string;
-  outcomes: string[];
+  outcomes: Array<string | Sealed>;
   expires_at: Date;
 }
 
 const sessionSchema = new Schema<SessionDoc>({
   key: { type: String, required: true, unique: true },
   started: { type: String, required: true },
-  summary: String,
-  exchanges: { type: [String], default: [] },
+  summary: Schema.Types.Mixed,
+  exchanges: { type: [Schema.Types.Mixed], default: [] },
   expires_at: { type: Date, required: true },
 });
 // Only garbage collection: the monitor runs about once a minute, so every read checks expires_at itself.
@@ -162,7 +167,7 @@ sessionSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
 
 const outcomesSchema = new Schema<OutcomesDoc>({
   key: { type: String, required: true, unique: true },
-  outcomes: { type: [String], default: [] },
+  outcomes: { type: [Schema.Types.Mixed], default: [] },
   expires_at: { type: Date, required: true },
 });
 outcomesSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
@@ -175,8 +180,13 @@ const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"
 const startingWith = (prefix: string) => new RegExp(`^${escapeRegex(prefix)}`);
 
 /** The exchanges a document holds, oldest first, as the model reads them. */
-const sessionOf = (doc: Pick<SessionDoc, "summary" | "exchanges"> | null): Session =>
-  doc ? { messages: exchangesOf(doc.exchanges ?? []).reverse().flat(), ...(doc.summary ? { summary: doc.summary } : {}) } : { messages: [] };
+const sessionOf = (doc: Pick<SessionDoc, "summary" | "exchanges"> | null): Session => {
+  if (!doc) return { messages: [] };
+  const summary = doc.summary ? openJson<string>(doc.summary) : undefined;
+  return { messages: exchangesOf(doc.exchanges ?? []).reverse().flat(), ...(summary ? { summary } : {}) };
+};
+
+const outcomesOf = (stored: Array<string | Sealed> | undefined) => (stored ?? []).map((o) => openJson<string>(o)).filter((o): o is string => typeof o === "string");
 
 /**
  * Sessions in MongoDB. Expiry is exact without the TTL monitor: every read asks for `expires_at` after now, a read that
@@ -213,7 +223,7 @@ export const mongoHistory = (now: () => number = Date.now): HistoryStore => {
       const kept = entry(messages);
       if (kept.length === 0) return;
       const at = new Date(now());
-      const raw = JSON.stringify({ id: crypto.randomUUID(), messages: kept });
+      const raw = sealJson({ id: crypto.randomUUID(), messages: kept });
       try {
         // One atomic pipeline: push onto a live session, or start an expired or missing one over without its past.
         await sessions().updateOne(
@@ -243,12 +253,12 @@ export const mongoHistory = (now: () => number = Date.now): HistoryStore => {
       const kept = keepOf(exchanges, foldAt);
       if (kept === undefined) return false;
       const older = exchanges.slice(kept).reverse().flat();
-      const summary = (await summarize(doc.summary, older)).trim().slice(0, MAX_SUMMARY);
+      const summary = (await summarize(sessionOf(doc).summary, older)).trim().slice(0, MAX_SUMMARY);
       // The stored entries to keep, broken ones among them included; exchanges appended while the summary was written
       // sit at the head, so they stay too. A session that started over meanwhile has another start, and the fold leaves it alone.
       const keep = { $add: [valid[kept]!, { $max: [0, { $subtract: [{ $size: "$exchanges" }, doc.exchanges.length] }] }] };
       await sessions().updateOne({ key: thread.key, started: doc.started, expires_at: alive() }, [
-        { $set: { exchanges: { $slice: ["$exchanges", keep] }, ...(summary ? { summary: { $literal: summary } } : {}) } },
+        { $set: { exchanges: { $slice: ["$exchanges", keep] }, ...(summary ? { summary: { $literal: sealJson(summary) } } : {}) } },
       ]);
       return true;
     },
@@ -263,7 +273,7 @@ export const mongoHistory = (now: () => number = Date.now): HistoryStore => {
           [
             {
               $set: {
-                outcomes: { $cond: [living(at), { $slice: [{ $concatArrays: ["$outcomes", [{ $literal: outcome }]] }, -MAX_OUTCOMES] }, [{ $literal: outcome }]] },
+                outcomes: { $cond: [living(at), { $slice: [{ $concatArrays: ["$outcomes", [{ $literal: sealJson(outcome) }]] }, -MAX_OUTCOMES] }, [{ $literal: sealJson(outcome) }]] },
                 expires_at: { $literal: new Date(at.getTime() + sessionTtl() * 1000) },
               },
             },
@@ -280,7 +290,7 @@ export const mongoHistory = (now: () => number = Date.now): HistoryStore => {
         // One delete takes them all at once, so two questions at the same time can't both get them.
         const doc = await outcomes().findOneAndDelete({ key, expires_at: alive() });
         if (!doc) sweep(outcomes(), { key });
-        return (doc?.outcomes as string[] | undefined) ?? [];
+        return outcomesOf(doc?.outcomes as OutcomesDoc["outcomes"] | undefined);
       } catch (error) {
         logger.warn(`Task outcomes unavailable: ${String(error)}`);
         return [];
@@ -291,7 +301,7 @@ export const mongoHistory = (now: () => number = Date.now): HistoryStore => {
       const tasks: Record<string, Session> = {};
       for await (const doc of sessions().find<SessionDoc>({ key: startingWith(prefix), expires_at: alive() })) tasks[doc.key.slice(prefix.length)] = sessionOf(doc);
       const pending = await outcomes().findOne<OutcomesDoc>({ key: privateThread(owner).key, expires_at: alive() });
-      return { session: sessionOf(await read(privateThread(owner).key)), outcomes: pending?.outcomes ?? [], tasks };
+      return { session: sessionOf(await read(privateThread(owner).key)), outcomes: outcomesOf(pending?.outcomes), tasks };
     },
     async erase(owner) {
       const key = privateThread(owner).key;
