@@ -32,7 +32,7 @@ export interface PlayerExport extends SessionExport {
 }
 
 export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<PlayerExport> => {
-  const pseudonym = deps.pseudonyms.of(owner.userId);
+  const pseudonym = deps.pseudonyms.of(owner.tenant, owner.userId);
   const [memories, deaths, state, consent, sessions, runs, bans, known] = await Promise.all([
     deps.memories.list(owner),
     deps.deaths.list(owner),
@@ -86,7 +86,7 @@ export const findPlayer = async (deps: Pick<AllayDeps, "consents" | "memories" |
   const known = await deps.players?.get(tenant, pseudonym);
   if (known) return known.user_id;
   const ids = new Set([...(await deps.consents.users(tenant)), ...(await deps.memories.users(tenant))]);
-  for (const id of ids) if (deps.pseudonyms.of(id) === pseudonym) return id;
+  for (const id of ids) if (deps.pseudonyms.of(tenant, id) === pseudonym) return id;
   return null;
 };
 
@@ -108,10 +108,10 @@ export const erasePlayer = async (deps: AllayDeps, owner: Owner): Promise<Erased
   const deaths = await deps.deaths.clear(owner);
   await deps.states.clear(owner);
   await deps.exports.revoke(owner);
-  await deps.players?.forget(owner.tenant, deps.pseudonyms.of(owner.userId));
+  await deps.players?.forget(owner.tenant, deps.pseudonyms.of(owner.tenant, owner.userId));
   await deps.consents.withdraw(owner);
   await deps.history.erase(owner);
-  const runIds = (await deps.runs?.forget(deps.pseudonyms.of(owner.userId), owner.tenant)) ?? [];
+  const runIds = (await deps.runs?.forget(deps.pseudonyms.of(owner.tenant, owner.userId), owner.tenant)) ?? [];
   const traces = (await deps.traces?.forget(runIds)) ?? 0;
   return { memories, deaths, runs: runIds.length, traces };
 };

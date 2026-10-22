@@ -546,7 +546,7 @@ describe("players in the panel", () => {
     Object.assign(ctx.deps, { runs });
     const { call, deps, audit } = ctx;
     await deps.memories.add({ tenant: "self", userId: "uuid-steve" }, "base at 120 64 -300");
-    const pseudonym = deps.pseudonyms.of("uuid-steve");
+    const pseudonym = deps.pseudonyms.of("self", "uuid-steve");
     await runs.add({
       id: "r1", at: new Date(), kind: "ask", payer: "self", server: "self", user_id: pseudonym, model: "m",
       input_tokens: 1, output_tokens: 1, reasoning_tokens: 0, cost: 0.001, steps: 1, tools: [], searches: 0, duration_ms: 10, result: "ok",
@@ -579,7 +579,7 @@ describe("players in the panel", () => {
     await deps.consents.give(steve, { version: 1 });
     await deps.memories.add(steve, "base at 120 64 -300");
     await deps.history.append(thread("uuid-steve"), { role: "user", content: "hi" });
-    const pseudonym = deps.pseudonyms.of("uuid-steve");
+    const pseudonym = deps.pseudonyms.of("self", "uuid-steve");
     await runs.add({
       id: "r1", at: new Date(), kind: "ask", payer: "self", server: "self", user_id: pseudonym, model: "m",
       input_tokens: 1, output_tokens: 1, reasoning_tokens: 0, cost: 0.001, steps: 1, tools: [], searches: 0, duration_ms: 10, result: "ok",
@@ -628,7 +628,7 @@ describe("players in the panel", () => {
       body: JSON.stringify({ user_id: "uuid-steve", player: { name: "Steve", op: true }, message: "hi" }),
     });
     await asked.text();
-    const pseudonym = deps.pseudonyms.of("uuid-steve");
+    const pseudonym = deps.pseudonyms.of("self", "uuid-steve");
     for (let i = 0; i < 50 && !(await deps.players!.get("self", pseudonym)); i++) await Bun.sleep(10);
     expect(await deps.players!.get("self", pseudonym)).toMatchObject({ name: "Steve", user_id: "uuid-steve", op: true });
 
@@ -638,6 +638,18 @@ describe("players in the panel", () => {
     expect((await call("GET", "/api/admin/players/lookup?server=license:other&q=St")).body.players).toEqual([]);
     expect((await call("GET", `/api/admin/players/${pseudonym}`)).body).toMatchObject({ player: { name: "Steve" }, op: true, profile: { kinds: { ask: 1 } } });
     expect((await call("GET", "/api/admin/runs")).body.runs[0].player).toEqual({ name: "Steve", uuid: "uuid-steve" });
+
+    // A viewer sees the pseudonym and its numbers, never who it is, and can't find it by name.
+    await call("POST", "/api/admin/accounts", { username: "viewer", password: PASSWORD, role: "viewer" });
+    await call("POST", "/api/admin/logout");
+    await call("POST", "/api/admin/login", { username: "viewer", password: PASSWORD });
+    expect((await call("GET", "/api/admin/runs")).body.runs[0]).toMatchObject({ user_id: pseudonym, player: null });
+    expect((await call("GET", "/api/admin/players?search=ste")).body.players).toEqual([]);
+    expect((await call("GET", `/api/admin/players/${pseudonym}`)).body).toMatchObject({ player: null, op: null });
+    expect((await call("GET", "/api/admin/players/lookup?server=self&q=St")).status).toBe(403);
+    expect((await call("GET", `/api/admin/players/${pseudonym}/head`)).status).toBe(403);
+    await call("POST", "/api/admin/logout");
+    await call("POST", "/api/admin/login", { username: "owner", password: PASSWORD });
 
     expect((await call("POST", "/api/admin/players/erase", { server: "self", user_id: "steve" })).body).toMatchObject({ erased: true, runs: 1 });
     expect(await deps.players!.get("self", pseudonym)).toBeNull();
@@ -694,7 +706,7 @@ describe("players in the panel", () => {
       body: JSON.stringify({ user_id: "uuid-steve", player: { name: "Steve" }, message: "hi", server: { id: "srv-1", address: "mc.example.com" } }),
     });
     await asked.text();
-    const pseudonym = deps.pseudonyms.of("uuid-steve");
+    const pseudonym = deps.pseudonyms.of("self", "uuid-steve");
     for (let i = 0; i < 50 && !(await runs.list({ limit: 1 })).length; i++) await Bun.sleep(10);
 
     const page = (await call("GET", "/api/admin/servers/self/srv-1")).body;
@@ -717,7 +729,7 @@ describe("players in the panel", () => {
     Object.assign(ctx.deps, { runs });
     const { call, deps } = ctx;
     await deps.consents.give({ tenant: "self", userId: "uuid-steve" }, { version: 1 });
-    const pseudonym = deps.pseudonyms.of("uuid-steve");
+    const pseudonym = deps.pseudonyms.of("self", "uuid-steve");
     const ask = async (player: Record<string, unknown>) => {
       const response = await fetch(`${ctx.base}/api/v2/chat`, {
         method: "POST",
@@ -756,29 +768,35 @@ describe("players in the panel", () => {
     const uuid = dashedUuid("950475ca55a94c6aa4259c900056372b")!;
     expect(uuid).toBe("950475ca-55a9-4c6a-a425-9c900056372b");
     const run = (id: string, at: Date, server: string) => ({
-      id, at, kind: "ask" as const, payer: "license" as const, server, user_id: pseudonyms.of(uuid), model: "m",
+      id, at, kind: "ask" as const, payer: "license" as const, server, user_id: pseudonyms.of(server, uuid), model: "m",
       input_tokens: 1, output_tokens: 1, reasoning_tokens: 0, cost: 0.001, steps: 1, tools: [], searches: 0, duration_ms: 10, result: "ok" as const,
     });
     await runs.add(run("r1", new Date("2026-10-01T10:00:00Z"), "license:moon"));
     await runs.add(run("r2", new Date("2026-10-15T10:00:00Z"), "license:moon"));
-    await players.seen({ tenant: "self", pseudonym: pseudonyms.of(uuid), user_id: uuid, name: "Newer" }, new Date());
+    await players.seen({ tenant: "self", pseudonym: pseudonyms.of("self", uuid), user_id: uuid, name: "Newer" }, new Date());
     await runs.add(run("r3", new Date("2026-10-16T10:00:00Z"), "self"));
 
     const restored = await restorePlayers([{ name: "MairwunNx", userId: uuid }, { name: "Nobody", userId: dashedUuid("7d08d4b7a1aa44318b52565ae6af954d")! }], { pseudonyms, runs, players });
     expect(restored).toEqual([
-      { name: "MairwunNx", pseudonym: pseudonyms.of(uuid), tenants: [{ tenant: "license:moon", added: true }, { tenant: "self", added: false }] },
-      { name: "Nobody", pseudonym: pseudonyms.of("7d08d4b7-a1aa-4431-8b52-565ae6af954d"), tenants: [] },
+      {
+        name: "MairwunNx",
+        tenants: [
+          { tenant: "license:moon", pseudonym: pseudonyms.of("license:moon", uuid), added: true },
+          { tenant: "self", pseudonym: pseudonyms.of("self", uuid), added: false },
+        ],
+      },
+      { name: "Nobody", tenants: [] },
     ]);
-    expect(await players.get("license:moon", pseudonyms.of(uuid))).toMatchObject({ name: "MairwunNx", user_id: uuid, first_seen: new Date("2026-10-01T10:00:00Z"), last_seen: new Date("2026-10-15T10:00:00Z") });
+    expect(await players.get("license:moon", pseudonyms.of("license:moon", uuid))).toMatchObject({ name: "MairwunNx", user_id: uuid, first_seen: new Date("2026-10-01T10:00:00Z"), last_seen: new Date("2026-10-15T10:00:00Z") });
     // A name from a newer question stays.
-    expect((await players.get("self", pseudonyms.of(uuid)))!.name).toBe("Newer");
+    expect((await players.get("self", pseudonyms.of("self", uuid)))!.name).toBe("Newer");
   });
 
   test("a pseudonym nothing on the server can name can't be reset, but its runs erase by pseudonym", async () => {
     const ctx = await withOwner();
     const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
     Object.assign(ctx.deps, { runs });
-    const pseudonym = ctx.deps.pseudonyms.of("uuid-ghost");
+    const pseudonym = ctx.deps.pseudonyms.of("self", "uuid-ghost");
     await runs.add({
       id: "r1", at: new Date(), kind: "ask", payer: "self", server: "self", user_id: pseudonym, model: "m",
       input_tokens: 1, output_tokens: 1, reasoning_tokens: 0, cost: 0.001, steps: 1, tools: [], searches: 0, duration_ms: 10, result: "ok",
@@ -803,12 +821,12 @@ describe("players in the panel", () => {
       traces: memoryTraces([{ traceId: "t1", spanId: "s1", parentSpanId: null, spanType: "agent_run", runId: run, startedAt: new Date(), ...stored, error: null } as never]),
     });
     await runs.add({
-      id: run, at: new Date(), kind: "ask", payer: "self", server: "self", user_id: ctx.deps.pseudonyms.of("uuid-steve"), model: "m",
+      id: run, at: new Date(), kind: "ask", payer: "self", server: "self", user_id: ctx.deps.pseudonyms.of("self", "uuid-steve"), model: "m",
       input_tokens: 1, output_tokens: 1, reasoning_tokens: 0, cost: 0.001, steps: 1, tools: [], searches: 0, duration_ms: 10, result: "ok",
     });
     const shown = await ctx.call("POST", `/api/admin/runs/${run}/reveal`);
     expect(shown.body.spans[0]).toMatchObject({ input: [{ role: "user", content: "where is my stash?" }], output: { text: "under the oak" } });
-    expect(ctx.audit.entries.find((e) => e.action === "run.reveal")!.target).toBe(`self ${ctx.deps.pseudonyms.of("uuid-steve")} ${run}`);
+    expect(ctx.audit.entries.find((e) => e.action === "run.reveal")!.target).toBe(`self ${ctx.deps.pseudonyms.of("self", "uuid-steve")} ${run}`);
     // The plain trace view still shows no word of it.
     expect(JSON.stringify((await ctx.call("GET", `/api/admin/traces/${run}`)).body)).not.toContain("stash");
     // The list of traces carries each run's numbers, and no word either.

@@ -120,9 +120,8 @@ export const dashedUuid = (text: string) => {
 
 export interface Restored {
   name: string;
-  pseudonym: string;
-  /** The tenants whose runs had this player, and whether the directory got them now or knew them already. */
-  tenants: Array<{ tenant: string; added: boolean }>;
+  /** The tenants whose runs had this player, the pseudonym there, and whether the directory got them now or knew them already. */
+  tenants: Array<{ tenant: string; pseudonym: string; added: boolean }>;
 }
 
 /**
@@ -132,15 +131,15 @@ export interface Restored {
  */
 export const restorePlayers = async (
   entries: Array<{ name: string; userId: string }>,
-  deps: { pseudonyms: { of(id: string): string }; runs: Pick<RunStore, "tenantsOf" | "of">; players: PlayerDirectory },
+  deps: { pseudonyms: { of(tenant: string, id: string): string }; runs: Pick<RunStore, "tenants" | "of">; players: PlayerDirectory },
 ): Promise<Restored[]> => {
   const restored: Restored[] = [];
   for (const { name, userId } of entries) {
-    const pseudonym = deps.pseudonyms.of(userId);
     const tenants: Restored["tenants"] = [];
-    for (const tenant of await deps.runs.tenantsOf(pseudonym)) {
+    for (const tenant of await deps.runs.tenants()) {
+      const pseudonym = deps.pseudonyms.of(tenant, userId);
       if (await deps.players.get(tenant, pseudonym)) {
-        tenants.push({ tenant, added: false });
+        tenants.push({ tenant, pseudonym, added: false });
         continue;
       }
       const runs = await deps.runs.of(pseudonym, tenant, 100_000);
@@ -149,9 +148,9 @@ export const restorePlayers = async (
       // The first call sets when they first asked, the second when they last did.
       await deps.players.seen(player, runs.at(-1)!.at);
       await deps.players.seen(player, runs[0].at);
-      tenants.push({ tenant, added: true });
+      tenants.push({ tenant, pseudonym, added: true });
     }
-    restored.push({ name, pseudonym, tenants });
+    restored.push({ name, tenants });
   }
   return restored;
 };

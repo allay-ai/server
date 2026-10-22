@@ -141,6 +141,8 @@ export interface RunStore {
   of(userId: string, server: string, limit: number): Promise<RunRecord[]>;
   /** The tenants a player asked on, by pseudonym. */
   tenantsOf(userId: string): Promise<string[]>;
+  /** Every tenant with runs: a player's id has a pseudonym of its own on each (since 6.9). */
+  tenants(): Promise<string[]>;
   /**
    * Erasure on one tenant: the player's runs there keep their numbers under `erased`, and the days forget the
    * pseudonym. Returns the run ids, so their traces can go too.
@@ -347,6 +349,9 @@ export const mongoRuns: RunStore = {
   async tenantsOf(userId) {
     return RunModel.distinct("server", { user_id: userId });
   },
+  async tenants() {
+    return RunModel.distinct("server");
+  },
   async forget(userId, server) {
     const ids = (await RunModel.find({ user_id: userId, server }, { _id: 0, id: 1 }).lean<Array<{ id: string }>>()).map((r) => r.id);
     await RunModel.updateMany({ user_id: userId, server }, { $set: { user_id: ERASED } });
@@ -462,6 +467,9 @@ export const memoryRuns = (): RunStore & { all: RunRecord[] } => {
     },
     async tenantsOf(userId) {
       return [...new Set(all.filter((r) => r.user_id === userId).map((r) => r.server))];
+    },
+    async tenants() {
+      return [...new Set(all.map((r) => r.server))];
     },
     async forget(userId, server) {
       const ids: string[] = [];

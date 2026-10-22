@@ -38,7 +38,7 @@ export const handleAskX = (deps: AllayDeps) => async (req: Request): Promise<Res
     return error(apierror(API_ERRORS.BAD_REQUEST, "user_id must be 1–64 letters, digits, - or _"));
   }
   const userId = body.user_id || "anonymous";
-  if (await deps.bans.has(caller.tenant, deps.pseudonyms.of(userId))) return error(apierror(API_ERRORS.PLAYER_BLOCKED));
+  if (await deps.bans.has(caller.tenant, deps.pseudonyms.of(caller.tenant, userId))) return error(apierror(API_ERRORS.PLAYER_BLOCKED));
   const admitted = await admit(deps.billing, req.headers, undefined, caller);
   if (!admitted.ok) return error(admitted.error.toApiError());
   const { admission } = admitted;

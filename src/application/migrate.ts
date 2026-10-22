@@ -58,8 +58,8 @@ const main = async (args: string[]) => {
       const pseudonyms = pseudonymsWith(await productionVault().derive(PSEUDONYM_LABEL));
       const entries = named.map((p) => ({ name: p.name, userId: p.userId! }));
       for (const result of await restorePlayers(entries, { pseudonyms, runs: mongoRuns, players: mongoPlayers })) {
-        const where = result.tenants.map((t) => `${t.tenant}${t.added ? "" : " (known)"}`).join(", ") || "no runs";
-        console.log(`${result.name} ${result.pseudonym}: ${where}`);
+        const where = result.tenants.map((t) => `${t.tenant} ${t.pseudonym}${t.added ? "" : " (known)"}`).join(", ") || "no runs";
+        console.log(`${result.name}: ${where}`);
       }
     }
     return 0;

@@ -194,7 +194,7 @@ const report = (deps: AllayDeps, context: RunContext, options: Pick<RunOptions, 
     payer: options.payer?.kind ?? "self",
     server: context.tenant,
     ...(context.server?.id ? { server_id: context.server.id } : {}),
-    user_id: deps.pseudonyms.of(context.userId),
+    user_id: deps.pseudonyms.of(context.tenant, context.userId),
     ...(context.locale ? { language: context.locale } : {}),
     ...run,
   };

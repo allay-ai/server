@@ -60,3 +60,15 @@ describe("traces at rest", () => {
     expect(opened.error).toMatchObject({ id: "E1", message: "player Steve said xyzzy" });
   });
 });
+
+describe("pseudonyms", () => {
+  test("are per tenant: the same player on two servers is two pseudonyms, the same on one", async () => {
+    const { PSEUDONYM, pseudonymsWith } = await import("../src/infrastructure/privacy/pseudonyms");
+    const pseudonyms = pseudonymsWith("key");
+    const a = pseudonyms.of("license:a", "uuid-steve");
+    expect(a).toMatch(PSEUDONYM);
+    expect(pseudonyms.of("license:a", "uuid-steve")).toBe(a);
+    expect(pseudonyms.of("license:b", "uuid-steve")).not.toBe(a);
+    expect(pseudonymsWith("another key").of("license:a", "uuid-steve")).not.toBe(a);
+  });
+});

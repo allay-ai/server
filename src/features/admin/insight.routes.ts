@@ -54,18 +54,27 @@ const ownerOn = async (ctx: Context) => {
 };
 
 /** A pseudonym's start searches pseudonyms; anything else finds players by the start of their name, or by their id. */
-const searchOf = async (deps: AllayDeps, text?: string): Promise<{ search?: string; ids?: string[] }> => {
+const searchOf = async (deps: AllayDeps, text: string | undefined, me: Me): Promise<{ search?: string; ids?: string[] }> => {
   if (!text) return {};
   if (PSEUDONYM.test(text) || /^p_[0-9a-f]{0,20}$/.test(text)) return { search: text };
+  // A viewer may not find a player by name or id: that would tell them who a pseudonym is.
+  if (!named(me)) return { ids: [] };
   const ids = new Set(NAME_SEARCH.test(text) ? ((await deps.players?.search(text, { limit: 500 })) ?? []).map((p) => p.pseudonym) : []);
-  if (USER_ID.test(text)) ids.add(deps.pseudonyms.of(text));
+  // An id has a pseudonym of its own on every server it asked on.
+  if (USER_ID.test(text)) for (const tenant of (await deps.runs?.tenants()) ?? []) ids.add(deps.pseudonyms.of(tenant, text));
   return { ids: [...ids] };
 };
 
 type Who = { name: string; uuid: string } | null;
 
-/** Who each pseudonym is, by the newest name the directory has for it on any server. */
-const whoOf = async (deps: AllayDeps, pseudonyms: string[]): Promise<(id: string) => Who> => {
+type Me = Context["me"];
+
+/** Names and faces are for admins and owners; a viewer sees pseudonyms and numbers only. */
+const named = (me: Me) => !!me && allows(me.role, "admin");
+
+/** Who each pseudonym is, by the newest name the directory has for it; nobody for a viewer. */
+const whoOf = async (deps: AllayDeps, pseudonyms: string[], me: Me): Promise<(id: string) => Who> => {
+  if (!named(me)) return () => null;
   const known = (await deps.players?.of(pseudonyms.filter((p) => PSEUDONYM.test(p)))) ?? new Map();
   return (id) => {
     const player = known.get(id)?.[0];
@@ -151,8 +160,8 @@ const runView = (run: RunRecord, who: (id: string) => Who = () => null, server: 
   server_name: server(run),
 });
 
-const runsView = async (deps: AllayDeps, runs: RunRecord[]) => {
-  const [who, server] = await Promise.all([whoOf(deps, runs.map((r) => r.user_id)), serverNamesOf(deps, runs)]);
+const runsView = async (deps: AllayDeps, runs: RunRecord[], me: Me) => {
+  const [who, server] = await Promise.all([whoOf(deps, runs.map((r) => r.user_id), me), serverNamesOf(deps, runs)]);
   return runs.map((run) => runView(run, who, server));
 };
 
@@ -170,7 +179,7 @@ export const insightRoutes: Route[] = [
     method: "GET",
     path: "/stats",
     access: "viewer",
-    async handle({ deps, admin, url }) {
+    async handle({ deps, admin, url, me }) {
       if (!deps.runs) return error(503, "NO_RUNS", "This backend keeps no statistics");
       const range = (url.searchParams.get("range") ?? "7d") as Range;
       if (!RANGES.includes(range)) return error(400, "BAD_REQUEST", `range is one of ${RANGES.join(", ")}`);
@@ -179,7 +188,7 @@ export const insightRoutes: Route[] = [
       // The busiest players of the range, by name where the directory knows them.
       const from = range === "24h" ? new Date(now.getTime() - 86_400_000) : new Date(stats.series[0]?.t ?? now);
       const { players } = await deps.runs.players({ from, sort: "questions", limit: 8, skip: 0 });
-      const who = await whoOf(deps, players.map((p) => p.user_id));
+      const who = await whoOf(deps, players.map((p) => p.user_id), me);
       return Response.json({ ...stats, top_players: players.map((p) => ({ user_id: p.user_id, player: who(p.user_id), questions: p.questions, cost: p.cost })) });
     },
   },
@@ -187,15 +196,15 @@ export const insightRoutes: Route[] = [
     method: "GET",
     path: "/players",
     access: "viewer",
-    async handle({ deps, url }) {
+    async handle({ deps, url, me }) {
       if (!deps.runs) return error(503, "NO_RUNS", "This backend keeps no statistics");
       const limit = limitOf(url);
       const page = Math.max(0, Number(url.searchParams.get("page")) || 0);
       const given = url.searchParams.get("search")?.trim().slice(0, 64) || undefined;
-      const search = await searchOf(deps, given);
+      const search = await searchOf(deps, given, me);
       if (search.ids?.length === 0) return Response.json({ total: 0, page, limit, players: [] });
       const { players, total } = await deps.runs.players({ ...search, limit, skip: page * limit });
-      const [bans, who] = await Promise.all([deps.bans.of(players.map((p) => p.user_id)), whoOf(deps, players.map((p) => p.user_id))]);
+      const [bans, who] = await Promise.all([deps.bans.of(players.map((p) => p.user_id)), whoOf(deps, players.map((p) => p.user_id), me)]);
       return Response.json({
         total,
         page,
@@ -214,16 +223,16 @@ export const insightRoutes: Route[] = [
     method: "GET",
     path: "/players/blocked",
     access: "viewer",
-    async handle({ deps }) {
+    async handle({ deps, me }) {
       const bans = await deps.bans.list(200);
-      const who = await whoOf(deps, bans.map((b) => b.pseudonym));
+      const who = await whoOf(deps, bans.map((b) => b.pseudonym), me);
       return Response.json({ bans: bans.map(({ pseudonym, tenant, blocked_at }) => ({ user_id: pseudonym, player: who(pseudonym), server: tenant, blocked_at })) });
     },
   },
   {
     method: "GET",
     path: "/players/lookup",
-    access: "viewer",
+    access: "admin",
     async handle({ deps, url }) {
       // The erase form's picker: players of one server by the start of their name, or the newest ones.
       const server = url.searchParams.get("server") ?? undefined;
@@ -251,7 +260,8 @@ export const insightRoutes: Route[] = [
         deps.players?.of([params.id]),
       ]);
       const banned = bans.get(params.id) ?? [];
-      const entries = known?.get(params.id) ?? [];
+      // A viewer gets the pseudonym's numbers, never the name, UUID, or operator status behind it.
+      const entries = named(ctx.me) ? (known?.get(params.id) ?? []) : [];
       // A player erased while blocked has no runs left, only the ban.
       const player = summary?.players.find((p) => p.user_id === params.id) ?? (banned.length ? { questions: 0, cost: 0, language: undefined, first_seen: null, last_seen: null } : null);
       if (!player) return error(404, "NOT_FOUND", "No such player");
@@ -294,7 +304,7 @@ export const insightRoutes: Route[] = [
   {
     method: "GET",
     path: "/players/:id/head",
-    access: "viewer",
+    access: "admin",
     async handle({ deps, params }) {
       const player = PSEUDONYM.test(params.id) ? (await deps.players?.of([params.id]))?.get(params.id)?.[0] : undefined;
       const head = player ? await headOf(headKey(player.user_id, player.name)) : null;
@@ -317,7 +327,7 @@ export const insightRoutes: Route[] = [
       if (named.length > 1) return error(409, "AMBIGUOUS", "Several players had that name on that server; pick one from the list");
       if (named.length === 1) return erasedReply(ctx, tenant, named[0].pseudonym, await erasePseudonym(deps, tenant, named[0].pseudonym));
       if (!USER_ID.test(given)) return error(404, "NOT_FOUND", "No player had that name on that server");
-      return erasedReply(ctx, tenant, deps.pseudonyms.of(given), await erasePlayer(deps, { tenant, userId: given }));
+      return erasedReply(ctx, tenant, deps.pseudonyms.of(tenant, given), await erasePlayer(deps, { tenant, userId: given }));
     },
   },
   {
@@ -384,7 +394,7 @@ export const insightRoutes: Route[] = [
     path: "/servers/:tenant/:id",
     access: "viewer",
     async handle(ctx) {
-      const { deps, params } = ctx;
+      const { deps, params, me } = ctx;
       if (!TENANT.test(params.tenant)) return error(404, "NOT_FOUND", "No such server");
       const serverId = params.id === "-" ? undefined : params.id;
       const asked = (await deps.runs?.servers({ server: params.tenant, server_id: serverId, limit: 50 })) ?? [];
@@ -397,12 +407,12 @@ export const insightRoutes: Route[] = [
       ]);
       // Runs without a server id belong to every server of the tenant otherwise; only the empty one may show them.
       const own = serverId ? runs : runs.filter((r) => !r.server_id);
-      const who = await whoOf(deps, (found?.players ?? []).map((p) => p.user_id));
+      const who = await whoOf(deps, (found?.players ?? []).map((p) => p.user_id), me);
       return Response.json({
         server,
         players: (found?.players ?? [])
           .map((p) => ({ user_id: p.user_id, player: who(p.user_id), questions: p.questions, cost: p.cost, first_seen: p.first_seen.toISOString(), last_seen: p.last_seen.toISOString() })),
-        runs: await runsView(deps, own),
+        runs: await runsView(deps, own, me),
       });
     },
   },
@@ -410,7 +420,7 @@ export const insightRoutes: Route[] = [
     method: "GET",
     path: "/runs",
     access: "viewer",
-    async handle({ deps, url }) {
+    async handle({ deps, url, me }) {
       if (!deps.runs) return error(503, "NO_RUNS", "This backend keeps no statistics");
       const kind = url.searchParams.get("kind") as RunKind | null;
       const result = url.searchParams.get("result") as RunRecord["result"] | null;
@@ -423,18 +433,18 @@ export const insightRoutes: Route[] = [
         before: beforeOf(url),
         limit: limitOf(url),
       });
-      return Response.json({ runs: await runsView(deps, runs) });
+      return Response.json({ runs: await runsView(deps, runs, me) });
     },
   },
   {
     method: "GET",
     path: "/runs/:id",
     access: "viewer",
-    async handle({ deps, admin, params }) {
+    async handle({ deps, admin, params, me }) {
       const run = await deps.runs?.get(params.id);
       if (!run) return error(404, "NOT_FOUND", "No such run");
       const trace = await admin.traces?.get(run.id).catch(() => null);
-      const [view] = await runsView(deps, [run]);
+      const [view] = await runsView(deps, [run], me);
       // The license's name, so the page says whose server it was.
       const licenseId = run.server.startsWith("license:") ? run.server.slice("license:".length) : null;
       const license = licenseId && deps.billing.enabled ? await deps.billing.licenses.get(licenseId).catch(() => null) : null;
@@ -459,11 +469,11 @@ export const insightRoutes: Route[] = [
     method: "GET",
     path: "/traces",
     access: "viewer",
-    async handle({ deps, admin, url }) {
+    async handle({ deps, admin, url, me }) {
       if (!admin.traces) return Response.json({ traces: [] });
       const traces = await admin.traces.list({ before: beforeOf(url), limit: limitOf(url) });
       // Each trace with its run's numbers, so the table says who, where, which model, and what it cost.
-      const runs = await runsView(deps, (await deps.runs?.many(traces.flatMap((t) => (t.run_id ? [t.run_id] : [])))) ?? []);
+      const runs = await runsView(deps, (await deps.runs?.many(traces.flatMap((t) => (t.run_id ? [t.run_id] : [])))) ?? [], me);
       return Response.json({ traces: traces.map((t) => ({ ...t, run: runs.find((r) => r.id === t.run_id) ?? null })) });
     },
   },
@@ -471,11 +481,11 @@ export const insightRoutes: Route[] = [
     method: "GET",
     path: "/traces/:id",
     access: "viewer",
-    async handle({ deps, admin, params }) {
+    async handle({ deps, admin, params, me }) {
       const found = await admin.traces?.get(params.id);
       if (!found) return error(404, "NOT_FOUND", "No such trace; traces live a few days and only for sampled runs");
       const run = found.trace.run_id ? await deps.runs?.get(found.trace.run_id) : null;
-      return Response.json({ ...found, run: run ? (await runsView(deps, [run]))[0] : null });
+      return Response.json({ ...found, run: run ? (await runsView(deps, [run], me))[0] : null });
     },
   },
 ];

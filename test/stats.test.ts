@@ -27,7 +27,7 @@ describe("runs", () => {
       payer: "license",
       server: "license:lic1",
       server_id: "srv-1",
-      user_id: deps.pseudonyms.of("u-1"),
+      user_id: deps.pseudonyms.of("license:lic1", "u-1"),
       language: "en_us",
       model: "mock-model",
       steps: 2,

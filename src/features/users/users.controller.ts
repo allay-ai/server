@@ -191,7 +191,7 @@ export const handlePrivacy = (deps: AllayDeps) => async (req: Routed): Promise<R
   const body = PrivacyBody.safeParse(await req.json().catch(() => undefined));
   if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, "full must be true or false"));
   try {
-    const forgotten = body.data.full ? ((await deps.players?.forget(owner.tenant, deps.pseudonyms.of(owner.userId))) ?? false) : false;
+    const forgotten = body.data.full ? ((await deps.players?.forget(owner.tenant, deps.pseudonyms.of(owner.tenant, owner.userId))) ?? false) : false;
     return noStore({ full: body.data.full, forgotten });
   } catch (error) {
     return failed("change the player's privacy", error);

@@ -237,7 +237,7 @@ describe("a player's data on request", () => {
     expect(after).toMatchObject({ memories: [], consent: null, session: { messages: [] }, outcomes: [], tasks: {}, runs: [] });
     expect(await deps.consents.get(owner("player-2"))).toMatchObject({ version: 2 });
     // The run still counts, as nobody's; the other player is untouched.
-    expect(deps.runs.all.map((r) => r.user_id)).toEqual(["erased", deps.pseudonyms.of("player-2")]);
+    expect(deps.runs.all.map((r) => r.user_id)).toEqual(["erased", deps.pseudonyms.of("self", "player-2")]);
     expect((await deps.history.load(thread("player-2"))).messages).not.toEqual([]);
   });
 });
