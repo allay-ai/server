@@ -288,7 +288,7 @@ const ExtendDialog = ({ id, onDone }: { id: string; onDone: () => Promise<void> 
 const EditDialog = ({ license, onDone }: { license: License; onDone: () => Promise<void> }) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const form = useForm<{ name: string; language: string }>({ resolver: zodResolver(editSchema), defaultValues: { name: license.name, language: license.language ?? "" } });
+  const form = useForm<{ name: string; language: string }>({ resolver: zodResolver(editSchema), defaultValues: { name: license.own_name ?? license.name, language: license.language ?? "" } });
   const { errors, isSubmitting } = form.formState;
   const submit = form.handleSubmit(async (values) => {
     try {

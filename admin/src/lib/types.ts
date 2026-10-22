@@ -262,10 +262,12 @@ export interface Span {
 
 export interface License {
   id: string;
-  /** The server's MOTD from /allay link, or the id. */
+  /** Its server's own name, else the name the license was given, else the id. */
   name: string;
-  /** The license's server as the panel heads it: its own name, where players join, and its MOTD. */
-  server: { name: string | null; address: string | null; motd: string | null } | null;
+  /** The name stored on the license, which an owner edits; null when it has none. */
+  own_name: string | null;
+  /** The license's server as the panel heads it: its own name and where players join. */
+  server: { name: string | null; address: string | null } | null;
   created_at: string | null;
   plan: string | null;
   status: "active" | "expired" | "unpaid" | "blocked" | "revoked";

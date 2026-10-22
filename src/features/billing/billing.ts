@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import type { KnownServer } from "../../infrastructure/servers/servers";
 import type { LicenseRecord, LicenseStore } from "../../infrastructure/billing/licenses";
 import type { TelegramApi } from "../telegram/telegram.client";
 import { logger } from "../../shared/logging/logger";
@@ -72,6 +73,13 @@ export const refreshClaim = async (billing: Billing, license: LicenseRecord, nam
 
 /** How the bot names a server: the name the plugin sent, or the license id. */
 export const serverName = (license: LicenseRecord) => license.name || license.id;
+
+/**
+ * How the panel names a license: the name its owner gave a server behind it (`server.name` in the plugin's config),
+ * the newest such, rather than the MOTD /allay link sent; the stored name or the id only when no server has one.
+ */
+export const licenseName = (license: LicenseRecord, known: Array<Pick<KnownServer, "tenant" | "name">>) =>
+  known.find((s) => s.tenant === `license:${license.id}` && s.name)?.name ?? serverName(license);
 
 /** The license an `Authorization: Bearer <id>.<secret>` header names, or why not. */
 export const verifyLicense = async (billing: Billing, header: string | null): Promise<LicenseRecord | ApiFailure> => {

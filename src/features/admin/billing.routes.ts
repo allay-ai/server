@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { GrantRecord, LicenseRecord, PaymentRecord } from "../../infrastructure/billing/licenses";
-import { type Billing, quotaFor, serverName } from "../billing/billing";
+import { type Billing, licenseName, quotaFor, serverName } from "../billing/billing";
 import { INFINITY_DAYS, infinityBudget, quotaOf } from "../billing/plans";
 import { LicenseRefundFailure, refundLicense, refundPayment } from "../telegram/telegram.bot";
 import { allows, record } from "./admin";
@@ -22,11 +22,11 @@ const usd = (n: number) => Math.round(n * 1_000_000) / 1_000_000;
 /** Telegram ids are personal data: admins and owners see them, viewers don't need them. */
 const seesPayers = (ctx: Context) => !!ctx.me && allows(ctx.me.role, "admin");
 
-/** The license's server as the panel heads it: the newest one with a name, else the newest one. */
+/** The license's server as the panel heads it: the newest one with a name, else the newest one. Never its MOTD. */
 const headOf = (license: LicenseRecord, known: KnownServer[]) => {
   const own = known.filter((s) => s.tenant === `license:${license.id}`);
   const server = own.find((s) => s.name) ?? own[0];
-  return server ? { name: server.name ?? null, address: server.address ?? null, motd: server.motd ?? null } : null;
+  return server ? { name: server.name ?? null, address: server.address ?? null } : null;
 };
 
 const licenseView = async (billing: Billing, license: LicenseRecord, grants?: GrantRecord[], payers = true, known: KnownServer[] = []) => {
@@ -38,7 +38,9 @@ const licenseView = async (billing: Billing, license: LicenseRecord, grants?: Gr
   const granted = windows.filter((g) => !g.payment).sort((a, b) => b.starts.getTime() - a.starts.getTime())[0];
   return {
     id: license.id,
-    name: serverName(license),
+    name: licenseName(license, known),
+    // The name an owner can edit; the panel shows the server's own name over it.
+    own_name: license.name ?? null,
     server: headOf(license, known),
     created_at: iso(license.created_at),
     plan: license.plan ?? null,
@@ -232,7 +234,8 @@ export const billingRoutes: Route[] = [
         await ctx.deps.billing.licenses.update(license.id, patch);
         await record(ctx.admin, { actor: ctx.me!.username, action: "license.edit", target: license.id, changes, ip: ctx.ip });
       }
-      return Response.json({ license: await licenseView(ctx.deps.billing, (await ctx.deps.billing.licenses.get(license.id))!, undefined, seesPayers(ctx)) });
+      const known = (await ctx.deps.servers?.list(`license:${license.id}`)) ?? [];
+      return Response.json({ license: await licenseView(ctx.deps.billing, (await ctx.deps.billing.licenses.get(license.id))!, undefined, seesPayers(ctx), known) });
     }),
   },
   {
@@ -312,7 +315,8 @@ export const billingRoutes: Route[] = [
           changes: [{ field: "blocked", old: license.blocked_at ? "yes" : "no", new: at ? "yes" : "no" }],
           ip: ctx.ip,
         });
-        return Response.json({ license: await licenseView(ctx.deps.billing, (await ctx.deps.billing.licenses.get(license.id))!) });
+        const known = (await ctx.deps.servers?.list(`license:${license.id}`)) ?? [];
+        return Response.json({ license: await licenseView(ctx.deps.billing, (await ctx.deps.billing.licenses.get(license.id))!, undefined, true, known) });
       }),
     }),
   ),

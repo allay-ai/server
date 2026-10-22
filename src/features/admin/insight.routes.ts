@@ -6,11 +6,12 @@ import type { AllayDeps } from "../../agent/allay";
 import { USER_ID } from "../../shared/types/owner";
 import { TENANT } from "../auth/caller";
 import { type Erased, erasePlayer, erasePseudonym, findPlayer } from "../users/privacy";
-import { serverName } from "../billing/billing";
+import { licenseName } from "../billing/billing";
 import { allows, record } from "./admin";
 import { type Route, type Context, body, error } from "./admin.http";
 import { RANGES, type Range, statsFor } from "./stats";
 import type { ServerSummary } from "../../infrastructure/runs/runs";
+import type { KnownServer } from "../../infrastructure/servers/servers";
 import { inRanges, rangesOf } from "../../shared/lib/address";
 import { headKey, headOf } from "./heads";
 import { PROFILE_RUNS, profileOf } from "./profile";
@@ -87,13 +88,15 @@ const whoOf = async (deps: AllayDeps, pseudonyms: string[], me: Me): Promise<(id
 /** Private, loopback, and link-local ranges: a server there shares a network with the backend, like Moonlands with allay.chat. */
 const INTERNAL = rangesOf("10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16, ::1/128, fc00::/7, fe80::/10");
 
-/** The licenses' names by tenant, for the servers and runs that name a license. */
-const licenseNames = async (deps: AllayDeps, tenants: string[]) => {
+/** The licenses' names by tenant, for the servers and runs that name a license: their servers' own names, not MOTDs. */
+const licenseNames = async (deps: AllayDeps, tenants: string[], known?: KnownServer[]) => {
   const names = new Map<string, string>();
-  if (!deps.billing.enabled) return names;
-  for (const tenant of new Set(tenants.filter((t) => t.startsWith("license:")))) {
+  const licensed = [...new Set(tenants.filter((t) => t.startsWith("license:")))];
+  if (!deps.billing.enabled || !licensed.length) return names;
+  const servers = known ?? (await deps.servers?.list()) ?? [];
+  for (const tenant of licensed) {
     const license = await deps.billing.licenses.get(tenant.slice("license:".length)).catch(() => null);
-    if (license) names.set(tenant, serverName(license));
+    if (license) names.set(tenant, licenseName(license, servers));
   }
   return names;
 };
@@ -125,7 +128,7 @@ export const serversView = async (ctx: Context, asked: ServerSummary[], tenant?:
         );
   const servers = [...asked, ...quiet];
   const admins = !!ctx.me && allows(ctx.me.role, "admin");
-  const licenses = await licenseNames(deps, servers.map((s) => s.server));
+  const licenses = await licenseNames(deps, servers.map((s) => s.server), tenant ? undefined : known);
   return servers.map((s) => {
     const entry = known.find((k) => k.tenant === s.server && k.server_id === (s.server_id ?? ""));
     return {
@@ -447,10 +450,9 @@ export const insightRoutes: Route[] = [
       if (!run) return error(404, "NOT_FOUND", "No such run");
       const trace = await admin.traces?.get(run.id).catch(() => null);
       const [view] = await runsView(deps, [run], me);
-      // The license's name, so the page says whose server it was.
-      const licenseId = run.server.startsWith("license:") ? run.server.slice("license:".length) : null;
-      const license = licenseId && deps.billing.enabled ? await deps.billing.licenses.get(licenseId).catch(() => null) : null;
-      return Response.json({ run: view, trace_id: trace?.trace.trace_id ?? null, server_name: license ? serverName(license) : null, span_count: trace?.spans.length ?? null });
+      // The license's name, so the page says whose server it was: its server's own name, not the MOTD.
+      const names = await licenseNames(deps, [run.server]);
+      return Response.json({ run: view, trace_id: trace?.trace.trace_id ?? null, server_name: names.get(run.server) ?? null, span_count: trace?.spans.length ?? null });
     },
   },
   {

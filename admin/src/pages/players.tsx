@@ -597,7 +597,7 @@ export const PlayerPage = () => {
                     <span className="text-xs text-muted-foreground">
                       {[
                         tenant?.name && t("player.as", { name: tenant.name }),
-                        s.license?.name,
+                        s.license?.name !== s.name && s.license?.name,
                         t("player.serverLine", { questions: number(s.questions), cost: usd(s.cost), seen: relative(s.last_seen) }),
                       ]
                         .filter(Boolean)
