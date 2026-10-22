@@ -321,7 +321,7 @@ const definitions = {
   },
   notes: {
     description:
-      "The asking player's notebook of places on this server. action add: writes text tied to where they stand, or to x, y, z; the plugin records the coordinates, which remember would lose. find (default): notes with id, text, x, y, z, dimension, and distance and direction in their dimension; query filters by words, so match by meaning yourself; near sorts by distance. delete: one by id.",
+      "The notebook of places an older Allay plugin (before 6.7) keeps on this server; new places go to memories. find (default) here when memories find has no such place; add only when memories is unavailable. action add: writes text tied to where they stand, or to x, y, z. find: notes with id, text, x, y, z, dimension, and distance and direction in their dimension; query filters by words, so match by meaning yourself; near sorts by distance. delete: one by id.",
     input: z.object({
       action: z.enum(["add", "find", "delete"]).optional(),
       text: z.string().min(1).max(200).optional().describe("add: what is there"),

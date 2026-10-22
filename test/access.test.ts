@@ -167,7 +167,7 @@ describe("tenants never meet", () => {
   });
 
   test("B's agent can't remember into or forget from A's memories", async () => {
-    const t = await twoServers([[toolCall("remember", { text: "B was here" }), finish("tool-calls")], [...text("ok"), finish()]]);
+    const t = await twoServers([[toolCall("memories", { action: "add", text: "B was here" }), finish("tool-calls")], [...text("ok"), finish()]]);
     const mine = await t.deps.memories.add(owner("player-1", t.tenantA), "A's own fact");
     if (mine === "full") throw new Error("unexpected");
     await readSse(await fetch(`${t.base}/api/v2/chat`, { method: "POST", headers: t.B, body: JSON.stringify({ user_id: "player-1", message: "remember me" }) }));

@@ -1,4 +1,14 @@
 import { Schema, model } from "mongoose";
+import type { Sealed } from "../../infrastructure/crypto/data";
+
+/** Where a memory is tied to, since 6.9: the notebook of places joined memories. */
+export interface Place {
+  x: number;
+  y: number;
+  z: number;
+  dimension: string;
+  world?: string;
+}
 
 /** A lasting fact Allay keeps about one player of one tenant, such as where their base is. */
 export interface MemoryDocument {
@@ -6,7 +16,10 @@ export interface MemoryDocument {
   /** `self` or `license:<id>`: whose server the player asked on. */
   tenant: string;
   user_id: string;
-  text: string;
+  /** `{ text, place? }`, sealed. */
+  sealed?: Sealed;
+  /** Memories from before 6.9 keep their text in the clear until they're saved again or go. */
+  text?: string;
   created_at: Date;
   /** When the player last asked: memories of a player who stops asking go after MEMORY_DAYS. */
   seen_at: Date;
@@ -19,7 +32,8 @@ const schema = new Schema<MemoryDocument>({
   id: { type: String, required: true },
   tenant: { type: String, required: true },
   user_id: { type: String, required: true },
-  text: { type: String, required: true, maxlength: 200 },
+  sealed: Schema.Types.Mixed,
+  text: { type: String, maxlength: 200 },
   created_at: { type: Date, default: Date.now },
   seen_at: { type: Date, default: Date.now },
 });

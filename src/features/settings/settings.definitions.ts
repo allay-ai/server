@@ -87,6 +87,8 @@ export const DEFINITIONS = {
   MAX_TASK_STEPS: { type: "int", group: "limits", default: 16, min: 1, max: 100, description: "Model calls per wake of an automation agent" },
   MAX_ACTIVE_RUNS: { type: "int", group: "limits", default: 200, min: 1, max: 10_000, description: "Streaming questions at once" },
   SSE_PING_MS: { type: "int", group: "limits", default: 15_000, min: 1_000, max: 120_000, description: "Ping interval that keeps proxies from closing the stream, in milliseconds" },
+  MEMORY_MAX: { type: "int", group: "limits", default: 200, min: 10, max: 1_000, description: "Memories a player may keep, places included" },
+  DEATHS_MAX: { type: "int", group: "limits", default: 100, min: 1, max: 1_000, description: "Deaths kept per player, newest first" },
   CALC_TIMEOUT_MS: { type: "int", group: "limits", default: 1_000, min: 100, max: 10_000, description: "How long exact_calculations gives one expression, in milliseconds" },
 
   CHAT_TTL_SECONDS: { type: "int", group: "sessions", default: 86_400, min: 60, max: 30 * 86_400, description: "How long a chat session lives after the last question, in seconds" },

@@ -4,7 +4,8 @@ import { logger } from "../../shared/logging/logger";
 import { API_ERRORS, ApiFailure, apierror } from "../../shared/types/errors";
 import { type Owner, USER_ID } from "../../shared/types/owner";
 import { z } from "zod";
-import { MAX_MEMORY_CHARS } from "../../infrastructure/memory/memory";
+import { MAX_MEMORY_CHARS, type Place } from "../../infrastructure/memory/memory";
+import { DIMENSIONS } from "../../agent/agent.types";
 import { identify } from "../auth/caller";
 import { erasePlayer, exportPlayer } from "./privacy";
 import { MAX_CONSENT_VERSION } from "../../infrastructure/privacy/consents";
@@ -13,8 +14,15 @@ type Params = { userId?: string; memoryId?: string };
 type Routed = Request & { params?: Params };
 
 const MEMORY_ID = /^[a-z0-9]{1,16}$/;
-// The same bounds the remember tool has.
-const MemoryBody = z.object({ text: z.string().trim().min(3).max(MAX_MEMORY_CHARS) });
+// The same bounds the memories tool has; a place since 6.9, from the plugin's note buttons and `/allay memory`.
+const PlaceBody = z.object({
+  x: z.number().int(),
+  y: z.number().int(),
+  z: z.number().int(),
+  dimension: z.enum(DIMENSIONS),
+  world: z.string().min(1).max(64).optional(),
+});
+const MemoryBody = z.object({ text: z.string().trim().min(3).max(MAX_MEMORY_CHARS), place: PlaceBody.optional() });
 const ConsentBody = z.object({ version: z.number().int().min(1).max(MAX_CONSENT_VERSION) });
 const PrivacyBody = z.object({ full: z.boolean() });
 
@@ -92,21 +100,23 @@ export const handleSession = (deps: AllayDeps) => async (req: Routed): Promise<R
   }
 };
 
-/** GET lists, POST adds, DELETE wipes /api/v2/users/{user_id}/memories: `/ask memory`, `/ask memory <text>`, and `/ask forget all`. */
+/** GET lists, POST adds, DELETE wipes /api/v2/users/{user_id}/memories: `/allay memory`, `/allay memory <text>`, note buttons, and `/allay forget all`. */
 export const handleMemories = (deps: AllayDeps) => async (req: Routed): Promise<Response> => {
   if (!["GET", "POST", "DELETE"].includes(req.method)) return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
   const owner = await ownerOf(deps, req);
   if (owner instanceof Response) return owner;
   let text: string | undefined;
+  let place: Place | undefined;
   if (req.method === "POST") {
     const body = MemoryBody.safeParse(await req.json().catch(() => undefined));
-    if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `text must be 3–${MAX_MEMORY_CHARS} characters`));
+    if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `text must be 3–${MAX_MEMORY_CHARS} characters, and a place x, y, z, dimension`));
     text = body.data.text;
+    place = body.data.place;
   }
   try {
     if (req.method === "GET") return noStore({ memories: await deps.memories.list(owner) });
     if (text !== undefined) {
-      const saved = await deps.memories.add(owner, text);
+      const saved = await deps.memories.add(owner, text, place);
       return saved === "full" ? jsonError(apierror(API_ERRORS.MEMORY_FULL)) : Response.json({ memory: saved });
     }
     return Response.json({ deleted: await deps.memories.clear(owner) });

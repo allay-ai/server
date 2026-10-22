@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { systemPrompt } from "../src/agent/prompts";
-import { MAX_MEMORIES, memoryMemories } from "../src/infrastructure/memory/memory";
+import { maxMemories, memoryMemories } from "../src/infrastructure/memory/memory";
 import { owner } from "./helpers";
 
 describe("memories", () => {
   test("are capped per player and trimmed to 200 characters", async () => {
     const store = memoryMemories();
-    for (let i = 0; i < MAX_MEMORIES; i++) expect(await store.add(owner("p1"), `fact ${i}`)).not.toBe("full");
+    for (let i = 0; i < maxMemories(); i++) expect(await store.add(owner("p1"), `fact ${i}`)).not.toBe("full");
     expect(await store.add(owner("p1"), "one too many")).toBe("full");
     // Another player has their own limit.
     const long = await store.add(owner("p2"), `${"x".repeat(250)}`);

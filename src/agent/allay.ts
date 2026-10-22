@@ -275,7 +275,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
           : { web: { search_web: searchWebTool(deps.models, { provider: context.provider, platform: context.platform, emit, spend, perplexity: deps.perplexity }) } }),
         math: { exact_calculations: exactCalculationsTool({ emit }) },
         ...(context.mode === "ask" && remembers(context.userId)
-          ? { memory: memoryTools(deps.memories, { owner: ownerOf(context), emit }) }
+          ? { memory: memoryTools(deps.memories, { owner: ownerOf(context), emit, position: context.player?.position }) }
           : {}),
       },
     };

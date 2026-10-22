@@ -10,7 +10,7 @@ import { handleLicense } from "../src/features/billing/license.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { finish, reasoning, readSse, scripted, testDeps, text, toolCall } from "./helpers";
 import { AUTH, owner, thread } from "./helpers";
-import { MAX_MEMORIES } from "../src/infrastructure/memory/memory";
+import { maxMemories } from "../src/infrastructure/memory/memory";
 import { type HistoryMessage, MAX_EXCHANGES, maxTokens } from "../src/infrastructure/history/history";
 
 /** Every request here comes from the tenant's own plugin; test/access.test.ts covers the ones that don't. */
@@ -249,9 +249,9 @@ describe("POST /api/v2/chat", () => {
     expect((await fetch(`${base}/api/v2/chat`)).status).toBe(405);
   });
 
-  test("remember saves a fact that the next question sees in its prompt", async () => {
+  test("memories add saves a fact that the next question sees in its prompt", async () => {
     const { model, prompts } = scripted([
-      [toolCall("remember", { text: "Base at 120 64 -300" }), finish("tool-calls")],
+      [toolCall("memories", { action: "add", text: "Base at 120 64 -300" }), finish("tool-calls")],
       [...text("Got it."), finish()],
       [...text("At 120 64 -300."), finish()],
     ]);
@@ -259,11 +259,31 @@ describe("POST /api/v2/chat", () => {
     const base = start(deps);
     const events = await readSse(await chat(base, { message: "my base is at 120 64 -300, remember it" }));
     expect(events.filter((e) => e.event === "tool_status").map((e) => [e.data.name, e.data.state])).toEqual([
-      ["remember", "started"], ["remember", "finished"],
+      ["memories", "started"], ["memories", "finished"],
     ]);
     await readSse(await chat(base, { message: "where is my base?" }));
     expect(JSON.stringify(prompts[2])).toContain("Base at 120 64 -300");
     expect((await deps.memories.list(owner("player-1"))).map((m) => m.text)).toEqual(["Base at 120 64 -300"]);
+  });
+
+  test("a place saved here keeps where the player stood, and find gives the way back", async () => {
+    const { model, prompts } = scripted([
+      [toolCall("memories", { action: "add", text: "a librarian with mending", here: true }), finish("tool-calls")],
+      [...text("Saved."), finish()],
+      [toolCall("memories", { action: "find", query: "mending", near: true }), finish("tool-calls")],
+      [...text("100 blocks east."), finish()],
+    ]);
+    const deps = testDeps(model);
+    const base = start(deps);
+    const at = (x: number, z: number) => ({ name: "Steve", position: { x, y: 70, z, dimension: "overworld", world: "world" } });
+    await readSse(await chat(base, { message: "remember this librarian", player: at(10, -20) }));
+    expect((await deps.memories.list(owner("player-1")))[0]).toMatchObject({ text: "a librarian with mending", place: { x: 10, y: 70, z: -20, dimension: "overworld", world: "world" } });
+    await readSse(await chat(base, { message: "where was the mending guy?", player: at(-90, -20) }));
+    // The prompt counts the place without spelling it out; find gives the way.
+    expect(JSON.stringify(prompts[2])).toContain("1 saved place");
+    const found = JSON.stringify(prompts[3]);
+    expect(found).toContain('"distance":100');
+    expect(found).toContain('"direction":"east"');
   });
 
   test("the session summary reaches the prompt, and askx requests land in the session", async () => {
@@ -448,7 +468,7 @@ describe("session and memory endpoints", () => {
     expect((await post({ text: "x" })).status).toBe(400);
     expect((await post({})).status).toBe(400);
     expect((await fetch(url, { method: "POST", body: "not json" })).status).toBe(400);
-    for (let i = 1; i < MAX_MEMORIES; i++) await deps.memories.add(owner("player-1"), `fact ${i}`);
+    for (let i = 1; i < maxMemories(); i++) await deps.memories.add(owner("player-1"), `fact ${i}`);
     const full = await post({ text: "one too many" });
     expect(full.status).toBe(409);
     expect(((await full.json()) as any).error.code).toBe("MEMORY_FULL");

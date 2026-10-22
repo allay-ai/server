@@ -19,6 +19,7 @@ export const chatRequestSchema = z.object({
   timezone: text(64),
   // dimension since 5.1: where the player stands when they ask. Unknown values are dropped, not refused, for future dimensions.
   // private since 6.5: the player turned on full privacy, so the admin panel doesn't learn their name.
+  // position since 6.9: where they stand, for distances to their places and deaths.
   player: z
     .object({
       name: z.string().min(1).max(32),
@@ -26,6 +27,11 @@ export const chatRequestSchema = z.object({
       op: z.boolean().optional(),
       dimension: z.enum(DIMENSIONS).optional().catch(undefined),
       private: z.boolean().optional(),
+      // Since 6.9; a bad one is dropped, not refused.
+      position: z
+        .object({ x: z.number().int(), y: z.number().int(), z: z.number().int(), dimension: z.enum(DIMENSIONS), world: z.string().min(1).max(64).optional() })
+        .optional()
+        .catch(undefined),
     })
     .optional(),
   // address and port since 6.6: where players join, for the admin panel. A bad value is dropped, not refused.

@@ -17,6 +17,16 @@ export interface PlayerInfo {
   dimension?: Dimension;
   /** Full privacy: the admin panel knows the player by pseudonym only, without their name, UUID, or face. */
   private?: boolean;
+  /** Since 6.9: where the player stands, for distances to places and deaths and for “here”. */
+  position?: Position;
+}
+
+export interface Position {
+  x: number;
+  y: number;
+  z: number;
+  dimension: Dimension;
+  world?: string;
 }
 
 export interface ServerInfo {
