@@ -61,7 +61,7 @@ export const DURATION_BUCKETS = [500, 1_000, 2_000, 3_000, 4_000, 5_000, 6_000, 
 
 export const bucketOf = (ms: number) => DURATION_BUCKETS.findIndex((bound) => ms <= bound);
 
-export const RUN_DAYS = 400;
+export const RUN_DAYS = 730;
 
 export interface PlayerSummary {
   user_id: string;

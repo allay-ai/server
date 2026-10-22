@@ -91,7 +91,7 @@ export const DEFINITIONS = {
   DEATHS_MAX: { type: "int", group: "limits", default: 100, min: 1, max: 1_000, description: "Deaths kept per player, newest first" },
   CALC_TIMEOUT_MS: { type: "int", group: "limits", default: 1_000, min: 100, max: 10_000, description: "How long exact_calculations gives one expression, in milliseconds" },
 
-  CHAT_TTL_SECONDS: { type: "int", group: "sessions", default: 86_400, min: 60, max: 30 * 86_400, description: "How long a chat session lives after the last question, in seconds" },
+  CHAT_TTL_SECONDS: { type: "int", group: "sessions", default: 30 * 86_400, min: 60, max: 30 * 86_400, description: "How long a chat session lives after the last question, in seconds" },
   PUBLIC_CHAT_TTL_SECONDS: { type: "int", group: "sessions", default: 7_200, min: 60, max: 30 * 86_400, description: "How long a server's thread of public questions lives after the last one, in seconds" },
   TASK_CHAT_TTL_SECONDS: { type: "int", group: "sessions", default: 7_200, min: 60, max: 30 * 86_400, description: "How long an automation agent's thread lives after its last wake, in seconds" },
   CHAT_FOLD_TOKENS: { type: "int", group: "sessions", default: 32_000, min: 2_000, max: 1_000_000, description: "A session folds into its summary past this many tokens" },
@@ -107,7 +107,7 @@ export const DEFINITIONS = {
     restart: true,
     description: "The share of runs traced, 0 turns tracing off; every run by default",
   },
-  TRACE_DAYS: { type: "int", group: "tracing", default: 7, min: 1, max: 365, restart: true, description: "How long traces stay, in days" },
+  TRACE_DAYS: { type: "int", group: "tracing", default: 30, min: 1, max: 365, restart: true, description: "How long traces stay, in days" },
 
   PLAN_WEEK_STARS: { type: "int", group: "billing", default: 150, min: 1, max: 10_000, env: planStars("week"), description: "Price of a week in Stars" },
   PLAN_WEEK_BUDGET: { type: "number", group: "billing", default: 0.75, min: 0, max: 1_000, description: "What a week's runs may cost, in US dollars" },

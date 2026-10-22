@@ -1,7 +1,7 @@
 import { Schema, model } from "mongoose";
 
 /** How long a server stays in the directory after its last question, like its runs. */
-export const SERVER_DAYS = 400;
+export const SERVER_DAYS = 730;
 
 /** What the panel knows about one Minecraft server behind a tenant: where it connects from and what it runs. */
 export interface ServerDocument {

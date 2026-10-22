@@ -17,7 +17,7 @@ export interface AuditStore {
 }
 
 /** Entries hold addresses, so they don't stay forever: a year covers any question about who changed what. */
-export const AUDIT_DAYS = 365;
+export const AUDIT_DAYS = 730;
 
 const schema = new Schema<AuditEntry>({
   at: { type: Date, required: true },

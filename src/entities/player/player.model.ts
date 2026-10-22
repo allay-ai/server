@@ -1,7 +1,7 @@
 import { Schema, model } from "mongoose";
 
 /** How long a player stays in the directory after their last question, like their runs. */
-export const PLAYER_DAYS = 400;
+export const PLAYER_DAYS = 730;
 
 /** Who a pseudonym is on one tenant's server, so the panel can name players and find them by name. */
 export interface PlayerDocument {
