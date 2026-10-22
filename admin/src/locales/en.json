@@ -448,7 +448,7 @@
   },
   "settings": {
     "title": "Settings",
-    "description": "Everything the backend reads besides where MongoDB and Redis live.",
+    "description": "Everything the backend reads besides where MongoDB lives.",
     "updated": "Last saved by {{who}}, {{when}}.",
     "environment": {
       "title": "From the environment",

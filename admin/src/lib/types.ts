@@ -39,7 +39,7 @@ export interface SettingsView {
   updated_at: string | null;
   updated_by: string | null;
   fields: SettingField[];
-  environment: { selfhosted: boolean; port: number; mongodb_database: string | null; redis: boolean; secrets_key: "env" | "file"; env_admin: boolean; version: string };
+  environment: { selfhosted: boolean; port: number; mongodb_database: string | null; secrets_key: "env" | "file"; env_admin: boolean; version: string };
 }
 
 export interface Point {

@@ -19,18 +19,20 @@ The backend of Allay, an AI helper for Minecraft players and a Telegram bot. A M
 | `src/features/auth/` | `identify`: who sent a request (a license, or `PLUGIN_TOKEN` self-hosted) and its tenant |
 | `src/agent/` | The agent runner, prompt assembly, the session summarizer, askx command validation |
 | `src/prompts/*.md` | The system prompts, bundled into the build; the only place to change them |
-| `src/infrastructure/` | The Redis session (v1 history key plus `chat_summary:*`, whole exchanges with tool calls since 5.5), memories in MongoDB, the OpenRouter provider, traces into MongoDB through Mastra's observability |
+| `src/infrastructure/` | Everything in MongoDB: sessions (`sessions`, whole exchanges with tool calls and the summary, and `session_outcomes`), memories, the OpenRouter provider, traces into MongoDB through Mastra's observability |
 | `src/features/billing/` | Who pays for a run (`gate.ts`): the server's own key (BYOK, with `byok.ts` checking the URL, the key, and the model), or a license with money left. Plans and budget windows (`plans.ts`), licenses (`billing.ts`), `/api/v2/license`, the per-server limits |
 | `src/features/telegram/` | The payment bot: the webhook at `/api/telegram/webhook` (or polling), `/start <claim code>`, Stars invoices, pre-checkout, payments, renewals, `/status`, `/refund`, texts in en, ru, es, pt, de |
 | `src/infrastructure/billing/` | Licenses, budget windows (grants), and payments in MongoDB, plus an in-memory store for tests |
 | `src/features/settings/` | Every setting with its type, bounds, and default (`settings.definitions.ts`) and the `settings` service the code reads: environment, then MongoDB, then the default |
 | `src/features/admin/` | The admin panel's API at `/api/admin/*` (a route table in `admin.routes.ts`, `insight.routes.ts`, `billing.routes.ts`), `POST /api/v2/admin/init`, and the built panel at `/admin` (`admin.pages.ts`) |
-| `src/infrastructure/admin/`, `runs/`, `settings/` | Admin accounts, Redis sessions, the audit log; the `runs` collection and its daily rollups; the stored settings and the vault that seals secrets |
+| `src/infrastructure/admin/`, `runs/`, `settings/` | Admin accounts, panel sessions (`admin_sessions`), the audit log; the `runs` collection and its daily rollups; the stored settings and the vault that seals secrets |
 | `admin/` | The panel: React, Vite, shadcn/ui, TanStack Router and Query, react-hook-form with zod, Recharts, react-i18next (`src/locales/en.json`) |
 | `src/infrastructure/database/migrations.ts`, `src/application/migrate.ts` | What runs on every start (tenants, pseudonyms, old sessions) and the `migrate` command: `status`, `retag --from self --to license:<id>`, `purge-untagged`, `players <name>=<uuid> …` |
 | `docs/protocol-v2.md` | The contract with the plugin. Change it additively, unless security needs a break (as 6.0 did); change the plugin (allay-ai/minecraft) to match |
 
 The tool bridge keeps pending calls in memory, so the backend runs as one instance.
+
+Sessions and panel sessions expire exactly by `expires_at`: every read asks for a time after now, a read that misses deletes an expired document, and a write onto an expired session starts it over. The TTL indexes only collect garbage, since MongoDB's monitor runs about once a minute. Since 6.8 there's no Redis: a backend that still has `REDIS_URL` or `REDIS_HOST` moves its sessions into MongoDB once at start (`moveRedisSessions`, marked in `migrations`).
 
 The build bundles `src/features/tools/calc.worker.ts` next to the entrypoint; `exact-calculations.tool.ts` finds it by a computed name so the bundler leaves the path alone. Keep both in `bun run build`.
 
@@ -39,7 +41,7 @@ The build bundles `src/features/tools/calc.worker.ts` next to the entrypoint; `e
 The owner settled these on 2026-10-20 for 6.0, before allay.chat serves the public; keep them for every change.
 
 - **Every route identifies its caller.** A plugin's license (hosted) or `PLUGIN_TOKEN` (self-hosted, at least 24 characters; without one the backend answers nobody), or a panel session with the right role. Open are only `GET /api/health`, `POST /api/v2/license`, Telegram's webhook (its own secret), and the panel's sign-in, setup, and recovery. A new route goes through `identify` or the admin router, and `test/access.test.ts`, which walks the route table, must stay green.
-- **Player data only by (tenant, user).** The tenant is `license:<id>` or `self`, from `identify`, never from the body. Memories, Redis keys (`threadOf`), outcomes, the public thread, runs (`server`), limits, and tool callbacks all carry it; a new store or key does too, with a test that another tenant can't reach it.
+- **Player data only by (tenant, user).** The tenant is `license:<id>` or `self`, from `identify`, never from the body. Memories, session keys (`threadOf`), outcomes, the public thread, runs (`server`), limits, and tool callbacks all carry it; a new store or key does too, with a test that another tenant can't reach it.
 - **No personal data or secrets in logs.** Log run ids and tenants, never a player's name, id, question, or answer, a key, a license, a token, or a code (the hosted setup code is the one exception). Errors from inside the backend reach clients as a code only.
 - **Runs know players by pseudonym** (`deps.pseudonyms`, an HMAC under a key derived from `SECRETS_KEY`), never by id or name. Since 6.4 the player directory (`deps.players`, the `players` collection) maps a pseudonym on a tenant to the name, UUID, and op status of the player's last question, and the panel shows those (the owner settled it on 2026-10-21). Logs and the audit log still carry pseudonyms only. A player with full privacy on (`player.private`, `PUT /api/v2/users/{id}/privacy`, since 6.5) stays out of the directory and shows as a pseudonym with Steve's head.
 - **Retention:** sessions per `CHAT_TTL_SECONDS`, memories until forgotten or 365 days after the last question, the player directory 400 days after the last question, consents until withdrawn or erased, bans (by pseudonym) until lifted, even past an erasure, runs 400 days, days' player lists 400 days, traces `TRACE_DAYS`, the audit log 365 days. Export and erasure (`/api/v2/users/{id}`, the panel's “Erase a player”) cover everything a new store keeps.
@@ -65,13 +67,13 @@ The owner settled these on 2026-10-14; change them only when the owner asks.
 The owner settled these on 2026-10-18 (task file `~/c/personal/minecraft/AGENT_ALLAY_ADMIN_TASK.txt`, section 9); change them only when the owner asks.
 
 - **No texts, ever.** The panel never shows what players asked, what Allay answered, tool arguments or results, or memories' text, in any role. It names players from the directory (since 6.4; pseudonyms only from 6.0 to 6.3) and shows their faces, which the backend fetches from mc-heads.net and caches, since the CSP allows only `'self'`. `runs` holds numbers only; `traces.ts` reads Mastra's spans through a field whitelist, so the rest never leaves MongoDB. Tests check both.
-- **Settings.** A new setting goes into `settings.definitions.ts` with the env name it would have had, and into the wiki's “Admin panel and settings” table; read it with `settings.get(...)` where it's used, so a save applies to the next run. Only what the backend needs to start (MongoDB, Redis, `SELFHOSTED`, `PORT`, `SECRETS_KEY`, `ADMIN_*`, `APP_VERSION`) reads `process.env` directly. Something read once at start gets `restart: true`.
+- **Settings.** A new setting goes into `settings.definitions.ts` with the env name it would have had, and into the wiki's “Admin panel and settings” table; read it with `settings.get(...)` where it's used, so a save applies to the next run. Only what the backend needs to start (MongoDB, `SELFHOSTED`, `PORT`, `SECRETS_KEY`, `ADMIN_*`, `APP_VERSION`) reads `process.env` directly. Something read once at start gets `restart: true`.
 - **The first admin.** Self-hosted: `/allay init` → `POST /api/v2/admin/init` with `PLUGIN_TOKEN`, a code for 30 minutes, never logged. Hosted: a code in the log at start, the one place a code is logged. `ADMIN_*` turns setup off. No “first visitor wins”.
 - **A forgotten password.** Self-hosted, once an account exists: `/allay init` hands out a recovery code instead (`mode: "recover"`), under the setup code's rules but kept apart from it (`AdminDeps.recovery`). `POST /api/admin/recover` sets a new password for an account in MongoDB, ends its sessions, audits `recover`, and signs in; never for the environment's admin, whose password lives in the environment. Hosted backends have no recovery from the game: an owner resets others on the Accounts page, and `ADMIN_*` is the last resort.
 - **Secrets** are sealed with AES-GCM (`SECRETS_KEY`, or `/data/secrets.key` on a volume); the API shows only the last four characters and the audit log masks them.
 - **Strings** go through i18n (`admin/src/locales/en.json`), English only for now; dates and numbers through Intl. A new key goes into `en.json` in the same change.
 - **The panel works under any prefix:** relative assets, a `<base>` the backend adds from `X-Forwarded-Prefix`, and an API path derived from it. On Moonlands it's `https://minecraft.mairwunnx.com/allay/admin`.
-- **Checking the panel:** `bunx tsc -b && bunx vite build` in `admin/`, then the image with Redis and MongoDB and a headless browser: setup by code, sign-in, a settings change that the next run uses, sign-out, at 360 px too with nothing scrolling sideways, and no console errors (the CSP allows only `'self'`).
+- **Checking the panel:** `bunx tsc -b && bunx vite build` in `admin/`, then the image with MongoDB and a headless browser: setup by code, sign-in, a settings change that the next run uses, sign-out, at 360 px too with nothing scrolling sideways, and no console errors (the CSP allows only `'self'`).
 
 ## Deploying
 
@@ -87,13 +89,13 @@ The owner's server, Moonlands, runs its own instance of this backend, built from
 ## Running and testing
 
 - `bun test` and `bun run typecheck` must pass; tests use a scripted model and never call the network.
-- Run locally from the Docker image (Bun 1.4.3); older Bun crashes on bson from Mongoose 9. Redis and MongoDB come from `docker-compose.dev.yaml` or throwaway containers.
+- Run locally from the Docker image (Bun 1.4.3); older Bun crashes on bson from Mongoose 9. MongoDB comes from `docker-compose.dev.yaml` or a throwaway container; `ALLAY_TEST_MONGODB=mongodb://…/allay_test` runs the session tests against it too, and drops that database afterwards.
 - For a real run, `OPENROUTER_API_KEY` lives in `~/.secrets/cloud.env`. Never print, log, or commit it.
 
 ## Checking a change
 
 1. `bun test` and `bun run typecheck`.
-2. `docker build -t allay-server:check .`, since the image is what ships. Start it with Redis and MongoDB from `docker-compose.dev.yaml` and `GET /api/health`: it answers with the version. A change to who may call what: `curl` every route without credentials (`401`), and with a second tenant's (nothing of the first's).
+2. `docker build -t allay-server:check .`, since the image is what ships. Start it with MongoDB from `docker-compose.dev.yaml` and `GET /api/health`: it answers with the version. A change to who may call what: `curl` every route without credentials (`401`), and with a second tenant's (nothing of the first's).
 3. A change to the agent or its tools: one real question through the plugin's protocol, with `OPENROUTER_API_KEY` from `~/.secrets/cloud.env`. After a release reaches Moonlands, the owner asks `/ask` once.
 
 ## Autopilot
@@ -106,7 +108,7 @@ Where the versions live, for `/update-deps` and `/update-minecraft` (both in `.c
 
 - Bun: the `FROM oven/bun:…-alpine` line of `Dockerfile` and `bun-version` in `.github/workflows/`, always the same. Never below 1.4.3: older Bun crashes on bson from Mongoose 9.
 - Packages: `package.json`, locked in `bun.lock`, which the image installs from with `--frozen-lockfile`. `bun outdated` lists what's behind. The panel has its own `admin/package.json` and `admin/bun.lock`; update both.
-- Redis and MongoDB: the images in `docker-compose.yaml` and `docker-compose.dev.yaml`. MongoDB stays on its major unless the owner asks; Moonlands pins its own in `~/c/personal/minecraft/compose.yaml`.
+- MongoDB: the image in `docker-compose.yaml` and `docker-compose.dev.yaml`. MongoDB stays on its major unless the owner asks; Moonlands pins its own in `~/c/personal/minecraft/compose.yaml`.
 - GitHub Actions in `.github/workflows/`.
 
 ## Code

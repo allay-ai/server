@@ -13,7 +13,7 @@ export const chatRequestSchema = z.object({
   message: z.string(),
   platform: z.literal("minecraft").default("minecraft"),
   visibility: z.enum(["private", "public"]).default("private"),
-  // Letters, digits, - and _ only: ids go into Redis keys, and no colon may let one id reach another's thread.
+  // Letters, digits, - and _ only: ids go into session keys, and no colon may let one id reach another's thread.
   user_id: z.string().regex(USER_ID, "1–64 letters, digits, - or _"),
   locale: text(16),
   timezone: text(64),

@@ -36,7 +36,7 @@ export const isPrivateAddress = (ip: string): boolean => {
 
 /**
  * On a backend with billing on, a server's base URL must be https and public: the backend calls it,
- * and it must not become a way into the backend's own network (Redis, MongoDB, the cloud's metadata).
+ * and it must not become a way into the backend's own network (MongoDB, the cloud's metadata).
  */
 export const checkUrl = async (baseURL: string, net: Net): Promise<ApiFailure | undefined> => {
   let url: URL;

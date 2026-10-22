@@ -272,7 +272,6 @@ const environment = (admin: AdminDeps) => ({
   selfhosted: admin.selfHosted,
   port: Number(process.env.PORT) || 3000,
   mongodb_database: process.env.MONGODB_DATABASE ?? null,
-  redis: !!(process.env.REDIS_URL || process.env.REDIS_HOST),
   secrets_key: process.env.SECRETS_KEY ? "env" : "file",
   env_admin: !!admin.envAdmin,
   version: VERSION,

@@ -23,10 +23,6 @@
       "label": "Allay Server API",
       "onAutoForward": "notify"
     },
-    "6379": {
-      "label": "Redis",
-      "onAutoForward": "notify"
-    },
     "27017": {
       "label": "MongoDB",
       "onAutoForward": "notify"
@@ -38,7 +34,6 @@
         "dbaeumer.vscode-eslint",
         "ms-azuretools.vscode-docker",
         "mongodb.mongodb-vscode",
-        "redis.redis-for-vscode",
         "editorconfig.editorconfig",
         "oven.bun-vscode"
       ],
@@ -57,7 +52,6 @@
   "postStartCommand": "bun --version",
   "runServices": [
     "allay-server-mongo",
-    "allay-server-redis",
     "allay-server"
   ],
   "shutdownAction": "stopCompose"

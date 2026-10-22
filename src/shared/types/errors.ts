@@ -16,7 +16,6 @@ export const API_ERRORS = {
   INVALID_FORMAT: { code: 'INVALID_FORMAT', message: 'Invalid response format', statusCode: 500 },
   TOO_MANY_COMMANDS: { code: 'TOO_MANY_COMMANDS', message: 'Too many commands (max 12)', statusCode: 400 },
   AI_REQUEST_FAILED: { code: 'AI_REQUEST_FAILED', message: 'AI request failed', statusCode: 503 },
-  REDIS_ERROR: { code: 'REDIS_ERROR', message: 'Redis operation failed', statusCode: 500 },
   NETWORK_ERROR: { code: 'NETWORK_ERROR', message: 'Network request failed', statusCode: 503 },
   EMPTY_QUESTION: { code: 'EMPTY_QUESTION', message: 'Question is empty', statusCode: 400 },
   QUESTION_TOO_LONG: { code: 'QUESTION_TOO_LONG', message: 'Question too long (max 1000 characters)', statusCode: 400 },

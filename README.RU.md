@@ -26,12 +26,11 @@
      allay:
        image: ghcr.io/allay-ai/server:6.0.0
        restart: unless-stopped
-       depends_on: [allay-mongo, allay-redis]
+       depends_on: [allay-mongo]
        ports: ["127.0.0.1:3000:3000"]
        environment:
          MONGODB_URI: mongodb://allay:change-me-mongo@allay-mongo:27017/?authSource=admin
          MONGODB_DATABASE: allay
-         REDIS_URL: redis://:change-me-redis@allay-redis:6379
          SELFHOSTED: "1"
          PLUGIN_TOKEN: change-me-to-24-random-characters
          SECRETS_KEY: change-me
@@ -43,10 +42,6 @@
          MONGO_INITDB_ROOT_USERNAME: allay
          MONGO_INITDB_ROOT_PASSWORD: change-me-mongo
        volumes: [mongo:/data/db]
-     allay-redis:
-       image: redis:8-alpine
-       restart: unless-stopped
-       command: ["redis-server", "--requirepass", "change-me-redis"]
    volumes:
      mongo:
    ```

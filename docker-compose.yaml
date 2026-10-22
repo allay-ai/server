@@ -11,8 +11,6 @@ services:
     depends_on:
       allay-server-mongo:
         condition: service_healthy
-      allay-server-redis:
-        condition: service_healthy
     env_file: .env
     environment:
       API_NAME: ${API_NAME}
@@ -41,10 +39,6 @@ services:
       PLUGIN_TOKEN: ${PLUGIN_TOKEN:-}
       # The reverse proxy in front, if any: only its X-Forwarded-For counts.
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
-      REDIS_DB: ${REDIS_DB}
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_PORT: ${REDIS_PORT}
       TZ: ${TZ}
     healthcheck:
       interval: 30s
@@ -97,42 +91,8 @@ services:
     restart: unless-stopped
     volumes:
       - allay-server-mongo-data:/data/db
-  allay-server-redis:
-    command: >
-      redis-server --port 6379
-      --loglevel warning
-      --save 20 1
-      --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
-    container_name: allay-server-redis
-    cpus: '0.5'
-    env_file: [ .env ]
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      TZ: ${TZ}
-    healthcheck:
-      interval: 10s
-      retries: 3
-      start_period: 10s
-      test: ["CMD", "sh", "-c", "redis-cli -a ${REDIS_PASSWORD} --no-auth-warning ping"]
-      timeout: 5s
-    image: redis:8.10-alpine
-    logging:
-      driver: local
-      options:
-        max-file: '3'
-        max-size: 10m
-    mem_limit: 256m
-    mem_reservation: 128m
-    networks: [ default ]
-    # No ports: only the backend reaches Redis, inside this network.
-    restart: unless-stopped
-    user: '0'
-    volumes:
-      - allay-server-redis-data:/data
 volumes:
   allay-server-data:
     driver: local
   allay-server-mongo-data:
-    driver: local
-  allay-server-redis-data:
     driver: local

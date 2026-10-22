@@ -7,5 +7,5 @@ export interface Owner {
   userId: string;
 }
 
-/** Player UUIDs, `console`, and Telegram ids: nothing that could reach into another Redis key or a query. */
+/** Player UUIDs, `console`, and Telegram ids: nothing that could reach into another session key or a query. */
 export const USER_ID = /^[A-Za-z0-9_-]{1,64}$/;

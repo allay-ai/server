@@ -1,5 +1,5 @@
 /**
- * Every setting the backend reads besides where MongoDB and Redis live. Each one keeps the name of the
+ * Every setting the backend reads besides where MongoDB lives. Each one keeps the name of the
  * environment variable it came from: a variable that is set wins and locks the field in the admin panel.
  * Descriptions match the wiki's “Admin panel and settings” table; the panel shows them next to each field.
  */

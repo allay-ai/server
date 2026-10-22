@@ -1,4 +1,4 @@
-import { redis, serve } from "bun";
+import { serve } from "bun";
 import { needsSetup } from "../features/admin/admin";
 import { handleAdmin } from "../features/admin/admin.controller";
 import { adminPages } from "../features/admin/admin.pages";
@@ -25,7 +25,6 @@ import { routes } from "./routes";
 
 logger.info("Allay Server is starting...");
 
-await redis.ping();
 await mongoConnect();
 const vault = productionVault();
 await settings.attach(mongoSettings, vault);
@@ -71,7 +70,6 @@ if (deps.admin && !deps.admin.selfHosted && (await needsSetup(deps.admin))) {
 const shutdown = (signal: string) => async () => {
   logger.info(`Graceful shutdown: received ${signal}, closing connections...`);
   server.stop();
-  redis.close();
   await mongoDisconnect();
   logger.info("All connections closed");
   process.exitCode = 0;
