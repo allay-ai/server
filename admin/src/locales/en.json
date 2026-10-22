@@ -282,6 +282,7 @@
     "firstQuestion": "First question",
     "noQuestions": "No questions yet",
     "motd": "MOTD",
+    "motdHint": "The message of the day players see under the server's name in their server list.",
     "id": "Server id",
     "players_one": "{{count}} player",
     "players_other": "{{count}} players",

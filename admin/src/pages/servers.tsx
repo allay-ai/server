@@ -186,12 +186,23 @@ export const ServerPage = () => {
                   can("admin") && [t("servers.columns.ip"), <ServerIp key="ip" server={server} />],
                   [t("servers.registered"), server.first_seen ? dateTime(server.first_seen) : t("servers.neverRegistered")],
                   [t("servers.firstQuestion"), server.first_asked ? dateTime(server.first_asked) : t("servers.noQuestions")],
-                  [t("servers.motd"), server.motd],
                   [t("servers.id"), server.server_id && <span className="font-mono text-xs">{server.server_id}</span>],
                 ]}
               />
             </CardContent>
           </Card>
+          {server.motd && (
+            <Card className="gap-3">
+              <CardHeader>
+                <CardTitle className="text-base">{t("servers.motd")}</CardTitle>
+                <CardDescription>{t("servers.motdHint")}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* The lines as the server list shows them, without the colors. */}
+                <p className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-sm break-words whitespace-pre-line">{server.motd}</p>
+              </CardContent>
+            </Card>
+          )}
           <Card className="gap-3">
             <CardHeader>
               <CardTitle className="text-base">{t("servers.players", { count: data.players.length })}</CardTitle>
