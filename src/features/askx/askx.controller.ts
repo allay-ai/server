@@ -1,5 +1,6 @@
 import { type AllayDeps, runAllay } from "../../agent/allay";
 import { identify } from "../auth/caller";
+import { mayKeep } from "../auth/consent";
 import { admit } from "../billing/gate";
 import { silent } from "../chat/chat.events";
 import { readJson } from "../../shared/lib/http";
@@ -39,6 +40,7 @@ export const handleAskX = (deps: AllayDeps) => async (req: Request): Promise<Res
   }
   const userId = body.user_id || "anonymous";
   if (await deps.bans.has(caller.tenant, deps.pseudonyms.of(caller.tenant, userId))) return error(apierror(API_ERRORS.PLAYER_BLOCKED));
+  if (!(await mayKeep(deps, caller.tenant, userId))) return error(apierror(API_ERRORS.CONSENT_REQUIRED));
   const admitted = await admit(deps.billing, req.headers, undefined, caller);
   if (!admitted.ok) return error(admitted.error.toApiError());
   const { admission } = admitted;

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { MAX_MEMORY_CHARS, type Place } from "../../infrastructure/memory/memory";
 import { DIMENSIONS } from "../../agent/agent.types";
 import { identify } from "../auth/caller";
+import { mayKeep } from "../auth/consent";
 import { erasePlayer, exportPlayer, withdrawPlayer } from "./privacy";
 import { AGE_BANDS, type Agreement, MAX_CONSENT_VERSION } from "../../infrastructure/privacy/consents";
 import { POLICY_REVISION } from "../../shared/policy";
@@ -159,6 +160,7 @@ export const handleMemories = (deps: AllayDeps) => async (req: Routed): Promise<
   try {
     if (req.method === "GET") return noStore({ memories: await deps.memories.list(owner) });
     if (text !== undefined) {
+      if (!(await mayKeep(deps, owner.tenant, owner.userId))) return jsonError(apierror(API_ERRORS.CONSENT_REQUIRED));
       const saved = await deps.memories.add(owner, text, place);
       return saved === "full" ? jsonError(apierror(API_ERRORS.MEMORY_FULL)) : Response.json({ memory: saved });
     }
@@ -212,6 +214,7 @@ export const handleDeaths = (deps: AllayDeps) => async (req: Routed): Promise<Re
   // A clock far ahead would keep one death on top forever.
   if (body.data.at > Date.now() + 86_400_000) return jsonError(apierror(API_ERRORS.BAD_REQUEST, "at: in the future"));
   try {
+    if (!(await mayKeep(deps, owner.tenant, owner.userId))) return jsonError(apierror(API_ERRORS.CONSENT_REQUIRED));
     await deps.deaths.add(owner, body.data);
     return Response.json({ saved: true });
   } catch (error) {
@@ -239,6 +242,7 @@ export const handleState = (deps: AllayDeps) => async (req: Routed): Promise<Res
     }
     const body = StateBody.safeParse(json);
     if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `${body.error.issues[0]?.path.join(".") || "state"}: ${body.error.issues[0]?.message}`));
+    if (!(await mayKeep(deps, owner.tenant, owner.userId))) return jsonError(apierror(API_ERRORS.CONSENT_REQUIRED));
     const stored = await deps.states.put(owner, body.data);
     return noStore({ state: stored.state, updated_at: stored.updated_at });
   } catch (error) {

@@ -4,6 +4,7 @@ import { jsonError, readJson } from "../../shared/lib/http";
 import { logger } from "../../shared/logging/logger";
 import { API_ERRORS, ApiFailure, apierror } from "../../shared/types/errors";
 import { identify } from "../auth/caller";
+import { mayKeep } from "../auth/consent";
 import { admit, payer } from "../billing/gate";
 import { settings } from "../settings/settings";
 import { trustOf } from "../settings/trust";
@@ -22,6 +23,8 @@ export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Ser
   if (!parsed.ok) return jsonError(parsed.error);
   // A blocked player is refused before anything is paid for or kept.
   if (await deps.bans.has(caller.tenant, deps.pseudonyms.of(caller.tenant, parsed.context.userId))) return jsonError(apierror(API_ERRORS.PLAYER_BLOCKED));
+  // So is a player who hasn't agreed, on a hosted backend: nothing runs, is traced, or is kept.
+  if (!(await mayKeep(deps, caller.tenant, parsed.context.userId))) return jsonError(apierror(API_ERRORS.CONSENT_REQUIRED));
   if (deps.bridge.active >= settings.get("MAX_ACTIVE_RUNS")) {
     return jsonError({ code: "QUEUE_ERROR", message: "Too many questions at once; try again in a minute", statusCode: 503 });
   }

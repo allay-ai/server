@@ -9,7 +9,7 @@ import { memoryMemories } from "../src/infrastructure/memory/memory";
 import { memoryDeaths } from "../src/infrastructure/playerdata/deaths";
 import { memoryStates } from "../src/infrastructure/playerdata/state";
 import { memoryExports } from "../src/infrastructure/playerdata/exports";
-import { memoryConsents } from "../src/infrastructure/privacy/consents";
+import { type ConsentStore, memoryConsents } from "../src/infrastructure/privacy/consents";
 import { memoryBans } from "../src/infrastructure/privacy/bans";
 import { memoryPlayers } from "../src/infrastructure/privacy/players";
 import { memoryServers } from "../src/infrastructure/servers/servers";
@@ -128,9 +128,29 @@ export const testBilling = (options: { enabled?: boolean; net?: Net; now?: () =>
   now: options.now ?? (() => new Date()),
 });
 
+/**
+ * Consents where every player agreed unless the test says otherwise: a hosted backend refuses anyone else, and most
+ * tests are about something other than the notice. A withdrawal or an erasure still counts.
+ */
+export const agreedConsents = (): ConsentStore => {
+  const real = memoryConsents();
+  const gone = new Set<string>();
+  const at = (owner: { tenant: string; userId: string }) => `${owner.tenant}\n${owner.userId}`;
+  return {
+    ...real,
+    async get(owner) {
+      return (await real.get(owner)) ?? ((await real.record(owner)) || gone.has(at(owner)) ? null : { version: 1, age_confirmed: true, accepted_at: new Date(0).toISOString() });
+    },
+    async erase(owner) {
+      gone.add(at(owner));
+      await real.erase(owner);
+    },
+  };
+};
+
 export const testDeps = (
   chat: LanguageModelV4,
-  options: { search?: LanguageModelV4; toolTimeoutMs?: number; billing?: Billing } = {},
+  options: { search?: LanguageModelV4; toolTimeoutMs?: number; billing?: Billing; consents?: ConsentStore } = {},
 ): AllayDeps & { searchCalls: number; lastProvider?: unknown; lastModel?: string } => {
   const deps = {
     searchCalls: 0,
@@ -141,7 +161,7 @@ export const testDeps = (
     deaths: memoryDeaths(),
     states: memoryStates(),
     exports: memoryExports(),
-    consents: memoryConsents(),
+    consents: options.consents ?? (options.billing?.enabled ? agreedConsents() : memoryConsents()),
     bans: memoryBans(),
     bridge: new ToolBridge(options.toolTimeoutMs ?? 2_000),
     billing: options.billing ?? testBilling(),

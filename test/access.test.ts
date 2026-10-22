@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { serve, type Server } from "bun";
+import { memoryConsents } from "../src/infrastructure/privacy/consents";
 import { routes } from "../src/application/routes";
 import { ADMIN_ROUTES, handleAdmin } from "../src/features/admin/admin.controller";
 import { handleAdminInit } from "../src/features/admin/init.controller";
@@ -145,6 +146,7 @@ describe("tenants never meet", () => {
 
   test("B can't read, give, or withdraw A's consent, even with A's player id", async () => {
     const t = await twoServers();
+    t.deps.consents = memoryConsents();
     const url = `${t.base}/api/v2/users/player-1/consent`;
     const given = (await (await fetch(url, { method: "PUT", headers: t.A, body: JSON.stringify({ version: 1 }) })).json()) as any;
     expect(given.consent.version).toBe(1);
@@ -239,5 +241,35 @@ describe("a player's data on request", () => {
     // The run still counts, as nobody's; the other player is untouched.
     expect(deps.runs.all.map((r) => r.user_id)).toEqual(["erased", deps.pseudonyms.of("self", "player-2")]);
     expect((await deps.history.load(thread("player-2"))).messages).not.toEqual([]);
+  });
+});
+
+describe("the agreement on a hosted backend", () => {
+  test("a player who hasn't agreed gets CONSENT_REQUIRED and nothing is kept; after agreeing they're answered", async () => {
+    const { model } = scripted([[...text("ok"), finish()]]);
+    const deps = testDeps(model, { billing: testBilling({ enabled: true }), consents: memoryConsents() });
+    const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
+    Object.assign(deps, { runs });
+    const made = await createLicense(deps.billing);
+    await deps.billing.licenses.grant(made.license_id, { budget: 10, starts: new Date(Date.now() - 1000), ends: new Date(Date.now() + 86_400_000) });
+    const { base } = start(deps);
+    const headers = { Authorization: `Bearer ${made.license}`, "Content-Type": "application/json" };
+    const ask = () => fetch(`${base}/api/v2/chat`, { method: "POST", headers, body: JSON.stringify({ user_id: "player-1", message: "hi" }) });
+    const refused = await ask();
+    expect(refused.status).toBe(403);
+    expect(((await refused.json()) as any).error.code).toBe("CONSENT_REQUIRED");
+    const users = `${base}/api/v2/users/player-1`;
+    expect((await fetch(`${users}/memories`, { method: "POST", headers, body: JSON.stringify({ text: "a base by the lake" }) })).status).toBe(403);
+    expect((await fetch(`${users}/state`, { method: "PUT", headers, body: JSON.stringify({ timezone: "Europe/Madrid" }) })).status).toBe(403);
+    const tenant = `license:${made.license_id}`;
+    expect(await deps.memories.list({ tenant, userId: "player-1" })).toEqual([]);
+    expect(runs.all).toEqual([]);
+    // The server's console isn't a player.
+    expect((await fetch(`${base}/api/v2/chat`, { method: "POST", headers, body: JSON.stringify({ user_id: "console", message: "hi" }) })).status).toBe(200);
+
+    await fetch(`${users}/consent`, { method: "PUT", headers, body: JSON.stringify({ version: 2, age_confirmed: true }) });
+    const answered = await ask();
+    expect(answered.status).toBe(200);
+    await answered.text();
   });
 });
