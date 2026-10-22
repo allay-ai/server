@@ -575,6 +575,27 @@ describe("billing in the panel", () => {
     expect((await call("PATCH", "/api/admin/licenses/lic2", { name: "Mine" })).status).toBe(403);
   });
 
+  test("a license goes by its server's own name, never the MOTD, and a hand-given budget of Infinity's size is Infinity", async () => {
+    const ctx = await withOwner({ selfHosted: false, billing: true });
+    Object.assign(ctx.deps, { runs: (await import("../src/infrastructure/runs/runs")).memoryRuns() });
+    const { call, deps } = ctx;
+    const now = deps.billing.now();
+    await deps.billing.licenses.create({ id: "old1", secret_hash: "x", name: "☾ Moonlands ☾ Hard survival", created_at: now, renews: false });
+    // Infinity as 6.8 and older granted it: a hand-given $1000, with no plan on the license.
+    await call("POST", "/api/admin/licenses/old1/grant", { usd: 1000, days: 366 });
+    const before = (await call("GET", "/api/admin/licenses/old1")).body.license;
+    expect(before).toMatchObject({ name: "☾ Moonlands ☾ Hard survival", own_name: "☾ Moonlands ☾ Hard survival", plan: "infinity", daily_spend: null });
+    await deps.servers!.register({ tenant: "license:old1", server_id: "srv-1", ip: "10.0.0.2", name: "Moonlands", motd: "☾ Moonlands ☾\nHard survival" }, now);
+    const page = (await call("GET", "/api/admin/licenses/old1")).body;
+    expect(page.license).toMatchObject({ name: "Moonlands", own_name: "☾ Moonlands ☾ Hard survival", server: { name: "Moonlands", address: null } });
+    expect(page.license.server.motd).toBeUndefined();
+    expect((await call("GET", "/api/admin/licenses")).body.licenses[0].name).toBe("Moonlands");
+    const [server] = (await call("GET", "/api/admin/servers")).body.servers;
+    expect(server.license).toEqual({ id: "old1", name: "Moonlands" });
+    // The server's own page keeps the MOTD, lines and all.
+    expect((await call("GET", "/api/admin/servers/license:old1/srv-1")).body.server.motd).toBe("☾ Moonlands ☾\nHard survival");
+  });
+
   test("revenue sums payments by week", async () => {
     const ctx = await withOwner({ selfHosted: false, billing: true });
     await paid(ctx);

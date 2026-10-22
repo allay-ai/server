@@ -36,6 +36,11 @@ const licenseView = async (billing: Billing, license: LicenseRecord, grants?: Gr
   const open = windows.filter((g) => g.starts <= now && now < g.ends);
   // A license that never paid may still run on a budget an admin gave; the newest such grant stands in for a payment.
   const granted = windows.filter((g) => !g.payment).sort((a, b) => b.starts.getTime() - a.starts.getTime())[0];
+  // Infinity granted before the plan was recorded (6.8 and older) is still Infinity: a hand-given budget of its size.
+  const infinity = open.some((g) => !g.payment && g.budget >= infinityBudget());
+  // What the open windows have spent a day on average since the oldest began, at least a day, for the panel's estimate.
+  const since = Math.min(...open.map((g) => g.starts.getTime()));
+  const spent = open.reduce((sum, g) => sum + g.spent, 0);
   return {
     id: license.id,
     name: licenseName(license, known),
@@ -43,13 +48,14 @@ const licenseView = async (billing: Billing, license: LicenseRecord, grants?: Gr
     own_name: license.name ?? null,
     server: headOf(license, known),
     created_at: iso(license.created_at),
-    plan: license.plan ?? null,
+    plan: license.plan ?? (infinity ? "infinity" : null),
     status: license.revoked_at ? "revoked" : license.blocked_at ? "blocked" : quota.active ? "active" : license.last_payment_at ? "expired" : "unpaid",
     paid_until: iso(quota.paidUntil),
     renews: license.renews && quota.active,
     budget: usd(open.reduce((sum, g) => sum + g.budget, 0)),
     spent: usd(open.reduce((sum, g) => sum + g.spent, 0)),
     used_percent: quota.usedPercent,
+    daily_spend: spent > 0 ? usd(spent / Math.max(1, (now.getTime() - since) / DAY)) : null,
     resets_at: iso(quota.resetsAt),
     telegram_user_id: payers ? (license.telegram_user_id ?? null) : null,
     language: license.language ?? null,

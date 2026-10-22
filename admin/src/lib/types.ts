@@ -278,6 +278,8 @@ export interface License {
   budget: number;
   spent: number;
   used_percent: number;
+  /** Dollars the open budget windows spent a day on average; null before anything was spent. */
+  daily_spend: number | null;
   resets_at: string | null;
   telegram_user_id: number | null;
   language: string | null;

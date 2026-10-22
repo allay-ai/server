@@ -466,6 +466,21 @@ const ActionGroup = ({ icon: Icon, title, text, children, danger }: { icon: type
   </div>
 );
 
+/** Whole days from now to a date, none once it's past. */
+const daysUntil = (at: string) => Math.max(0, Math.ceil((new Date(at).getTime() - Date.now()) / 86_400_000));
+
+/**
+ * How long what's left of the budget lasts at the pace the open windows spent it so far, on average a day since the
+ * oldest began. Nothing before anything was spent, since a pace of zero says nothing.
+ */
+const LastsFor = ({ license }: { license: License }) => {
+  const { t } = useTranslation();
+  const left = license.budget - license.spent;
+  if (!license.daily_spend || left <= 0) return null;
+  const days = Math.floor(left / license.daily_spend);
+  return <span title={t("licenses.lastsForHint")}>{t("licenses.lastsFor", { count: days, days: number(days), pace: usd(license.daily_spend) })}</span>;
+};
+
 /** A server behind the license as a card that opens its page: the name, where players join, what it runs. */
 const ServerCard = ({ server }: { server: ServerSummary }) => {
   const { t } = useTranslation();
@@ -540,7 +555,11 @@ export const LicensePage = () => {
         <div className="flex flex-col gap-6">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatTile label={t("licenses.plan")} value={plan(license)} hint={license.renews ? t("licenses.renews") : undefined} />
-            <StatTile label={t("licenses.paidUntil")} value={license.paid_until ? date(license.paid_until) : t("licenses.notPaid")} />
+            <StatTile
+              label={t("licenses.paidUntil")}
+              value={license.paid_until ? date(license.paid_until) : t("licenses.notPaid")}
+              hint={license.paid_until ? t("licenses.daysLeft", { days: number(daysUntil(license.paid_until)) }) : undefined}
+            />
             <StatTile
               label={t("licenses.budgetNow")}
               value={license.budget ? usd(license.budget - license.spent) : t("licenses.noBudget")}
@@ -553,7 +572,7 @@ export const LicensePage = () => {
                 ) : undefined
               }
             />
-            <StatTile label={t("licenses.resets")} value={license.resets_at ? date(license.resets_at) : t("licenses.withPeriod")} />
+            <StatTile label={t("licenses.resets")} value={license.resets_at ? date(license.resets_at) : t("licenses.withPeriod")} hint={<LastsFor license={license} />} />
           </div>
           <Card className="gap-4">
             <CardHeader className="flex flex-row items-start justify-between gap-3">
