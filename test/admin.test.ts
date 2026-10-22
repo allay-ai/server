@@ -497,7 +497,8 @@ describe("billing in the panel", () => {
     await deps.billing.licenses.create({ id: "inf1", secret_hash: "x", name: "Moonlands", created_at: deps.billing.now(), renews: false });
     const granted = await call("POST", "/api/admin/licenses/inf1/grant", { plan: "infinity" });
     expect(granted.body.grant.budget).toBe(1000);
-    expect(new Date(granted.body.grant.ends).getTime() - deps.billing.now().getTime()).toBe(366 * 86_400_000);
+    // The clock moves between the grant and this line, so a second's slack.
+    expect(Math.abs(new Date(granted.body.grant.ends).getTime() - deps.billing.now().getTime() - 366 * 86_400_000)).toBeLessThan(1_000);
     expect((await deps.billing.licenses.get("inf1"))!.plan).toBe("infinity");
     expect(ctx.audit.entries.find((e) => e.action === "license.grant")!.changes![0]).toEqual({ field: "plan", old: "", new: "infinity" });
     await call("POST", "/api/admin/accounts", { username: "helper", password: PASSWORD, role: "admin" });
