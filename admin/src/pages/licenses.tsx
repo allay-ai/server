@@ -453,8 +453,22 @@ interface LicenseDetail {
 }
 
 /** One kind of action on a license: a title, a line on what it does, and its buttons. */
-const ActionGroup = ({ icon: Icon, title, text, children, danger }: { icon: typeof Coins; title: string; text: string; children: ReactNode; danger?: boolean }) => (
-  <div className={cn("flex flex-col gap-3 rounded-lg border p-4", danger && "border-destructive/30 bg-destructive/5")}>
+const ActionGroup = ({
+  icon: Icon,
+  title,
+  text,
+  children,
+  danger,
+  className,
+}: {
+  icon: typeof Coins;
+  title: string;
+  text: ReactNode;
+  children: ReactNode;
+  danger?: boolean;
+  className?: string;
+}) => (
+  <div className={cn("flex flex-col gap-3 rounded-lg border p-4", danger && "border-destructive/30 bg-destructive/5", className)}>
     <div className="flex items-start gap-2.5">
       <Icon className={cn("mt-0.5 size-4 shrink-0", danger ? "text-destructive" : "text-muted-foreground")} aria-hidden />
       <div className="flex flex-col gap-0.5">
@@ -638,7 +652,18 @@ export const LicensePage = () => {
                     )}
                   </ActionGroup>
                 )}
-                <ActionGroup icon={Trash2} title={t("licenses.deleteGroup")} text={t("licenses.deleteGroupText")} danger>
+                <ActionGroup
+                  icon={Trash2}
+                  title={t("licenses.deleteGroup")}
+                  text={
+                    <span className="flex flex-col gap-1.5">
+                      <span>{t("licenses.deleteGroupText")}</span>
+                      <span>{t("licenses.deleteGroupKeeps")}</span>
+                    </span>
+                  }
+                  danger
+                  className="md:col-span-2"
+                >
                   <DeleteDialog id={id} stars={unrefunded.reduce((sum, p) => sum + p.stars, 0)} payments={unrefunded.length} onRefund={refund} />
                 </ActionGroup>
               </div>
