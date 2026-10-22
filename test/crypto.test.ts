@@ -29,3 +29,34 @@ describe("player data at rest", () => {
     expect(openJson<{ a: number }>(sealJson({ a: 1 }))).toEqual({ a: 1 });
   });
 });
+
+describe("traces at rest", () => {
+  const span = {
+    id: "s1",
+    traceId: "t1",
+    type: "model_step",
+    name: "step 0",
+    input: [{ role: "user", content: "where is my diamond stash" }],
+    output: { text: "behind the waterfall" },
+    attributes: { model: "m", usage: { inputTokens: 12 }, stepIndex: 0, instructions: "You remember: base at 120 64 -300" },
+    metadata: { runId: "r1", environment: "production", note: "Steve's secret" },
+    errorInfo: { id: "E1", category: "USER", message: "player Steve said xyzzy" },
+    requestContext: { player: "Steve" },
+    inputPreview: "where is my diamond",
+  };
+
+  test("prompts, answers, and the rest go sealed; numbers and names stay readable", async () => {
+    const { sealSpan, openSpan } = await import("../src/infrastructure/observability/sealing");
+    const sealed = sealSpan(span as Record<string, unknown>) as Record<string, any>;
+    const raw = JSON.stringify(sealed);
+    for (const word of ["diamond", "waterfall", "120 64 -300", "Steve", "xyzzy"]) expect(raw).not.toContain(word);
+    expect(sealed.attributes).toMatchObject({ model: "m", usage: { inputTokens: 12 }, stepIndex: 0 });
+    expect(sealed.metadata).toEqual({ runId: "r1", environment: "production" });
+    expect(sealed.errorInfo).toEqual({ id: "E1", category: "USER" });
+    const opened = openSpan({ ...sealed, error: sealed.errorInfo });
+    expect(opened.input).toEqual(span.input);
+    expect(opened.output).toEqual(span.output);
+    expect(opened.attributes.instructions).toBe(span.attributes.instructions);
+    expect(opened.error).toMatchObject({ id: "E1", message: "player Steve said xyzzy" });
+  });
+});

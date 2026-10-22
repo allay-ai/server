@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { openSpan } from "./sealing";
 
 /**
  * A step of a trace as the panel sees it: its shape and numbers only. Mastra's spans also hold the prompt,
@@ -31,15 +32,33 @@ export interface TraceSummary {
   ok: boolean;
 }
 
+/** One step of a run opened for an owner looking into a problem: what was asked, answered, and called, decrypted. */
+export interface RevealedSpan {
+  span_id: string;
+  parent_id: string | null;
+  type: string;
+  label: string;
+  started_at: string;
+  input: unknown;
+  output: unknown;
+  attributes: Record<string, unknown>;
+  error: unknown;
+}
+
 export interface TraceStore {
   list(options: { before?: Date; limit: number }): Promise<TraceSummary[]>;
   /** The trace of a run, by its trace id or the run's id. */
   get(id: string): Promise<{ trace: TraceSummary; spans: SpanView[] } | null>;
   /** Erasure: deletes the whole traces of these runs, prompts and answers with them. Returns how many spans went. */
   forget(runIds: string[]): Promise<number>;
+  /** The run's whole trace, opened; only for an owner, and each call is audited by its caller. Null without one. */
+  reveal(runId: string): Promise<RevealedSpan[] | null>;
 }
 
 interface RawSpan {
+  input?: unknown;
+  output?: unknown;
+  metadata?: Record<string, unknown> | null;
   traceId: string;
   spanId: string;
   parentSpanId?: string | null;
@@ -125,6 +144,21 @@ const summaryOf = (root: RawSpan, spans?: RawSpan[]): TraceSummary => ({
   ok: spans ? spans.every((s) => !s.error) : !root.error,
 });
 
+const revealed = (span: RawSpan): RevealedSpan => {
+  const opened = openSpan(span as unknown as Record<string, unknown>);
+  return {
+    span_id: span.spanId,
+    parent_id: span.parentSpanId ?? null,
+    type: span.spanType,
+    label: spanView(span).label,
+    started_at: iso(span.startedAt)!,
+    input: opened.input,
+    output: opened.output,
+    attributes: opened.attributes,
+    error: opened.error,
+  };
+};
+
 export const mongoTraces: TraceStore = {
   async list({ before, limit }) {
     const collection = mongoose.connection.db!.collection<RawSpan>(SPANS);
@@ -153,6 +187,13 @@ export const mongoTraces: TraceStore = {
     }
     return deleted;
   },
+  async reveal(runId) {
+    const collection = mongoose.connection.db!.collection<RawSpan>(SPANS);
+    const root = await collection.findOne({ runId, parentSpanId: null }, { projection: { traceId: 1 } });
+    if (!root) return null;
+    const spans = await collection.find({ traceId: root.traceId }, { projection: { _id: 0 } }).sort({ startedAt: 1 }).limit(500).toArray();
+    return spans.map(revealed);
+  },
 };
 
 /** For tests: spans as Mastra would store them, read through the same filter. */
@@ -177,5 +218,10 @@ export const memoryTraces = (spans: RawSpan[] = []): TraceStore & { spans: RawSp
     const before = spans.length;
     spans.splice(0, spans.length, ...spans.filter((s) => !traceIds.has(s.traceId)));
     return before - spans.length;
+  },
+  async reveal(runId) {
+    const root = spans.find((s) => s.runId === runId && !s.parentSpanId);
+    if (!root) return null;
+    return spans.filter((s) => s.traceId === root.traceId).sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime()).map(revealed);
   },
 });

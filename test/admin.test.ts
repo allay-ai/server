@@ -717,6 +717,32 @@ describe("players in the panel", () => {
     expect(ctx.audit.entries.find((e) => e.action === "player.erase")!.target).toBe(`self ${pseudonym}`);
   });
 
+  test("an owner opens one run's trace, and the audit log says so; an admin can't", async () => {
+    const ctx = await withOwner();
+    const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
+    const { memoryTraces } = await import("../src/infrastructure/observability/traces");
+    const { sealSpan } = await import("../src/infrastructure/observability/sealing");
+    const run = "11111111-2222-3333-4444-555555555555";
+    const stored = sealSpan({ input: [{ role: "user", content: "where is my stash?" }], output: { text: "under the oak" }, attributes: { model: "m" }, metadata: { runId: run } });
+    Object.assign(ctx.deps, { runs });
+    Object.assign(ctx.admin, {
+      traces: memoryTraces([{ traceId: "t1", spanId: "s1", parentSpanId: null, spanType: "agent_run", runId: run, startedAt: new Date(), ...stored, error: null } as never]),
+    });
+    await runs.add({
+      id: run, at: new Date(), kind: "ask", payer: "self", server: "self", user_id: ctx.deps.pseudonyms.of("uuid-steve"), model: "m",
+      input_tokens: 1, output_tokens: 1, reasoning_tokens: 0, cost: 0.001, steps: 1, tools: [], searches: 0, duration_ms: 10, result: "ok",
+    });
+    const shown = await ctx.call("POST", `/api/admin/runs/${run}/reveal`);
+    expect(shown.body.spans[0]).toMatchObject({ input: [{ role: "user", content: "where is my stash?" }], output: { text: "under the oak" } });
+    expect(ctx.audit.entries.find((e) => e.action === "run.reveal")!.target).toBe(`self ${ctx.deps.pseudonyms.of("uuid-steve")} ${run}`);
+    // The plain trace view still shows no word of it.
+    expect(JSON.stringify((await ctx.call("GET", `/api/admin/traces/${run}`)).body)).not.toContain("stash");
+    await ctx.call("POST", "/api/admin/accounts", { username: "helper", password: PASSWORD, role: "admin" });
+    await ctx.call("POST", "/api/admin/logout");
+    await ctx.call("POST", "/api/admin/login", { username: "helper", password: PASSWORD });
+    expect((await ctx.call("POST", `/api/admin/runs/${run}/reveal`)).status).toBe(403);
+  });
+
   test("a viewer can't erase players or see who paid", async () => {
     const ctx = await withOwner({ selfHosted: false, billing: true });
     const { call, deps } = ctx;

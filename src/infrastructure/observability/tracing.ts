@@ -4,18 +4,20 @@ import { MongoDBStore } from "@mastra/mongodb";
 import { MastraStorageExporter, Observability } from "@mastra/observability";
 import { settings } from "../../features/settings/settings";
 import { logger } from "../../shared/logging/logger";
+import { sealSpan } from "./sealing";
 
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
 /**
  * Traces of runs in MongoDB, next to the backend's own data: each model step with its prompt, output,
- * and tokens, and each tool call with its arguments and result. Mastra Studio reads them.
+ * and tokens, and each tool call with its arguments and result, all of it sealed with the players' data key
+ * (sealing.ts). An owner opens one run in the panel to look into a problem; every look is in the audit log.
  * The agent is built per run, so each run registers with this instance.
  */
 export const tracing = (uri: string, dbName: string): Mastra | undefined => {
-  // About 150 KB a run: every run on a self-hosted backend, a tenth on the hosted one, where thousands pass a day.
+  // About 150 KB a run.
   const sample = settings.get("TRACE_SAMPLE");
-  // Long enough to look into a complaint, short enough that players' questions don't pile up.
+  // Long enough to look into a complaint and see a month's patterns, short enough that questions don't pile up.
   const days = settings.get("TRACE_DAYS");
   if (!(sample > 0)) return undefined;
   const storage = new MongoDBStore({ id: "allay", uri, dbName, retention: { observability: { spans: { maxAge: `${days}d` } } } });
@@ -27,7 +29,8 @@ export const tracing = (uri: string, dbName: string): Mastra | undefined => {
         allay: {
           serviceName: "allay-server",
           sampling: sample >= 1 ? { type: SamplingStrategyType.ALWAYS } : { type: SamplingStrategyType.RATIO, probability: sample },
-          exporters: [new MastraStorageExporter()],
+          // Sealed before they're written: a dump or a backup of the database reads no prompt and no answer.
+          exporters: [new MastraStorageExporter({ customSpanFormatter: (span) => sealSpan(span as unknown as Record<string, unknown>) as unknown as typeof span })],
           // Mastra's own processors and the raw provider calls repeat each step's whole prompt: two thirds of the bytes, nothing new.
           excludeSpanTypes: [SpanType.PROCESSOR_RUN, SpanType.MODEL_INFERENCE, SpanType.MODEL_CHUNK],
           // The system prompt is in the code; a step's own messages and results fit.

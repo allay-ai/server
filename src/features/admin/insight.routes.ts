@@ -37,6 +37,7 @@ const erasedReply = async ({ admin, me, ip }: Context, tenant: string, pseudonym
     target: `${tenant} ${pseudonym}`,
     changes: [
       { field: "memories", old: String(erased.memories), new: "0" },
+      { field: "deaths", old: String(erased.deaths), new: "0" },
       { field: "runs", old: String(erased.runs), new: "erased" },
     ],
     ip,
@@ -371,6 +372,20 @@ export const insightRoutes: Route[] = [
       const licenseId = run.server.startsWith("license:") ? run.server.slice("license:".length) : null;
       const license = licenseId && deps.billing.enabled ? await deps.billing.licenses.get(licenseId).catch(() => null) : null;
       return Response.json({ run: view, trace_id: trace?.trace.trace_id ?? null, server_name: license ? serverName(license) : null, span_count: trace?.spans.length ?? null });
+    },
+  },
+  {
+    // Owners only, one run at a time, and every look is in the audit log: for a problem a player or a server reported.
+    method: "POST",
+    path: "/runs/:id/reveal",
+    access: "owner",
+    async handle({ deps, admin, params, me, ip }) {
+      const run = await deps.runs?.get(params.id);
+      if (!run) return error(404, "NOT_FOUND", "No such run");
+      const spans = await admin.traces?.reveal(run.id).catch(() => null);
+      if (!spans) return error(404, "NO_TRACE", `This run has no trace: traces live ${admin.settings.get("TRACE_DAYS")} days`);
+      await record(admin, { actor: me!.username, action: "run.reveal", target: `${run.server} ${run.user_id} ${run.id}`, ip });
+      return Response.json({ run_id: run.id, spans }, { headers: { "Cache-Control": "no-store" } });
     },
   },
   {
