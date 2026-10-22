@@ -2,6 +2,22 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.9.0
+
+For Allay 6.7, which keeps nothing about players on the server's disk anymore; Allay 6.6 and older keep working as before. Start it with the same `SECRETS_KEY` (or `/data` volume) as before: it now seals players' data with a key derived from it, and a new key would open none of it.
+
+- 🔐 **Players' data is sealed at rest.** Sessions and their summaries, automations' outcomes, memories, deaths, players' state, and the words in traces (prompts, answers, tool data, error texts) go into MongoDB encrypted with AES-256-GCM, under a key derived with HMAC-SHA256 from `SECRETS_KEY`. A dump or a backup alone reads none of it. Data from before 6.9 still reads, and goes as it expires.
+- 📍 **Memories hold places.** A memory may carry coordinates and a dimension, what the plugin's notebook kept before. One `memories` tool saves facts and places (`here`, or coordinates), finds them by meaning or by distance with the way there from `player.position`, and deletes them; it replaces `remember` and `forget`. Up to `MEMORY_MAX` (200) per player; the prompt lists the 30 newest facts and counts the places. `POST /memories` takes a `place` for the plugin's note buttons.
+- 💀 **Deaths live on the backend.** `POST /api/v2/users/{id}/deaths` keeps each death, the newest `DEATHS_MAX` (100), and a retry of the same one is a no-op. `get_locations` pages them itself, in the player's time zone and with the way there; a 6.6 plugin's own history still works.
+- 🎒 **The player's state too.** `GET` and `PUT /api/v2/users/{id}/state` keep the plugin's time zone, settings, and goals for each player, up to 32 KB.
+- 🔗 **A player's copy by link.** `POST /api/v2/users/{id}/export` gives a link good for 24 hours; `GET /api/v2/exports/{token}` downloads the JSON without credentials, since the 32-byte token is the key. Only its SHA-256 is kept, and an erasure ends it.
+- ✍️ **Consent follows the policy.** A consent keeps the SHA-256 of the notice the player saw with the policy's revision, the revision (`POLICY_REVISION`, also in `/api/health`), and `age_confirmed`, which the plugin asks players in the USA. `GET /consent` returns the current revision, so the plugin asks again when anything changed. A consent goes with the player, 730 days after their last question.
+- 🕵️ **An owner opens one run, on the record.** The panel's trace view still shows only shapes and numbers. `POST /api/admin/runs/{id}/reveal` (owners only) opens one run's trace to look into a reported problem and writes `run.reveal` to the audit log; `bun run dist/application/reveal.js <run id>` does the same in the container.
+- 🗓️ **Longer retention.** Sessions (`CHAT_TTL_SECONDS`) and traces (`TRACE_DAYS`) 30 days; runs, the player directory, servers, and the audit log 730 days; memories, deaths, and state 365 days after the player's last question. Every question refreshes them. Indexes catch up at start.
+- ♾️ **Infinity.** A plan an owner grants on a license's page, never sold: `PLAN_INFINITY_BUDGET` ($1000) for 366 days. With `SUPPORT_CONTACT` set, the bot's plans end with “Need more? Contact us”.
+- 🧠 **New defaults.** `~anthropic/claude-haiku-latest` is the default and recommended model, `OPENROUTER_REASONING_EFFORT` is `medium` (`unset` sends none), and `MAX_AGENT_STEPS` and `MAX_TASK_STEPS` are 26 and 32. The stock compose files no longer pin `TRACE_DAYS` and `MAX_AGENT_STEPS`. A setting saved in the panel keeps its value.
+- 🧹 **No more migrations at start.** The steps for data from before 6.0 are gone, and with them the `migrations` collection; `migrate retag` also moves deaths and state.
+
 ## 6.8.1
 
 - 🧹 **The move out of Redis is gone.** 6.8.0 moved every session it found; from 6.8.1 the backend never looks for Redis. Coming from 6.7 or older, start 6.8.0 once with Redis first, or players' conversations simply start over and admins sign in again.
