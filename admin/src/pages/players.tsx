@@ -6,7 +6,7 @@ import { ColumnChart, RankBars } from "@/components/charts";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { toast } from "sonner";
-import { Confirm, Definition, Empty, ErrorBox, Loading, PageHeader, Pager, PlayerHead, PlayerLink, RunsTable, StatTile, TableFrame, rowLink, serverParams } from "@/components/common";
+import { Confirm, Definition, Empty, ErrorBox, Loading, PageHeader, Pager, PlayerHead, PlayerLink, RunsTable, StatTile, TableFrame, cardGrid, rowLink, serverParams } from "@/components/common";
 import { FormField } from "@/components/form-field";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -583,7 +583,7 @@ export const PlayerPage = () => {
               <CardTitle className="text-base">{t("player.servers")}</CardTitle>
               <CardDescription>{t("player.privacy")}</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2">
+            <CardContent className={cardGrid(player.seen_on.length)}>
               {player.seen_on.length === 0 && <span className="text-sm text-muted-foreground">{t("player.noServers")}</span>}
               {player.seen_on.map((s) => {
                 const tenant = player.servers.find((entry) => entry.server === s.server);

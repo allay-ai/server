@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { z } from "zod";
-import { BudgetCell, Confirm, Definition, Empty, ErrorBox, Loading, Meter, PageHeader, Pager, StatTile, TableFrame, rowLink, serverParams } from "@/components/common";
+import { BudgetCell, Confirm, Definition, Empty, ErrorBox, Loading, Meter, PageHeader, Pager, StatTile, TableFrame, cardGrid, rowLink, serverParams } from "@/components/common";
 import { FormField } from "@/components/form-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -674,7 +674,7 @@ export const LicensePage = () => {
             {data.servers.length === 0 ? (
               <Empty>{t("licenses.noServers")}</Empty>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className={cardGrid(data.servers.length)}>
                 {data.servers.map((s) => (
                   <ServerCard key={`${s.server}/${s.server_id ?? ""}`} server={s} />
                 ))}

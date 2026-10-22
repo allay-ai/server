@@ -346,6 +346,12 @@ export const BudgetCell = ({ spent, budget, className }: { spent: number; budget
   </span>
 );
 
+/**
+ * A grid of cards that fills its row: one card takes the whole width, two or three share it, and more wrap three to a
+ * row. Phones stack them.
+ */
+export const cardGrid = (count: number) => cn("grid gap-3", count === 2 && "sm:grid-cols-2", count >= 3 && "sm:grid-cols-2 lg:grid-cols-3");
+
 /** A server's page address: its tenant and its id, `-` for runs from before servers had ids. */
 export const serverParams = (server: { server: string; server_id?: string | null }) => ({ tenant: server.server, id: server.server_id || "-" });
 
