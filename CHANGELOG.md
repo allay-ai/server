@@ -4,10 +4,13 @@ The “Release” workflow takes the notes for a version from its section here, 
 
 ## 6.8.0
 
-For Allay 6.6, which keeps players' deaths; older plugins answer about the last death only, as before.
+For Allay 6.6, which keeps players' deaths; older plugins answer about the last death only, as before. **Upgrading from 6.7:** start it once with Redis still configured, then remove Redis (see below).
 
 - 💀 **Allay remembers every death.** `get_locations` takes `deaths_page` and reads the player's death history from the plugin, ten a page, newest first: when (in the player's time zone), where, what killed them, and what dropped. “When did I die?” and “what killed me last time?” get real dates and causes, and Allay turns the pages itself for older deaths.
 - 🧭 **Where the spawn is.** The tool's description now says that `world_spawn` is where new players and players without a bed appear, within `respawn_radius` blocks.
+- 🗄️ **No more Redis.** Chat sessions, automations' outcomes, and admin panel sessions live in MongoDB (`sessions`, `session_outcomes`, `admin_sessions`), so a backend needs MongoDB alone. Each expires exactly on time: reads never see an expired one and delete it on the spot, a new question after expiry starts a clean session, and MongoDB's TTL indexes only sweep up the rest. Panel sessions keep only the digest of the cookie, as before.
+- 🚚 **Moving is automatic.** Keep `REDIS_URL` (or `REDIS_HOST`) and Redis for one start: the backend copies the sessions with a tenant, pending outcomes, and panel sessions into MongoDB with the time they had left, logs how many, and never touches Redis again. Then remove Redis from your `compose.yaml`. Skip that start, and players' conversations simply start over and admins sign in again.
+- 🧹 A fold that was still summarizing when a player ran `/ask new` no longer writes the old summary into the new session; the in-memory store also keeps exchanges added during a fold, as the real one always did. The unused `bullmq`, `amqplib`, and `ioredis` packages are gone.
 
 ## 6.7.0
 
