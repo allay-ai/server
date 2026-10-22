@@ -149,6 +149,25 @@ describe("merged tools", () => {
     expect(await run(gameTools(["get_locations"], "run", bridge).get_locations, {})).toEqual({ last_death: null });
   });
 
+  test("get_locations passes the deaths page on", async () => {
+    const { bridge, calls } = fakeBridge({
+      get_locations: { ok: true, result: { last_death: { x: 1, y: 2, z: 3 } } },
+      get_death_info: { ok: true, result: { place: { x: 1, y: 2, z: 3 }, history: { page: 2, pages: 3, total: 25, deaths: [] } } },
+    });
+    expect(await run(gameTools(["get_locations"], "run", bridge).get_locations, { deaths_page: 2 })).toEqual({
+      last_death: { x: 1, y: 2, z: 3, history: { page: 2, pages: 3, total: 25, deaths: [] } },
+    });
+    expect(calls).toContainEqual({ name: "get_death_info", args: { page: 2 } });
+  });
+
+  test("get_locations says when a deaths page is past the end", async () => {
+    const { bridge } = fakeBridge({
+      get_locations: { ok: true, result: { last_death: { x: 1, y: 2, z: 3 } } },
+      get_death_info: { ok: false, error: "there is 1 page of deaths; ask for 1–1" },
+    });
+    expect(await run(gameTools(["get_locations"], "run", bridge).get_locations, { deaths_page: 4 })).toEqual({ error: "there is 1 page of deaths; ask for 1–1" });
+  });
+
   test("inventory picks the plugin tool by about", async () => {
     const { bridge, calls } = fakeBridge({ get_inventory: { ok: true, result: {} }, get_item_durability: { ok: true, result: {} } });
     const tools = gameTools(["inventory"], "run", bridge);
