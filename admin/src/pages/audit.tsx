@@ -56,7 +56,7 @@ const Target = ({ entry }: { entry: AuditEntry }) => {
 const Change = ({ change }: { change: NonNullable<AuditEntry["changes"]>[number] }) => {
   const { t } = useTranslation();
   return (
-    <li className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md bg-muted/40 px-2 py-1 text-xs">
+    <li className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
       <span className="font-mono font-medium">{change.field}</span>
       {change.old ? <span className="text-destructive/80 line-through break-all">{change.old}</span> : <span className="text-muted-foreground">{t("audit.nothing")}</span>}
       <span aria-hidden className="text-muted-foreground">
@@ -133,11 +133,12 @@ export const AuditPage = () => {
                 const Icon = ICONS[areaOf(entry.action)] ?? LogIn;
                 return (
                   <div key={`${entry.at}-${i}`} className="flex gap-3 py-3">
-                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary" aria-hidden>
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary" aria-hidden>
                       <Icon className="size-4" />
                     </span>
-                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                      <div className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
+                    {/* The first line sits on the icon's middle; the changes under it start at the same edge. */}
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <div className="flex min-h-8 flex-wrap content-center items-baseline gap-x-1.5 text-sm">
                         <span className="font-semibold">{entry.actor}</span>
                         <span>{t(`audit.actions.${entry.action}`, { defaultValue: entry.action })}</span>
                         <Target entry={entry} />
