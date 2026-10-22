@@ -202,6 +202,9 @@ const ServerSelect = ({ id, value, onChange, servers }: { id: string; value: str
   </Select>
 );
 
+/** Where a found player asked: their servers' own names, else the license's name, else the tenant in words. */
+const serversOf = (t: TFunction, player: FoundPlayer) => (player.servers?.length ? player.servers.join(", ") : (player.server_name ?? tenantLabel(t, player.server)));
+
 /**
  * A combobox over the players the backend knows on one server: type the start of a name, pick the right face. What's
  * typed and not picked goes as it is, so a UUID or a pseudonym still works.
@@ -316,7 +319,7 @@ export const PlayerPicker = ({
                 <span className="truncate font-mono text-xs text-muted-foreground">{player.uuid}</span>
               </span>
               <span className="ml-auto flex shrink-0 flex-col items-end text-xs text-muted-foreground">
-                {!server && <span className="max-w-32 truncate">{player.server_name ?? tenantLabel(t, player.server)}</span>}
+                {!server && <span className="max-w-48 truncate">{serversOf(t, player)}</span>}
                 <span>{relative(player.last_seen)}</span>
               </span>
             </li>
@@ -359,8 +362,8 @@ const EraseCard = () => {
         <CardTitle className="text-base">{t("players.erase.title")}</CardTitle>
         <CardDescription>{t("players.erase.description")}</CardDescription>
       </CardHeader>
-      <CardContent className={cn("grid gap-4 sm:items-end", !picked && text.trim() && servers.length > 1 ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto]" : "sm:grid-cols-[minmax(0,1fr)_auto]")}>
-        <FormField id="erase-player" label={t("players.erase.player")} hint={picked ? t("players.erase.on", { server: picked.server_name ?? tenantLabel(t, picked.server) }) : undefined}>
+      <CardContent className={cn("grid gap-4 sm:items-start", !picked && text.trim() && servers.length > 1 ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto]" : "sm:grid-cols-[minmax(0,1fr)_auto]")}>
+        <FormField id="erase-player" label={t("players.erase.player")} hint={picked ? t("players.erase.on", { server: serversOf(t, picked) }) : undefined}>
           <PlayerPicker id="erase-player" text={text} picked={picked} onText={setText} onPick={setPicked} placeholder={t("players.erase.placeholder")} />
         </FormField>
         {!picked && text.trim() && servers.length > 1 && (
@@ -368,15 +371,20 @@ const EraseCard = () => {
             <ServerSelect id="erase-server" value={server} onChange={setChosen} servers={servers} />
           </FormField>
         )}
-        <Confirm
-          label={t("players.erase.action")}
-          title={picked ? t("players.erase.confirmNamed", { name: picked.name }) : t("players.erase.confirmTitle")}
-          text={t("players.erase.confirmText")}
-          action={t("players.erase.action")}
-          destructive
-          disabled={!server || !text.trim()}
-          onConfirm={() => erase.mutateAsync()}
-        />
+        {/* The label's height above the button, so it lines up with the fields whether or not a hint shows under them. */}
+        <div className="flex flex-col gap-1.5">
+          <span className="hidden h-3.5 sm:block" aria-hidden />
+          <Confirm
+            label={t("players.erase.action")}
+            title={picked ? t("players.erase.confirmNamed", { name: picked.name }) : t("players.erase.confirmTitle")}
+            text={t("players.erase.confirmText")}
+            action={t("players.erase.action")}
+            destructive
+            size="default"
+            disabled={!server || !text.trim()}
+            onConfirm={() => erase.mutateAsync()}
+          />
+        </div>
       </CardContent>
     </Card>
   );

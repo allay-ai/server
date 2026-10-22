@@ -244,9 +244,26 @@ export const insightRoutes: Route[] = [
       const text = url.searchParams.get("q")?.trim().slice(0, 32) ?? "";
       if ((server && !TENANT.test(server)) || (text && !NAME_SEARCH.test(text) && !USER_ID.test(text) && !PSEUDONYM.test(text))) return Response.json({ players: [] });
       const found = (await deps.players?.search(text, { tenant: server, limit: 10 })) ?? [];
-      const names = await licenseNames(deps, found.map((p) => p.tenant));
+      const known = found.length ? ((await deps.servers?.list()) ?? []) : [];
+      const names = await licenseNames(deps, found.map((p) => p.tenant), known);
+      // The names of the servers each player asked on, as their owners named them; the license's name for the rest.
+      const servers = await Promise.all(
+        found.map(async (p) => {
+          const asked = (await deps.runs?.servers({ server: p.tenant, user_id: p.pseudonym, limit: 20 })) ?? [];
+          const named = asked.map((s) => known.find((k) => k.tenant === p.tenant && k.server_id === (s.server_id ?? ""))?.name).filter((n): n is string => !!n);
+          return [...new Set(named)];
+        }),
+      );
       return Response.json({
-        players: found.map((p) => ({ user_id: p.pseudonym, name: p.name, uuid: p.user_id, server: p.tenant, server_name: names.get(p.tenant) ?? null, last_seen: p.last_seen.toISOString() })),
+        players: found.map((p, i) => ({
+          user_id: p.pseudonym,
+          name: p.name,
+          uuid: p.user_id,
+          server: p.tenant,
+          server_name: names.get(p.tenant) ?? null,
+          servers: servers[i],
+          last_seen: p.last_seen.toISOString(),
+        })),
       });
     },
   },

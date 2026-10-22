@@ -182,6 +182,8 @@ export interface FoundPlayer {
   server: string;
   /** The license's name for a license's player. */
   server_name: string | null;
+  /** The names of the servers the player asked on, as their owners named them. */
+  servers?: string[];
   last_seen: string;
 }
 
