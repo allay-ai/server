@@ -34,6 +34,8 @@ const licenseView = async (billing: Billing, license: LicenseRecord, grants?: Gr
   const windows = grants ?? (await billing.licenses.grants(license.id));
   const quota = quotaOf(windows, now);
   const open = windows.filter((g) => g.starts <= now && now < g.ends);
+  // A license that never paid may still run on a budget an admin gave; the newest such grant stands in for a payment.
+  const granted = windows.filter((g) => !g.payment).sort((a, b) => b.starts.getTime() - a.starts.getTime())[0];
   return {
     id: license.id,
     name: serverName(license),
@@ -50,6 +52,7 @@ const licenseView = async (billing: Billing, license: LicenseRecord, grants?: Gr
     telegram_user_id: payers ? (license.telegram_user_id ?? null) : null,
     language: license.language ?? null,
     last_payment_at: iso(license.last_payment_at),
+    granted_at: iso(granted?.starts),
     stopped_at: iso(license.stopped_at),
     blocked_at: iso(license.blocked_at),
     revoked_at: iso(license.revoked_at),
@@ -135,6 +138,10 @@ const revoked = () => error(409, "REVOKED", "This license is revoked");
 const grantSchema = z.union([z.object({ plan: z.literal("infinity") }), z.object({ usd: z.number().positive().max(1_000), days: z.number().int().min(1).max(366) })]);
 const extendSchema = z.object({ days: z.number().int().min(1).max(366) });
 const deleteSchema = z.object({ force: z.boolean().optional() });
+// The license's own name for the panel, and the language the bot writes in: Telegram's code, like ru or pt-br.
+const editSchema = z
+  .object({ name: z.string().trim().min(1).max(64).optional(), language: z.string().trim().regex(/^[a-z]{2,3}(-[a-z0-9]{2,8})?$/i).nullable().optional() })
+  .refine((v) => v.name !== undefined || v.language !== undefined);
 
 export const billingRoutes: Route[] = [
   {
@@ -183,6 +190,35 @@ export const billingRoutes: Route[] = [
         payments: payments.map((p) => paymentView(p, seesPayers(ctx))),
         servers: await serversView(ctx, servers, `license:${license.id}`),
       });
+    }),
+  },
+  {
+    method: "PATCH",
+    path: "/licenses/:id",
+    access: "owner",
+    handle: hosted(async (ctx) => {
+      const license = await licenseOr404(ctx);
+      if (!license) return error(404, "NOT_FOUND", "No such license");
+      const input = editSchema.safeParse(await body(ctx.req));
+      if (!input.success) return error(400, "BAD_REQUEST", "Give a name (1–64 characters) or a language code like ru, or null to clear it");
+      const patch: Partial<LicenseRecord> = {};
+      const changes: Array<{ field: string; old: string; new: string }> = [];
+      if (input.data.name !== undefined && input.data.name !== license.name) {
+        patch.name = input.data.name;
+        changes.push({ field: "name", old: license.name ?? "", new: input.data.name });
+      }
+      if (input.data.language !== undefined) {
+        const language = input.data.language?.toLowerCase() ?? undefined;
+        if (language !== license.language) {
+          patch.language = language;
+          changes.push({ field: "language", old: license.language ?? "", new: language ?? "" });
+        }
+      }
+      if (changes.length) {
+        await ctx.deps.billing.licenses.update(license.id, patch);
+        await record(ctx.admin, { actor: ctx.me!.username, action: "license.edit", target: license.id, changes, ip: ctx.ip });
+      }
+      return Response.json({ license: await licenseView(ctx.deps.billing, (await ctx.deps.billing.licenses.get(license.id))!, undefined, seesPayers(ctx)) });
     }),
   },
   {

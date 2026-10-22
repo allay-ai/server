@@ -507,6 +507,28 @@ describe("billing in the panel", () => {
     expect((await call("POST", "/api/admin/licenses/inf1/grant", { usd: 5, days: 7 })).status).toBe(200);
   });
 
+  test("an owner renames a license and sets its language; a grant stands in for a payment; admins can't edit", async () => {
+    const ctx = await withOwner({ selfHosted: false, billing: true });
+    const { call, deps, audit } = ctx;
+    await deps.billing.licenses.create({ id: "lic2", secret_hash: "x", name: "☾ Moonlands ☾ Hard survival", created_at: deps.billing.now(), renews: false });
+    await call("POST", "/api/admin/licenses/lic2/grant", { plan: "infinity" });
+    const edited = await call("PATCH", "/api/admin/licenses/lic2", { name: "Moonlands", language: "RU" });
+    expect(edited.body.license).toMatchObject({ name: "Moonlands", language: "ru", plan: "infinity", last_payment_at: null });
+    expect(edited.body.license.granted_at).toBeString();
+    expect(audit.entries.find((e) => e.action === "license.edit")!.changes).toEqual([
+      { field: "name", old: "☾ Moonlands ☾ Hard survival", new: "Moonlands" },
+      { field: "language", old: "", new: "ru" },
+    ]);
+    expect((await call("PATCH", "/api/admin/licenses/lic2", { language: "not a code" })).status).toBe(400);
+    expect((await call("PATCH", "/api/admin/licenses/lic2", { language: null })).body.license.language).toBeNull();
+    expect((await call("GET", "/api/admin/audit?area=license")).body.entries.every((e: { action: string }) => e.action.startsWith("license."))).toBeTrue();
+    expect((await call("GET", "/api/admin/audit?actor=nobody")).body.entries).toEqual([]);
+    await call("POST", "/api/admin/accounts", { username: "helper", password: PASSWORD, role: "admin" });
+    await call("POST", "/api/admin/logout");
+    await call("POST", "/api/admin/login", { username: "helper", password: PASSWORD });
+    expect((await call("PATCH", "/api/admin/licenses/lic2", { name: "Mine" })).status).toBe(403);
+  });
+
   test("revenue sums payments by week", async () => {
     const ctx = await withOwner({ selfHosted: false, billing: true });
     await paid(ctx);
