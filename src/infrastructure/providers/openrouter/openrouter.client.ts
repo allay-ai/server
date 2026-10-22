@@ -49,12 +49,15 @@ const headers = (platform: string) => {
 export const cachingOf = (modelId: string): { cache_control?: { type: "ephemeral" } } =>
   /(^|[~/])anthropic\//.test(modelId) ? { cache_control: { type: "ephemeral" } } : {};
 
+/** Which providers OpenRouter may route to: by default only those that don't store or train on requests. */
+const routing = () => ({ provider: { data_collection: openrouterEnv().dataCollection } });
+
 /** OpenRouter's own client for OpenRouter, a plain OpenAI-compatible one for any other API. */
 const byokModel = (provider: ByokProvider, platform: string, search: boolean): LanguageModelV4 => {
   const modelId = (search ? provider.searchModel : provider.model) || openrouterEnv().model;
   if (isOpenRouter(provider.baseURL)) {
     const client = createOpenRouter({ apiKey: provider.apiKey, baseURL: provider.baseURL, headers: headers(platform), ...(provider.fetch ? { fetch: provider.fetch } : {}) });
-    return client.chat(modelId, { usage: { include: true }, ...(search ? {} : cachingOf(modelId)) });
+    return client.chat(modelId, { usage: { include: true }, ...routing(), ...(search ? {} : cachingOf(modelId)) });
   }
   // Other APIs reject OpenRouter's extra fields, so they get the standard request only.
   return createOpenAICompatible({ name: "byok", baseURL: provider.baseURL, apiKey: provider.apiKey, includeUsage: true, ...(provider.fetch ? { fetch: provider.fetch } : {}) })(modelId);
@@ -69,11 +72,13 @@ export const openrouterModels: ModelFactory = ({ provider, platform, search, mod
   if (search) {
     return client.chat(env.searchModel, {
       usage: { include: true },
+      ...routing(),
       extraBody: { web_search_options: { search_context_size: env.searchContext } },
     });
   }
   return client.chat(model || env.model, {
     usage: { include: true },
+    ...routing(),
     ...cachingOf(model || env.model),
     ...(env.reasoningEffort ? { reasoning: { effort: env.reasoningEffort } } : {}),
   });

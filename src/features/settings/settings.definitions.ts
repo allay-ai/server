@@ -82,6 +82,13 @@ export const DEFINITIONS = {
     default: "medium",
     description: "How hard a model that reasons thinks before it answers. unset sends nothing: OpenRouter then leaves it to the model, and Claude models don't reason at all",
   },
+  OPENROUTER_DATA_COLLECTION: {
+    type: "enum",
+    group: "model",
+    options: ["deny", "allow"],
+    default: "deny",
+    description: "deny routes requests only to providers that don't store or train on them (OpenRouter's data_collection); allow lets OpenRouter pick any",
+  },
   API_NAME: { type: "string", group: "model", default: "allay", max: 64, description: "The name OpenRouter shows for this backend's requests" },
 
   PERPLEXITY_API_KEY: { type: "secret", group: "search", description: "Perplexity's Search API for web search on the backend's own key; without it SEARCH_MODEL searches" },

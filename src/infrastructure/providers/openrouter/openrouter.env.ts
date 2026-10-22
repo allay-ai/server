@@ -19,6 +19,7 @@ export const openrouterEnv = () => {
     searchContext: settings.get("OPENROUTER_API_CTX"),
     // "unset" sends no reasoning at all, as an empty value did before 6.9.
     reasoningEffort: (settings.get("OPENROUTER_REASONING_EFFORT") === "unset" ? undefined : settings.get("OPENROUTER_REASONING_EFFORT")) as "low" | "medium" | "high" | undefined,
+    dataCollection: settings.get("OPENROUTER_DATA_COLLECTION") as "deny" | "allow",
     apiUrl: settings.get("API_URL"),
     apiName: settings.get("API_NAME"),
   };
