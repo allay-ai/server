@@ -1,4 +1,6 @@
+import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { SECRETS_KEY_FILE, last4 } from "../../infrastructure/settings/secrets";
 import { ROLES } from "../../infrastructure/admin/accounts";
 import { isOpenRouter } from "../../infrastructure/providers/openrouter/openrouter.client";
 import { logger } from "../../shared/logging/logger";
@@ -268,11 +270,22 @@ export const accountRoutes: Route[] = [
 ];
 
 /** What stays in the environment, shown read-only so an operator knows where each thing comes from. */
+/** The key's last four characters, like a stored secret's, so two backends can be told apart; never more of it. */
+const keyHint = () => {
+  try {
+    const key = process.env.SECRETS_KEY ?? readFileSync(process.env.SECRETS_KEY_FILE || SECRETS_KEY_FILE, "utf8").trim();
+    return last4(key) || null;
+  } catch {
+    return null;
+  }
+};
+
 const environment = (admin: AdminDeps) => ({
   selfhosted: admin.selfHosted,
   port: Number(process.env.PORT) || 3000,
   mongodb_database: process.env.MONGODB_DATABASE ?? null,
   secrets_key: process.env.SECRETS_KEY ? "env" : "file",
+  secrets_key_last4: keyHint(),
   env_admin: !!admin.envAdmin,
   version: VERSION,
 });
