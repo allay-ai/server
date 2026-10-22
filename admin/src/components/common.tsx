@@ -1,6 +1,6 @@
-import { Link } from "@tanstack/react-router";
-import { AlertTriangle, CheckCircle2, CircleSlash, XCircle } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { AlertTriangle, CheckCircle2, CircleSlash, KeyRound, Server, XCircle } from "lucide-react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -239,8 +239,9 @@ export const ResultBadge = ({ result, code }: { result: Run["result"]; code?: st
 /** Tables scroll sideways inside their card on a phone, never the page. */
 export const TableFrame = ({ children }: { children: ReactNode }) => <div className="overflow-hidden rounded-lg border bg-card">{children}</div>;
 
-export const RunsTable = ({ runs, showPlayer = true }: { runs: Run[]; showPlayer?: boolean }) => {
+export const RunsTable = ({ runs, showPlayer = true, showServer = true }: { runs: Run[]; showPlayer?: boolean; showServer?: boolean }) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   if (!runs.length) return <Empty>{t("runs.none")}</Empty>;
   return (
     <TableFrame>
@@ -250,6 +251,7 @@ export const RunsTable = ({ runs, showPlayer = true }: { runs: Run[]; showPlayer
             <TableHead>{t("runs.columns.when")}</TableHead>
             <TableHead>{t("runs.columns.kind")}</TableHead>
             {showPlayer && <TableHead>{t("runs.columns.player")}</TableHead>}
+            {showServer && <TableHead className="hidden lg:table-cell">{t("runs.columns.server")}</TableHead>}
             <TableHead className="hidden md:table-cell">{t("runs.columns.model")}</TableHead>
             <TableHead className="hidden text-right lg:table-cell">{t("runs.columns.tokens")}</TableHead>
             <TableHead className="hidden text-right lg:table-cell">{t("runs.columns.tools")}</TableHead>
@@ -260,7 +262,7 @@ export const RunsTable = ({ runs, showPlayer = true }: { runs: Run[]; showPlayer
         </TableHeader>
         <TableBody>
           {runs.map((run) => (
-            <TableRow key={run.id}>
+            <TableRow key={run.id} {...rowLink(() => navigate({ to: "/runs/$id", params: { id: run.id } }))}>
               <TableCell className="whitespace-nowrap">
                 <Link to="/runs/$id" params={{ id: run.id }} className="font-medium hover:underline" title={dateTime(run.at)}>
                   {relative(run.at)}
@@ -270,6 +272,11 @@ export const RunsTable = ({ runs, showPlayer = true }: { runs: Run[]; showPlayer
               {showPlayer && (
                 <TableCell className="max-w-48">
                   <PlayerLink id={run.user_id} player={run.player} head />
+                </TableCell>
+              )}
+              {showServer && (
+                <TableCell className="hidden max-w-44 lg:table-cell">
+                  <ServerButton server={run} name={run.server_name} />
                 </TableCell>
               )}
               <TableCell className="hidden max-w-56 truncate font-mono text-xs md:table-cell">{run.model}</TableCell>
@@ -293,14 +300,84 @@ export const RunsTable = ({ runs, showPlayer = true }: { runs: Run[]; showPlayer
   );
 };
 
-export const Definition = ({ items }: { items: Array<[string, ReactNode]> }) => (
-  <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-    {items.map(([label, value]) => (
-      <div key={label} className="flex min-w-0 flex-col gap-0.5">
-        <dt className="text-xs text-muted-foreground">{label}</dt>
-        <dd className="tabular truncate font-medium">{value}</dd>
-      </div>
-    ))}
+/** Labels and values; a value of null or false leaves its row out, so a page never lists rows of dashes. */
+export const Definition = ({ items, columns = 2 }: { items: Array<[string, ReactNode] | null | false>; columns?: 2 | 3 }) => (
+  <dl className={cn("grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2", columns === 3 && "lg:grid-cols-3")}>
+    {items
+      .filter((item): item is [string, ReactNode] => !!item && item[1] !== null && item[1] !== undefined && item[1] !== false)
+      .map(([label, value]) => (
+        <div key={label} className="flex min-w-0 flex-col gap-0.5">
+          <dt className="text-xs text-muted-foreground">{label}</dt>
+          <dd className="tabular min-w-0 truncate font-medium">{value}</dd>
+        </div>
+      ))}
   </dl>
 );
 
+/**
+ * How much of a budget is spent: the bar fills as money goes, so a full bar means the limit is reached. It turns amber
+ * past 80% and red at the limit, with the numbers in words for screen readers.
+ */
+export const Meter = ({ spent, budget, label, className }: { spent: number; budget: number; label?: string; className?: string }) => {
+  const share = budget > 0 ? Math.min(1, spent / budget) : spent > 0 ? 1 : 0;
+  const tone = share >= 1 ? "bg-destructive" : share >= 0.8 ? "bg-warning" : "bg-primary";
+  return (
+    <div
+      role="meter"
+      aria-valuemin={0}
+      aria-valuemax={budget}
+      aria-valuenow={Math.min(spent, budget)}
+      aria-label={label}
+      aria-valuetext={`${usd(spent)} / ${usd(budget)}`}
+      className={cn("h-2 w-full overflow-hidden rounded-full bg-muted", className)}
+    >
+      <div className={cn("h-full rounded-full transition-[width]", tone)} style={{ width: `${Math.max(share > 0 ? 2 : 0, share * 100)}%` }} />
+    </div>
+  );
+};
+
+/** Spent of a budget in words and a bar under them, for tables and tiles. */
+export const BudgetCell = ({ spent, budget, className }: { spent: number; budget: number; className?: string }) => (
+  <span className={cn("flex min-w-28 flex-col gap-1", className)}>
+    <span className="tabular text-xs whitespace-nowrap">
+      {usd(spent)} <span className="text-muted-foreground">/ {usd(budget)}</span>
+    </span>
+    <Meter spent={spent} budget={budget} />
+  </span>
+);
+
+/** A server's page address: its tenant and its id, `-` for runs from before servers had ids. */
+export const serverParams = (server: { server: string; server_id?: string | null }) => ({ tenant: server.server, id: server.server_id || "-" });
+
+/** A server as a button that opens its page; its own name, or a word when it never registered one. */
+export const ServerButton = ({ server, name }: { server: { server: string; server_id?: string | null }; name?: string | null }) => {
+  const { t } = useTranslation();
+  return (
+    <Button asChild variant="outline" size="sm" className="h-7 max-w-full min-w-0 gap-1.5 px-2 font-medium">
+      <Link to="/servers/$tenant/$id" params={serverParams(server)} onClick={(e) => e.stopPropagation()}>
+        <Server className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="truncate">{name || t("servers.unnamed")}</span>
+      </Link>
+    </Button>
+  );
+};
+
+/** A license as a button that opens its page. */
+export const LicenseButton = ({ id, name }: { id: string; name?: string | null }) => (
+  <Button asChild variant="outline" size="sm" className="h-7 max-w-full min-w-0 gap-1.5 px-2 font-medium">
+    <Link to="/licenses/$id" params={{ id }} onClick={(e) => e.stopPropagation()}>
+      <KeyRound className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      <span className="truncate">{name || id}</span>
+    </Link>
+  </Button>
+);
+
+/** A table row that opens a page on click anywhere in it; the link inside keeps it reachable by keyboard. */
+export const rowLink = (go: () => unknown) => ({
+  className: "cursor-pointer",
+  onClick: (event: MouseEvent) => {
+    // A click on a button or link inside the row goes where that one goes.
+    if ((event.target as HTMLElement).closest("a, button, [role=button]")) return;
+    void go();
+  },
+});

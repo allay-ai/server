@@ -39,7 +39,16 @@ export interface SettingsView {
   updated_at: string | null;
   updated_by: string | null;
   fields: SettingField[];
-  environment: { selfhosted: boolean; port: number; mongodb_database: string | null; secrets_key: "env" | "file"; env_admin: boolean; version: string };
+  environment: {
+    selfhosted: boolean;
+    port: number;
+    mongodb_database: string | null;
+    secrets_key: "env" | "file";
+    /** The key's last four characters, never more. */
+    secrets_key_last4: string | null;
+    env_admin: boolean;
+    version: string;
+  };
 }
 
 export interface Point {
@@ -106,6 +115,8 @@ export interface Run {
   duration_ms: number;
   result: "ok" | "cancelled" | "error";
   error_code?: string;
+  /** The name its server registered, if it did. */
+  server_name: string | null;
 }
 
 export interface PlayerSummary {
@@ -157,6 +168,8 @@ export interface PlayerDetail {
   last_seen: string | null;
   /** Each server the player asked on: their name there, whether they're blocked there, and whether the backend can tell who they are. */
   servers: Array<{ server: string; name: string | null; op: boolean | null; first_seen: string | null; blocked_at: string | null; known: boolean }>;
+  /** Every Minecraft server they asked on, with their own questions and cost there. */
+  seen_on: ServerSummary[];
   profile: Profile;
   runs: Run[];
 }
@@ -167,17 +180,23 @@ export interface FoundPlayer {
   name: string;
   uuid: string;
   server: string;
+  /** The license's name for a license's player. */
+  server_name: string | null;
   last_seen: string;
 }
 
 export interface ServerSummary {
   server: string;
-  server_id?: string;
+  server_id: string | null;
   payer: string;
   questions: number;
   players: number;
   cost: number;
+  /** The first question, or null for a server that registered and never asked. */
+  first_asked: string | null;
   last_seen: string;
+  /** The license behind it, on a hosted backend. */
+  license: { id: string; name: string | null } | null;
   /** The name its owner gave the server (`server.name`, Allay 6.5); null shows the server's random id. */
   name: string | null;
   /** The server's MOTD without formatting codes. */
@@ -201,6 +220,27 @@ export interface TraceSummary {
   started_at: string;
   ended_at: string | null;
   ok: boolean;
+  /** The traces list adds the run's numbers. */
+  run?: Run | null;
+}
+
+/** One step of a run, opened for an owner looking into a problem: what went in and came out. */
+export interface RevealedSpan {
+  span_id: string;
+  parent_id: string | null;
+  type: string;
+  label: string;
+  started_at: string;
+  input: unknown;
+  output: unknown;
+  attributes: Record<string, unknown>;
+  error: unknown;
+}
+
+export interface ServerDetail {
+  server: ServerSummary;
+  players: Array<{ user_id: string; player: Who; questions: number; cost: number; first_seen: string; last_seen: string }>;
+  runs: Run[];
 }
 
 export interface Span {
@@ -238,6 +278,8 @@ export interface License {
   telegram_user_id: number | null;
   language: string | null;
   last_payment_at: string | null;
+  /** The newest budget an admin gave, which stands in for a payment on a license nobody paid for. */
+  granted_at: string | null;
   stopped_at: string | null;
   blocked_at: string | null;
   revoked_at: string | null;

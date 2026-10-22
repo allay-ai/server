@@ -1,8 +1,7 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Confirm, Empty, ErrorBox, Loading, PageHeader, TableFrame } from "@/components/common";
+import { Confirm, Empty, ErrorBox, LicenseButton, Loading, PageHeader, TableFrame } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -49,9 +48,7 @@ export const PaymentsTable = ({ payments, showLicense = true }: { payments: Paym
               </TableCell>
               {showLicense && (
                 <TableCell>
-                  <Link to="/licenses/$id" params={{ id: p.license }} className="font-mono text-xs hover:underline">
-                    {p.license}
-                  </Link>
+                  <LicenseButton id={p.license} />
                 </TableCell>
               )}
               <TableCell>

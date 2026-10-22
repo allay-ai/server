@@ -16,7 +16,7 @@ import { ProfilePage } from "@/pages/profile";
 import { RecoverPage } from "@/pages/recover";
 import { RevenuePage } from "@/pages/revenue";
 import { RunPage, RunsPage } from "@/pages/runs";
-import { ServersPage } from "@/pages/servers";
+import { ServerPage, ServersPage } from "@/pages/servers";
 import { SettingsPage } from "@/pages/settings";
 import { SetupPage } from "@/pages/setup";
 import { TracePage, TracesPage } from "@/pages/traces";
@@ -101,6 +101,7 @@ const runs = createRoute({
 });
 const run = page("/runs/$id", RunPage);
 const servers = page("/servers", ServersPage);
+const server = page("/servers/$tenant/$id", ServerPage);
 const traces = page("/traces", TracesPage);
 const trace = page("/traces/$id", TracePage);
 const revenue = createRoute({
@@ -126,7 +127,7 @@ const tree = root.addChildren([
   setup,
   recover,
   login,
-  app.addChildren([dashboard, players, player, runs, run, servers, traces, trace, revenue, licenses, license, payments, settings, accounts, audit, profile]),
+  app.addChildren([dashboard, players, player, runs, run, servers, server, traces, trace, revenue, licenses, license, payments, settings, accounts, audit, profile]),
 ]);
 
 export const router = createRouter({
