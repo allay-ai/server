@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.8.0
+
+For Allay 6.6, which keeps players' deaths; older plugins answer about the last death only, as before.
+
+- 💀 **Allay remembers every death.** `get_locations` takes `deaths_page` and reads the player's death history from the plugin, ten a page, newest first: when (in the player's time zone), where, what killed them, and what dropped. “When did I die?” and “what killed me last time?” get real dates and causes, and Allay turns the pages itself for older deaths.
+- 🧭 **Where the spawn is.** The tool's description now says that `world_spawn` is where new players and players without a bed appear, within `respawn_radius` blocks.
+
 ## 6.7.0
 
 For Allay 6.5, which registers its server; older plugins show up by their id, as before.
