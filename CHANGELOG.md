@@ -2,6 +2,19 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.10.0
+
+Allay Room, tidier. Nothing changes for the plugin or the data.
+
+- 🏷️ **Names, not MOTDs.** A license goes by the name its owner gave a server behind it (`server.name`), the newest one, everywhere the panel names it: the Licenses list and page, the Servers table's License button, a run's License, and the player picker. The name `/allay link` sent (the MOTD) shows only while no server of the license has a name, and an owner still edits it (`own_name` in `GET /api/admin/licenses/{id}`). The MOTD shows only on its server's page, in a block of its own under Details, line by line.
+- ♾️ **Infinity is Infinity.** A license with a hand-given budget of `PLAN_INFINITY_BUDGET` or more, as 6.8 and older granted it, reads as Infinity instead of “Granted”.
+- 📅 **How long it lasts.** Under “Paid until” a license's page says the days left. Under “Budget resets” it says how many days what's left lasts at the average a day the open budget windows have spent since they began (`daily_spend`), once anything was spent.
+- 🗑️ **Delete says what it does.** The Delete card spans the row and says what goes (the license, its windows, its key) and what stays (payments, runs, statistics).
+- 🧑 **Erase a player.** The picker shows the servers each player asked on by their own names, and the field lines up with the Erase button.
+- 📊 **Busiest players** is a ranked table with questions and cost in their own columns and a bar of each player's share.
+- 🧱 **Server cards fill the row.** One server takes the whole width, two or three share it, and more wrap three to a row, on a license's page and a player's.
+- 🧾 **Audit log.** Each entry's first line sits on its icon's middle, and its changes start at the same edge.
+
 ## 6.9.0
 
 For Allay 6.7, which keeps nothing about players on the server's disk anymore; Allay 6.6 and older keep working as before. Start it with the same `SECRETS_KEY` (or `/data` volume) as before: it now seals players' data with a key derived from it, and a new key would open none of it. **Pseudonyms change:** they're per server now, so the statistics start new pseudonyms for everyone; see “Pseudonyms per server” below.
