@@ -3,16 +3,18 @@ import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router"
 import { CheckCircle2, Eye, XCircle } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Confirm, Definition, ErrorBox, LicenseButton, Loading, PageHeader, PlayerHead, PlayerLink, ResultBadge, RunsTable, ServerButton, StatTile } from "@/components/common";
+import { Definition, ErrorBox, LicenseButton, Loading, PageHeader, PlayerHead, PlayerLink, ResultBadge, RunsTable, ServerButton, StatTile } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api, post } from "@/lib/api";
 import { compact, dateTime, duration, number, percent, usd } from "@/lib/format";
 import { showErrors } from "@/lib/forms";
-import { useCan } from "@/lib/session";
+import { useAppState, useCan } from "@/lib/session";
 import type { RevealedSpan, Run } from "@/lib/types";
 
 const KINDS = ["ask", "askall", "askx", "task", "summary", "telegram"];
@@ -124,32 +126,54 @@ const Shown = ({ label, value }: { label: string; value: unknown }) => {
 
 /**
  * An owner reads what a run was asked, answered, and called, to look into a problem a player or a server reported.
- * The backend decrypts it for this one look and writes the look to the audit log; nothing is kept in the page.
+ * They say why first; the backend decrypts this one run and writes the look and the reason to the audit log; nothing
+ * is kept in the page.
  */
 const RevealButton = ({ id }: { id: string }) => {
   const { t } = useTranslation();
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
   const [spans, setSpans] = useState<RevealedSpan[] | null>(null);
+  const ready = reason.trim().length >= 10;
   const open = async () => {
+    setBusy(true);
     try {
-      setSpans((await post<{ spans: RevealedSpan[] }>(`/runs/${encodeURIComponent(id)}/reveal`)).spans);
+      setSpans((await post<{ spans: RevealedSpan[] }>(`/runs/${encodeURIComponent(id)}/reveal`, { reason: reason.trim() })).spans);
+      setAsking(false);
+      setReason("");
     } catch (error) {
       showErrors(error);
+    } finally {
+      setBusy(false);
     }
   };
   return (
     <>
-      <Confirm
-        label={
-          <>
-            <Eye className="size-4" aria-hidden />
-            {t("run.reveal")}
-          </>
-        }
-        title={t("run.revealTitle")}
-        text={t("run.revealText")}
-        action={t("run.revealAction")}
-        onConfirm={open}
-      />
+      <Button variant="outline" size="sm" onClick={() => setAsking(true)}>
+        <Eye className="size-4" aria-hidden />
+        {t("run.reveal")}
+      </Button>
+      <Dialog open={asking} onOpenChange={setAsking}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t("run.revealTitle")}</DialogTitle>
+            <DialogDescription>{t("run.revealText")}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="reveal-reason">{t("run.revealReason")}</Label>
+            <Textarea id="reveal-reason" value={reason} maxLength={500} rows={3} placeholder={t("run.revealReasonHint")} onChange={(event) => setReason(event.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAsking(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button disabled={!ready || busy} onClick={open}>
+              {t("run.revealAction")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={spans !== null} onOpenChange={(next) => !next && setSpans(null)}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
@@ -178,6 +202,8 @@ const RevealButton = ({ id }: { id: string }) => {
 export const RunPage = () => {
   const { t } = useTranslation();
   const can = useCan();
+  // The environment's account is the scripts': it never opens runs.
+  const state = useAppState();
   const { id } = useParams({ from: "/app/runs/$id" });
   const query = useQuery({
     queryKey: ["run", id],
@@ -251,7 +277,7 @@ export const RunPage = () => {
                   {t("run.openTrace")}
                 </Link>
               </Button>
-              {can("owner") && <RevealButton id={run.id} />}
+              {can("owner") && !state?.me?.env && <RevealButton id={run.id} />}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">{t("run.noTrace")}</p>

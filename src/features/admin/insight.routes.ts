@@ -18,6 +18,8 @@ import { PROFILE_RUNS, profileOf } from "./profile";
 // A pseudonym from the list, a player's name, or the id a player sent with their request.
 const eraseSchema = z.object({ server: z.string().regex(TENANT), user_id: z.string().max(64).refine((id) => PSEUDONYM.test(id) || USER_ID.test(id) || NAME_SEARCH.test(id)) });
 const serverSchema = z.object({ server: z.string().regex(TENANT) });
+// Why an owner opens a run: kept in the audit log with the look.
+const revealSchema = z.object({ reason: z.string().trim().min(10).max(500) });
 
 /** A player of the panel's page and one tenant they asked on, from the path and the body; a response when there's none. */
 const playerOn = async ({ deps, params, req }: Context) => {
@@ -452,16 +454,20 @@ export const insightRoutes: Route[] = [
     },
   },
   {
-    // Owners only, one run at a time, and every look is in the audit log: for a problem a player or a server reported.
+    // Owners only, one run at a time, with a reason, and every look is in the audit log: for a problem a player or a
+    // server reported. Never the environment's account: scripts sign in with it, and scripts don't read players' words.
     method: "POST",
     path: "/runs/:id/reveal",
     access: "owner",
-    async handle({ deps, admin, params, me, ip }) {
+    async handle({ deps, admin, params, me, ip, req }) {
+      if (me!.env) return error(403, "NOT_FOR_SCRIPTS", "The environment's account can't open runs; sign in with your own");
+      const input = revealSchema.safeParse(await body(req));
+      if (!input.success) return error(400, "REASON_REQUIRED", "Say why you open this run, in 10–500 characters");
       const run = await deps.runs?.get(params.id);
       if (!run) return error(404, "NOT_FOUND", "No such run");
       const spans = await admin.traces?.reveal(run.id).catch(() => null);
       if (!spans) return error(404, "NO_TRACE", `This run has no trace: traces live ${admin.settings.get("TRACE_DAYS")} days`);
-      await record(admin, { actor: me!.username, action: "run.reveal", target: `${run.server} ${run.user_id} ${run.id}`, ip });
+      await record(admin, { actor: me!.username, action: "run.reveal", target: `${run.server} ${run.user_id} ${run.id}`, changes: [{ field: "reason", old: "", new: input.data.reason }], ip });
       return Response.json({ run_id: run.id, spans }, { headers: { "Cache-Control": "no-store" } });
     },
   },

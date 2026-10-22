@@ -824,7 +824,10 @@ describe("players in the panel", () => {
       id: run, at: new Date(), kind: "ask", payer: "self", server: "self", user_id: ctx.deps.pseudonyms.of("self", "uuid-steve"), model: "m",
       input_tokens: 1, output_tokens: 1, reasoning_tokens: 0, cost: 0.001, steps: 1, tools: [], searches: 0, duration_ms: 10, result: "ok",
     });
-    const shown = await ctx.call("POST", `/api/admin/runs/${run}/reveal`);
+    // Without a reason it stays shut.
+    expect((await ctx.call("POST", `/api/admin/runs/${run}/reveal`)).body.error.code).toBe("REASON_REQUIRED");
+    const shown = await ctx.call("POST", `/api/admin/runs/${run}/reveal`, { reason: "Steve says the stash answer was wrong" });
+    expect(ctx.audit.entries.find((e) => e.action === "run.reveal")!.changes).toEqual([{ field: "reason", old: "", new: "Steve says the stash answer was wrong" }]);
     expect(shown.body.spans[0]).toMatchObject({ input: [{ role: "user", content: "where is my stash?" }], output: { text: "under the oak" } });
     expect(ctx.audit.entries.find((e) => e.action === "run.reveal")!.target).toBe(`self ${ctx.deps.pseudonyms.of("self", "uuid-steve")} ${run}`);
     // The plain trace view still shows no word of it.
@@ -836,7 +839,15 @@ describe("players in the panel", () => {
     await ctx.call("POST", "/api/admin/accounts", { username: "helper", password: PASSWORD, role: "admin" });
     await ctx.call("POST", "/api/admin/logout");
     await ctx.call("POST", "/api/admin/login", { username: "helper", password: PASSWORD });
-    expect((await ctx.call("POST", `/api/admin/runs/${run}/reveal`)).status).toBe(403);
+    expect((await ctx.call("POST", `/api/admin/runs/${run}/reveal`, { reason: "Steve says the stash answer was wrong" })).status).toBe(403);
+  });
+
+  test("the environment's account, which scripts use, can't open a run", async () => {
+    const envAdmin = envAdminOf({ ADMIN_USERNAME: "ops", ADMIN_PASSWORD: PASSWORD });
+    const { call } = start({ envAdmin });
+    await call("POST", "/api/admin/login", { username: "ops", password: PASSWORD });
+    const refused = await call("POST", "/api/admin/runs/11111111-2222-3333-4444-555555555555/reveal", { reason: "a script wants to read a run" });
+    expect(refused).toMatchObject({ status: 403, body: { error: { code: "NOT_FOR_SCRIPTS" } } });
   });
 
   test("a viewer can't erase players or see who paid", async () => {
