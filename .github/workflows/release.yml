@@ -92,3 +92,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.FAMILY_ACTIONS_TOKEN }}
           VERSION: ${{ inputs.version }}
+
+  allay-chat:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ship to allay.chat
+        # MairwunNx/infrastructure's ship.yml pins allay.chat to this version and pushes; the push deploys it.
+        run: gh workflow run ship.yml -R MairwunNx/infrastructure -f stack=allay-chat -f image="$IMAGE" -f tag="$VERSION"
+        env:
+          GH_TOKEN: ${{ secrets.FAMILY_ACTIONS_TOKEN }}
+          VERSION: ${{ inputs.version }}
