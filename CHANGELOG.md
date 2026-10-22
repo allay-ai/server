@@ -4,9 +4,10 @@ The “Release” workflow takes the notes for a version from its section here, 
 
 ## 6.10.0
 
-Allay Room, tidier. Nothing changes for the plugin or the data.
+Allay Room, tidier, and licenses named after their servers. Nothing changes for the plugin's protocol.
 
 - 🏷️ **Names, not MOTDs.** A license goes by the name its owner gave a server behind it (`server.name`), the newest one, everywhere the panel names it: the Licenses list and page, the Servers table's License button, a run's License, and the player picker. The name `/allay link` sent (the MOTD) shows only while no server of the license has a name, and an owner still edits it (`own_name` in `GET /api/admin/licenses/{id}`). The MOTD shows only on its server's page, in a block of its own under Details, line by line.
+- 🤖 **The bot names servers right.** When a server registers with a name (`PUT /api/v2/server`), its license takes that name, so @AllayChatBot says “Moonlands” too, and a later `/allay link` no longer puts the MOTD back.
 - ♾️ **Infinity is Infinity.** A license with a hand-given budget of `PLAN_INFINITY_BUDGET` or more, as 6.8 and older granted it, reads as Infinity instead of “Granted”.
 - 📅 **How long it lasts.** Under “Paid until” a license's page says the days left. Under “Budget resets” it says how many days what's left lasts at the average a day the open budget windows have spent since they began (`daily_spend`), once anything was spent.
 - 🗑️ **Delete says what it does.** The Delete card spans the row and says what goes (the license, its windows, its key) and what stays (payments, runs, statistics).
