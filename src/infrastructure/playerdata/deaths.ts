@@ -30,6 +30,7 @@ export interface DeathPage {
 
 /** The deaths of each player, sealed, newest DEATHS_MAX kept; they go a year after the player's last question. */
 export interface DeathStore {
+  /** A death at a moment already kept is a no-op: the plugin retries what it isn't sure arrived. */
   add(owner: Owner, death: Death): Promise<void>;
   /** One page of [size], 1-based, newest first. */
   page(owner: Owner, page: number, size: number): Promise<DeathPage>;
@@ -47,7 +48,8 @@ const opened = (docs: Array<{ sealed: unknown }>) => docs.map((d) => openJson<De
 
 export const mongoDeaths: DeathStore = {
   async add(owner, death) {
-    await DeathModel.create({ ...query(owner), at: new Date(death.at), sealed: sealJson(death) });
+    const at = new Date(death.at);
+    await DeathModel.updateOne({ ...query(owner), at }, { $setOnInsert: { ...query(owner), at, sealed: sealJson(death), seen_at: new Date() } }, { upsert: true });
     const old = await DeathModel.find(query(owner), { _id: 1 }).sort({ at: -1 }).skip(maxDeaths()).lean();
     if (old.length) await DeathModel.deleteMany({ _id: { $in: old.map((d) => d._id) } });
   },
@@ -76,6 +78,7 @@ export const memoryDeaths = (): DeathStore => {
   const of = (owner: Owner) => store.get(at(owner)) ?? [];
   return {
     async add(owner, death) {
+      if (of(owner).some((d) => d.at === death.at)) return;
       store.set(at(owner), [...of(owner), death].sort((a, b) => b.at - a.at).slice(0, maxDeaths()));
     },
     async page(owner, page, size) {

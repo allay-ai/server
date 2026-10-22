@@ -50,7 +50,10 @@ describe("deaths", () => {
       const response = await fetch(`${base}/api/v2/users/player-1/deaths`, { method: "POST", body: JSON.stringify(death(now - (12 - i) * DAY, { cause: `minecraft:cause_${i}` })) });
       expect(await response.json()).toEqual({ saved: true });
     }
-    await fetch(`${base}/api/v2/users/player-1/deaths`, { method: "POST", body: JSON.stringify(death(now - 3_600_000, { cause: "minecraft:lava", drops: { cobblestone: 64 }, killer_name: "Notch" })) });
+    const lava = JSON.stringify(death(now - 3_600_000, { cause: "minecraft:lava", drops: { cobblestone: 64 }, killer_name: "Notch" }));
+    await fetch(`${base}/api/v2/users/player-1/deaths`, { method: "POST", body: lava });
+    // A retry of the same death changes nothing.
+    expect((await fetch(`${base}/api/v2/users/player-1/deaths`, { method: "POST", body: lava })).status).toBe(200);
     let runId = "";
     await readSse(
       await fetch(`${base}/api/v2/chat`, {
@@ -148,7 +151,7 @@ describe("consent", () => {
     expect((await fetch(url, { method: "PUT", body: JSON.stringify({ version: 2, age_confirmed: "yes" }) })).status).toBe(400);
     // A new agreement without the answer doesn't keep the old one.
     await fetch(url, { method: "PUT", body: JSON.stringify({ version: 3 }) });
-    expect(((await (await fetch(url)).json()) as any).consent.age_confirmed).toBeUndefined();
+    expect(((await (await fetch(url)).json()) as any).consent.age_confirmed).toBe(false);
   });
 });
 
@@ -183,6 +186,13 @@ if (MONGODB) {
     test("memories written in the clear before 6.9 still read", async () => {
       await MemoryModel.collection.insertOne({ id: "old01", tenant: "self", user_id: "old-1", text: "an old fact", created_at: new Date(), seen_at: new Date() } as never);
       expect((await mongoMemories.list(owner("old-1"))).map((m) => m.text)).toEqual(["an old fact"]);
+    });
+
+    test("the same death twice is kept once", async () => {
+      const me = owner("twice-1");
+      await mongoDeaths.add(me, death(Date.UTC(2026, 5, 1)));
+      await mongoDeaths.add(me, death(Date.UTC(2026, 5, 1), { cause: "minecraft:fall" }));
+      expect((await mongoDeaths.page(me, 1, 10)).total).toBe(1);
     });
 
     test("only the newest DEATHS_MAX stay", async () => {

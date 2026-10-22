@@ -24,7 +24,8 @@ const schema = new Schema<DeathDocument>({
   seen_at: { type: Date, default: Date.now },
 });
 
-schema.index({ tenant: 1, user_id: 1, at: -1 });
+// One death per moment: the plugin may send the same one again after a retry, and that changes nothing.
+schema.index({ tenant: 1, user_id: 1, at: -1 }, { unique: true });
 schema.index({ seen_at: 1 }, { expireAfterSeconds: PLAYER_DATA_DAYS * 86_400 });
 
 export const DeathModel = model<DeathDocument>("Death", schema, "deaths");

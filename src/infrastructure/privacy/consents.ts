@@ -6,8 +6,8 @@ export interface Consent {
   /** Since 6.9: what the plugin hashed the notice and the policy's revision to; absent for older agreements. */
   hash?: string;
   revision?: string;
-  /** Since 6.9: the player said they're 13 or older. */
-  age_confirmed?: boolean;
+  /** Since 6.9: the player said they're 13 or older; false when they weren't asked or before 6.9. */
+  age_confirmed: boolean;
   accepted_at: string;
 }
 
@@ -44,7 +44,7 @@ const consentOf = (doc: { version: number; hash?: string; revision?: string; age
   version: doc.version,
   ...(doc.hash ? { hash: doc.hash } : {}),
   ...(doc.revision ? { revision: doc.revision } : {}),
-  ...(doc.age_confirmed !== undefined ? { age_confirmed: doc.age_confirmed } : {}),
+  age_confirmed: doc.age_confirmed ?? false,
   accepted_at: doc.accepted_at.toISOString(),
 });
 
