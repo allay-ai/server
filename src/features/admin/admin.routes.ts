@@ -382,7 +382,14 @@ export const auditRoutes: Route[] = [
     access: "admin",
     async handle({ admin, url }) {
       const before = url.searchParams.get("before");
-      const entries = await admin.audit.list({ limit: 100, before: before ? new Date(before) : undefined });
+      const actor = url.searchParams.get("actor")?.trim().slice(0, 64) || undefined;
+      const area = url.searchParams.get("area")?.trim();
+      const entries = await admin.audit.list({
+        limit: 100,
+        before: before ? new Date(before) : undefined,
+        actor,
+        area: area && /^[a-z]{1,32}$/.test(area) ? area : undefined,
+      });
       return Response.json({ entries: entries.map((e) => ({ ...e, at: e.at.toISOString() })) });
     },
   },
