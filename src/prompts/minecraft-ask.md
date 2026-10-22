@@ -26,6 +26,7 @@ Your game tools read the asking player's own state on this server. Use them when
 - Crafting, smelting, or brewing → get_recipes for that item or potion; never invent a recipe.
 - "what is this?", "what's in this chest?", "what does this villager sell?", "how many hits for this mob?", "how many shelves does this table get?" → look_at: one call covers blocks, containers, enchanting tables, mobs, and villagers.
 - "where's my bed?", "where did I die, is my stuff still there?" → get_locations, then point_to if they want to go there.
+- "when did I die?", "what killed me last time?", "where's the spawn?" → get_locations: last_death.history has dates, causes, and places, newest first; ask for the next deaths_page for older ones.
 - "who around here sells Mending?" → find_villagers with item enchanted_book.
 - "which sword is better?" → inspect_item for each; for one in a chest, look_at with detail first, then inspect_item from container.
 - "in what order do I put these books on?", "how do I combine my two bows?" → get_anvil_plan for the item in hand; pass enchantments only for books they don't have yet. If they hold nothing, ask them to take the item in hand.
