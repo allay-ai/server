@@ -4,7 +4,7 @@ import { newLimits, selfHosted } from "../features/billing/billing";
 import { bridge } from "../features/chat/chat.bridge";
 import { mongoLicenses } from "../infrastructure/billing/licenses";
 import { MONGODB_DATABASE, MONGODB_URI } from "../infrastructure/database/mongodb.env";
-import { redisHistory } from "../infrastructure/history/history";
+import { mongoHistory } from "../infrastructure/history/history";
 import { tracing } from "../infrastructure/observability/tracing";
 import { mongoMemories } from "../infrastructure/memory/memory";
 import { mongoConsents } from "../infrastructure/privacy/consents";
@@ -16,7 +16,7 @@ import { settings } from "../features/settings/settings";
 import { LoginLimiter, SetupCodes, envAdminOf } from "../features/admin/admin";
 import { mongoAccounts } from "../infrastructure/admin/accounts";
 import { mongoAudit } from "../infrastructure/admin/audit";
-import { redisSessions } from "../infrastructure/admin/sessions";
+import { mongoSessions } from "../infrastructure/admin/sessions";
 import { mongoRuns } from "../infrastructure/runs/runs";
 import { mongoTraces } from "../infrastructure/observability/traces";
 import type { Pseudonyms } from "../infrastructure/privacy/pseudonyms";
@@ -35,7 +35,7 @@ export const productionDeps = (pseudonyms: Pseudonyms): AllayDeps => {
   const mastra = tracing(MONGODB_URI, MONGODB_DATABASE);
   return {
     models: openrouterModels,
-    history: redisHistory,
+    history: mongoHistory(),
     memories: mongoMemories,
     consents: mongoConsents,
     bans: mongoBans,
@@ -68,7 +68,7 @@ export const productionDeps = (pseudonyms: Pseudonyms): AllayDeps => {
     },
     admin: {
       accounts: mongoAccounts,
-      sessions: redisSessions,
+      sessions: mongoSessions(),
       audit: mongoAudit,
       settings,
       setup: new SetupCodes(),

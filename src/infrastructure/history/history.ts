@@ -1,5 +1,5 @@
 import type { ModelMessage } from "ai";
-import { redis } from "bun";
+import { Schema, model } from "mongoose";
 import { settings } from "../../features/settings/settings";
 import { logger } from "../../shared/logging/logger";
 import type { Owner } from "../../shared/types/owner";
@@ -93,9 +93,6 @@ export const MAX_SUMMARY = 3000;
 /** A rough count that errs high: about three characters a token for English, Russian, and JSON alike. */
 export const estimateTokens = (messages: HistoryMessage[]) => Math.ceil(JSON.stringify(messages).length / 3);
 
-const key = (thread: Thread) => `chat_history:${thread.key}`;
-const summaryKey = (thread: Thread) => `chat_summary:${thread.key}`;
-const outcomesKey = (owner: Owner) => `task_outcomes:${privateThread(owner).key}`;
 /** A player who starts task after task and never asks keeps only the latest outcomes. */
 const MAX_OUTCOMES = 10;
 
@@ -136,145 +133,218 @@ const keepOf = (exchanges: HistoryMessage[][], foldAt: number): number | undefin
 
 const exchangesOf = (raw: string[]) => raw.map(parse).filter((m): m is HistoryMessage[] => !!m);
 
-/** Every key matching a pattern; SCAN, so a large Redis never blocks. */
-const scan = async (pattern: string): Promise<string[]> => {
-  const found: string[] = [];
-  let cursor = "0";
-  do {
-    const [next, keys] = (await redis.send("SCAN", [cursor, "MATCH", pattern, "COUNT", "500"])) as [string, string[]];
-    found.push(...keys);
-    cursor = next;
-  } while (cursor !== "0");
-  return found;
-};
+/** A conversation: exchanges newest first as JSON, so tool results with any keys fit, and the summary beside them. */
+interface SessionDoc {
+  key: string;
+  /** A new id whenever the session starts over, so a fold that began before /ask new can't write into the next one. */
+  started: string;
+  summary?: string;
+  exchanges: string[];
+  expires_at: Date;
+}
 
-const loadRedis = async (thread: Thread): Promise<Session> => {
-  const [raw, summary] = await Promise.all([
-    redis.send("LRANGE", [key(thread), "0", String(CAP - 1)]) as Promise<string[]>,
-    redis.get(summaryKey(thread)),
-  ]);
-  return { messages: exchangesOf(raw ?? []).reverse().flat(), ...(summary ? { summary } : {}) };
-};
+/** How an automation ended, kept by the player's private thread until their next question. */
+interface OutcomesDoc {
+  key: string;
+  outcomes: string[];
+  expires_at: Date;
+}
 
-/** Newest exchange first in a Redis list, the summary next to it; both expire together. */
-export const redisHistory: HistoryStore = {
-  async load(thread) {
-    try {
-      return await loadRedis(thread);
-    } catch (error) {
-      // History is a nicety: answer without it rather than fail the question.
-      logger.warn(`History unavailable: ${String(error)}`);
-      return { messages: [] };
-    }
-  },
-  async append(thread, ...messages) {
-    const kept = entry(messages);
-    if (kept.length === 0) return;
-    try {
-      await redis.send("LPUSH", [key(thread), JSON.stringify({ id: crypto.randomUUID(), messages: kept })]);
-      await redis.send("LTRIM", [key(thread), "0", String(CAP - 1)]);
-      await redis.expire(key(thread), ttlOf(thread));
-      await redis.expire(summaryKey(thread), ttlOf(thread));
-    } catch (error) {
-      logger.warn(`Couldn't save history: ${String(error)}`);
-    }
-  },
-  async compact(thread, summarize, foldAt = foldTokens()) {
-    const raw = (await redis.send("LRANGE", [key(thread), "0", "-1"])) as string[];
-    const exchanges = exchangesOf(raw);
-    const kept = keepOf(exchanges, foldAt);
-    if (kept === undefined) return false;
-    const older = exchanges.slice(kept).reverse().flat();
-    const summary = (await summarize((await redis.get(summaryKey(thread))) ?? undefined, older)).trim().slice(0, MAX_SUMMARY);
-    if (summary) await redis.set(summaryKey(thread), summary, "EX", ttlOf(thread));
-    // Exchanges appended while the summary was written sit at the head, so they stay too.
-    const added = Number(await redis.send("LLEN", [key(thread)])) - raw.length;
-    await redis.send("LTRIM", [key(thread), "0", String(kept + Math.max(added, 0) - 1)]);
-    return true;
-  },
-  async clear(owner) {
-    const thread = privateThread(owner);
-    await redis.del(key(thread), summaryKey(thread), outcomesKey(owner));
-  },
-  async noteOutcome(owner, outcome) {
-    try {
-      await redis.send("RPUSH", [outcomesKey(owner), outcome]);
-      await redis.send("LTRIM", [outcomesKey(owner), String(-MAX_OUTCOMES), "-1"]);
-      await redis.expire(outcomesKey(owner), sessionTtl());
-    } catch (error) {
-      logger.warn(`Couldn't keep a task outcome: ${String(error)}`);
-    }
-  },
-  async takeOutcomes(owner) {
-    try {
-      // One LPOP takes them all at once, so two questions at the same time can't both get them.
-      return ((await redis.send("LPOP", [outcomesKey(owner), String(MAX_OUTCOMES)])) as string[] | null) ?? [];
-    } catch (error) {
-      logger.warn(`Task outcomes unavailable: ${String(error)}`);
-      return [];
-    }
-  },
-  async export(owner) {
-    const prefix = `chat_history:${taskPrefix(owner)}`;
-    const tasks: Record<string, Session> = {};
-    for (const found of await scan(`${prefix}*`)) {
-      const id = found.slice(prefix.length);
-      tasks[id] = await loadRedis({ key: found.slice("chat_history:".length), kind: "task" });
-    }
-    const outcomes = ((await redis.send("LRANGE", [outcomesKey(owner), "0", "-1"])) as string[] | null) ?? [];
-    return { session: await loadRedis(privateThread(owner)), outcomes, tasks };
-  },
-  async erase(owner) {
-    const thread = privateThread(owner);
-    const tasks = [...(await scan(`chat_history:${taskPrefix(owner)}*`)), ...(await scan(`chat_summary:${taskPrefix(owner)}*`))];
-    await redis.del(key(thread), summaryKey(thread), outcomesKey(owner), ...tasks);
-  },
-};
+const sessionSchema = new Schema<SessionDoc>({
+  key: { type: String, required: true, unique: true },
+  started: { type: String, required: true },
+  summary: String,
+  exchanges: { type: [String], default: [] },
+  expires_at: { type: Date, required: true },
+});
+// Only garbage collection: the monitor runs about once a minute, so every read checks expires_at itself.
+sessionSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
 
-/** Keys from before 6.0 carry no tenant, so nobody can be sure whose they are: they go on start. They'd expire within a day anyway. */
-export const dropLegacySessions = async (): Promise<number> => {
-  let dropped = 0;
-  for (const prefix of ["chat_history:", "chat_summary:", "task_outcomes:"]) {
-    const legacy = (await scan(`${prefix}*`)).filter((found) => {
-      const rest = found.slice(prefix.length);
-      return !rest.startsWith("self:") && !rest.startsWith("license:");
-    });
-    for (let i = 0; i < legacy.length; i += 500) {
-      await redis.del(...legacy.slice(i, i + 500));
-      dropped += legacy.slice(i, i + 500).length;
-    }
-  }
-  return dropped;
-};
+const outcomesSchema = new Schema<OutcomesDoc>({
+  key: { type: String, required: true, unique: true },
+  outcomes: { type: [String], default: [] },
+  expires_at: { type: Date, required: true },
+});
+outcomesSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
 
-/** For tests and local runs without Redis; same windows, no expiry. */
-export const memoryHistory = (): HistoryStore & { keys: () => string[] } => {
-  const store = new Map<string, { summary?: string; exchanges: HistoryMessage[][] }>();
-  const outcomes = new Map<string, string[]>();
-  const of = (thread: Thread) => store.get(thread.key) ?? { exchanges: [] };
-  const load = (thread: Thread): Session => {
-    const session = of(thread);
-    return { ...(session.summary ? { summary: session.summary } : {}), messages: session.exchanges.flat() };
+export const SessionModel = model<SessionDoc>("Session", sessionSchema, "sessions");
+export const OutcomesModel = model<OutcomesDoc>("Outcomes", outcomesSchema, "session_outcomes");
+
+/** Keys that start with [prefix], as an anchored regex, so the unique index on key serves it. */
+const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const startingWith = (prefix: string) => new RegExp(`^${escapeRegex(prefix)}`);
+
+/** The exchanges a document holds, oldest first, as the model reads them. */
+const sessionOf = (doc: Pick<SessionDoc, "summary" | "exchanges"> | null): Session =>
+  doc ? { messages: exchangesOf(doc.exchanges ?? []).reverse().flat(), ...(doc.summary ? { summary: doc.summary } : {}) } : { messages: [] };
+
+/**
+ * Sessions in MongoDB. Expiry is exact without the TTL monitor: every read asks for `expires_at` after now, a read that
+ * misses deletes an expired document at once, and a write onto an expired session starts it over.
+ */
+export const mongoHistory = (now: () => number = Date.now): HistoryStore => {
+  const sessions = () => SessionModel.collection;
+  const outcomes = () => OutcomesModel.collection;
+  const alive = () => ({ $gt: new Date(now()) });
+  /** Deletes what lies past its time under [filter]; nobody waits for it. */
+  const sweep = (collection: ReturnType<typeof sessions>, filter: Record<string, unknown>) =>
+    void collection.deleteMany({ ...filter, expires_at: { $lte: new Date(now()) } }).catch(() => {});
+
+  const read = async (key: string) => {
+    const doc = await sessions().findOne<SessionDoc>({ key, expires_at: alive() });
+    if (!doc) sweep(sessions(), { key });
+    return doc;
   };
+
+  /** Pipeline values: whether the stored session is still alive, and a fresh one's start otherwise. */
+  const living = (at: Date) => ({ $gt: [{ $ifNull: ["$expires_at", new Date(0)] }, at] });
+
   return {
-    keys: () => [...store.keys(), ...[...outcomes.keys()].map((k) => `outcomes:${k}`)],
     async load(thread) {
-      return load(thread);
+      try {
+        return sessionOf(await read(thread.key));
+      } catch (error) {
+        // History is a nicety: answer without it rather than fail the question.
+        logger.warn(`History unavailable: ${String(error)}`);
+        return { messages: [] };
+      }
     },
     async append(thread, ...messages) {
       const kept = entry(messages);
       if (kept.length === 0) return;
-      const session = of(thread);
-      store.set(thread.key, { ...session, exchanges: [...session.exchanges, kept].slice(-CAP) });
+      const at = new Date(now());
+      const raw = JSON.stringify({ id: crypto.randomUUID(), messages: kept });
+      try {
+        // One atomic pipeline: push onto a live session, or start an expired or missing one over without its past.
+        await sessions().updateOne(
+          { key: thread.key },
+          [
+            {
+              $set: {
+                exchanges: { $cond: [living(at), { $slice: [{ $concatArrays: [[{ $literal: raw }], "$exchanges"] }, CAP] }, [{ $literal: raw }]] },
+                summary: { $cond: [living(at), "$summary", "$$REMOVE"] },
+                started: { $cond: [living(at), "$started", { $literal: crypto.randomUUID() }] },
+                expires_at: { $literal: new Date(at.getTime() + ttlOf(thread) * 1000) },
+              },
+            },
+          ],
+          { upsert: true },
+        );
+      } catch (error) {
+        logger.warn(`Couldn't save history: ${String(error)}`);
+      }
     },
     async compact(thread, summarize, foldAt = foldTokens()) {
-      const session = of(thread);
+      const doc = await read(thread.key);
+      if (!doc) return false;
+      const parsed = doc.exchanges.map(parse);
+      const valid = parsed.flatMap((exchange, i) => (exchange ? [i] : []));
+      const exchanges = valid.map((i) => parsed[i]!);
+      const kept = keepOf(exchanges, foldAt);
+      if (kept === undefined) return false;
+      const older = exchanges.slice(kept).reverse().flat();
+      const summary = (await summarize(doc.summary, older)).trim().slice(0, MAX_SUMMARY);
+      // The stored entries to keep, broken ones among them included; exchanges appended while the summary was written
+      // sit at the head, so they stay too. A session that started over meanwhile has another start, and the fold leaves it alone.
+      const keep = { $add: [valid[kept]!, { $max: [0, { $subtract: [{ $size: "$exchanges" }, doc.exchanges.length] }] }] };
+      await sessions().updateOne({ key: thread.key, started: doc.started, expires_at: alive() }, [
+        { $set: { exchanges: { $slice: ["$exchanges", keep] }, ...(summary ? { summary: { $literal: summary } } : {}) } },
+      ]);
+      return true;
+    },
+    async clear(owner) {
+      await Promise.all([sessions().deleteOne({ key: privateThread(owner).key }), outcomes().deleteOne({ key: privateThread(owner).key })]);
+    },
+    async noteOutcome(owner, outcome) {
+      const at = new Date(now());
+      try {
+        await outcomes().updateOne(
+          { key: privateThread(owner).key },
+          [
+            {
+              $set: {
+                outcomes: { $cond: [living(at), { $slice: [{ $concatArrays: ["$outcomes", [{ $literal: outcome }]] }, -MAX_OUTCOMES] }, [{ $literal: outcome }]] },
+                expires_at: { $literal: new Date(at.getTime() + sessionTtl() * 1000) },
+              },
+            },
+          ],
+          { upsert: true },
+        );
+      } catch (error) {
+        logger.warn(`Couldn't keep a task outcome: ${String(error)}`);
+      }
+    },
+    async takeOutcomes(owner) {
+      const key = privateThread(owner).key;
+      try {
+        // One delete takes them all at once, so two questions at the same time can't both get them.
+        const doc = await outcomes().findOneAndDelete({ key, expires_at: alive() });
+        if (!doc) sweep(outcomes(), { key });
+        return (doc?.outcomes as string[] | undefined) ?? [];
+      } catch (error) {
+        logger.warn(`Task outcomes unavailable: ${String(error)}`);
+        return [];
+      }
+    },
+    async export(owner) {
+      const prefix = taskPrefix(owner);
+      const tasks: Record<string, Session> = {};
+      for await (const doc of sessions().find<SessionDoc>({ key: startingWith(prefix), expires_at: alive() })) tasks[doc.key.slice(prefix.length)] = sessionOf(doc);
+      const pending = await outcomes().findOne<OutcomesDoc>({ key: privateThread(owner).key, expires_at: alive() });
+      return { session: sessionOf(await read(privateThread(owner).key)), outcomes: pending?.outcomes ?? [], tasks };
+    },
+    async erase(owner) {
+      const key = privateThread(owner).key;
+      await Promise.all([
+        sessions().deleteMany({ $or: [{ key }, { key: startingWith(taskPrefix(owner)) }] }),
+        outcomes().deleteOne({ key }),
+      ]);
+    },
+  };
+};
+
+/** For tests and local runs without MongoDB; the same windows, and the same exact expiry by [now]. */
+export const memoryHistory = (now: () => number = Date.now): HistoryStore & { keys: () => string[] } => {
+  type Stored = { summary?: string; exchanges: HistoryMessage[][]; started: number; until: number };
+  const store = new Map<string, Stored>();
+  const outcomes = new Map<string, { list: string[]; until: number }>();
+  let starts = 0;
+  const live = <T extends { until: number }>(map: Map<string, T>, key: string): T | undefined => {
+    const found = map.get(key);
+    if (found && found.until <= now()) map.delete(key);
+    return found && found.until > now() ? found : undefined;
+  };
+  const load = (key: string): Session => {
+    const session = live(store, key);
+    return session ? { ...(session.summary ? { summary: session.summary } : {}), messages: session.exchanges.flat() } : { messages: [] };
+  };
+  return {
+    keys: () => [...store.keys(), ...[...outcomes.keys()].map((k) => `outcomes:${k}`)],
+    async load(thread) {
+      return load(thread.key);
+    },
+    async append(thread, ...messages) {
+      const kept = entry(messages);
+      if (kept.length === 0) return;
+      const session = live(store, thread.key);
+      const until = now() + ttlOf(thread) * 1000;
+      if (session) Object.assign(session, { exchanges: [...session.exchanges, kept].slice(-CAP), until });
+      else store.set(thread.key, { exchanges: [kept], started: ++starts, until });
+    },
+    async compact(thread, summarize, foldAt = foldTokens()) {
+      const session = live(store, thread.key);
+      if (!session) return false;
+      const read = session.exchanges.length;
       const newest = [...session.exchanges].reverse();
       const kept = keepOf(newest, foldAt);
       if (kept === undefined) return false;
       const older = newest.slice(kept).reverse().flat();
       const summary = (await summarize(session.summary, older)).trim().slice(0, MAX_SUMMARY);
-      store.set(thread.key, { summary: summary || session.summary, exchanges: session.exchanges.slice(-kept) });
+      // As in MongoDB: exchanges appended meanwhile stay, and a session that started over is left alone.
+      const current = live(store, thread.key);
+      if (!current || current.started !== session.started) return true;
+      const added = Math.max(0, current.exchanges.length - read);
+      Object.assign(current, { summary: summary || current.summary, exchanges: current.exchanges.slice(-(kept + added)) });
       return true;
     },
     async clear(owner) {
@@ -283,20 +353,20 @@ export const memoryHistory = (): HistoryStore & { keys: () => string[] } => {
     },
     async noteOutcome(owner, outcome) {
       const at = privateThread(owner).key;
-      outcomes.set(at, [...(outcomes.get(at) ?? []), outcome].slice(-MAX_OUTCOMES));
+      outcomes.set(at, { list: [...(live(outcomes, at)?.list ?? []), outcome].slice(-MAX_OUTCOMES), until: now() + sessionTtl() * 1000 });
     },
     async takeOutcomes(owner) {
       const at = privateThread(owner).key;
-      const taken = outcomes.get(at) ?? [];
+      const taken = live(outcomes, at)?.list ?? [];
       outcomes.delete(at);
       return taken;
     },
     async export(owner) {
       const tasks: Record<string, Session> = {};
-      for (const at of store.keys()) {
-        if (at.startsWith(taskPrefix(owner))) tasks[at.slice(taskPrefix(owner).length)] = load({ key: at, kind: "task" });
+      for (const at of [...store.keys()]) {
+        if (at.startsWith(taskPrefix(owner)) && live(store, at)) tasks[at.slice(taskPrefix(owner).length)] = load(at);
       }
-      return { session: load(privateThread(owner)), outcomes: [...(outcomes.get(privateThread(owner).key) ?? [])], tasks };
+      return { session: load(privateThread(owner).key), outcomes: [...(live(outcomes, privateThread(owner).key)?.list ?? [])], tasks };
     },
     async erase(owner) {
       for (const at of [...store.keys()]) if (at.startsWith(taskPrefix(owner))) store.delete(at);
