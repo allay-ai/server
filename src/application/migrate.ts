@@ -13,8 +13,9 @@ const USAGE = `Moves data between tenants, inside the backend's container:
   bun run dist/application/migrate.js purge-untagged
   bun run dist/application/migrate.js players <name>=<uuid> [<name>=<uuid> …]
 
-retag moves memories, consents, and runs (and the days' server lists) from one tenant to another and replaces players' ids in
-the statistics with pseudonyms under this backend's SECRETS_KEY. purge-untagged deletes memories without a tenant. players
+retag moves memories, deaths, players' state, consents, and runs (and the days' server lists) from one tenant to another and replaces players' ids in
+the statistics with pseudonyms under this backend's SECRETS_KEY. Sealed data (since 6.9) opens only under the SECRETS_KEY it was sealed
+with: give both backends the same one. purge-untagged deletes memories without a tenant. players
 names players who asked before 6.4 in the panel: each UUID's runs give the servers and dates; a UUID without runs changes
 nothing.`;
 

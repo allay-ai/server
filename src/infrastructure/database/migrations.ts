@@ -1,6 +1,10 @@
 import { ConsentModel } from "../../entities/consent/consent.model";
 import { MemoryModel } from "../../entities/memory/memory.model";
-import { logger } from "../../shared/logging/logger";
+import { DeathModel } from "../../entities/death/death.model";
+import { ExportModel } from "../../entities/export/export.model";
+import { PlayerModel } from "../../entities/player/player.model";
+import { ServerModel } from "../../entities/server/server.model";
+import { StateModel } from "../../entities/state/state.model";
 import { AuditModel } from "../admin/audit";
 import { AdminSessionModel } from "../admin/sessions";
 import { OutcomesModel, SessionModel } from "../history/history";
@@ -23,34 +27,22 @@ export const pseudonymiseRuns = async (pseudonyms: Pseudonyms): Promise<number> 
 };
 
 /**
- * Brings data from before 6.0 up to date on every start; each step does nothing once done. Memories get their
- * tenant (`self` on a self-hosted backend, where everything is the operator's own) and a last-seen date, runs
- * lose players' ids and names, and days past RUN_DAYS forget who played.
+ * Brings every collection's indexes in line with the code at start: a changed retention is a changed TTL index, and
+ * syncIndexes drops the old one and builds the new. Data stays as it is: since 6.9 nothing is rewritten at start.
  */
-export const migrate = async (options: { selfHosted: boolean; pseudonyms: Pseudonyms; now: Date }) => {
-  const memories = MemoryModel.collection;
-  if (options.selfHosted) {
-    const tagged = await memories.updateMany({ tenant: { $exists: false } }, { $set: { tenant: "self" } });
-    if (tagged.modifiedCount) logger.info(`Moved ${tagged.modifiedCount} memories to the tenant self`);
-  } else {
-    const untagged = await memories.countDocuments({ tenant: { $exists: false } });
-    // Nobody can tell whose they are on a hosted backend: they wait for `migrate retag`, or `migrate purge-untagged`.
-    if (untagged) logger.warn(`${untagged} memories have no tenant and reach nobody; see “Moving a self-hosted backend” in the wiki`);
+export const prepareDatabase = async () => {
+  for (const model of [
+    MemoryModel, DeathModel, StateModel, ExportModel, ConsentModel, PlayerModel, ServerModel, RunModel, DayModel, AuditModel,
+    SessionModel, OutcomesModel, AdminSessionModel,
+  ] as Array<{ syncIndexes(): Promise<unknown> }>) {
+    await model.syncIndexes();
   }
-  await memories.updateMany({ seen_at: { $exists: false } }, { $set: { seen_at: options.now } });
-  await MemoryModel.syncIndexes();
-  await ConsentModel.syncIndexes();
-  await AuditModel.syncIndexes();
-
-  const pseudonymised = await pseudonymiseRuns(options.pseudonyms);
-  if (pseudonymised) logger.info(`Replaced ${pseudonymised} players' ids in the statistics with pseudonyms`);
-  await SessionModel.syncIndexes();
-  await OutcomesModel.syncIndexes();
-  await AdminSessionModel.syncIndexes();
 };
 
 export interface Retagged {
   memories: number;
+  deaths: number;
+  states: number;
   consents: number;
   runs: number;
   days: number;
@@ -60,10 +52,11 @@ export interface Retagged {
 const memoriesOf = (tenant: string) => (tenant === "self" ? { $or: [{ tenant: "self" }, { tenant: { $exists: false } }] } : { tenant });
 
 /**
- * Moves one tenant's data to another, for a self-hosted backend's dump imported into a hosted one: memories, consents,
- * and runs from `self` (memories without a tenant count as `self`) become `license:<id>`. Settings, admin accounts, the
- * audit log, and traces belong to the backend, not a tenant, and stay as they are. Idempotent: a second run finds
- * nothing left to move.
+ * Moves one tenant's data to another, for a self-hosted backend's dump imported into a hosted one: memories, deaths,
+ * players' state, consents, and runs from `self` (memories without a tenant count as `self`) become `license:<id>`.
+ * Settings, admin accounts, the audit log, and traces belong to the backend, not a tenant, and stay as they are.
+ * Sealed data opens only with the key it was sealed with: both backends need the same SECRETS_KEY. Idempotent: a
+ * second run finds nothing left to move.
  */
 export const retag = async (options: { from: string; to: string; pseudonyms: Pseudonyms; dryRun?: boolean; now?: Date }): Promise<Retagged> => {
   const { from, to } = options;
@@ -73,6 +66,8 @@ export const retag = async (options: { from: string; to: string; pseudonyms: Pse
   if (options.dryRun) {
     return {
       memories: await memories.countDocuments(memoriesOf(from)),
+      deaths: await DeathModel.collection.countDocuments({ tenant: from }),
+      states: await StateModel.collection.countDocuments({ tenant: from }),
       consents: await ConsentModel.collection.countDocuments({ tenant: from }),
       runs: await runs.countDocuments({ server: from }),
       days: await days.countDocuments({ servers: from }),
@@ -94,6 +89,19 @@ export const retag = async (options: { from: string; to: string; pseudonyms: Pse
     }
   }
   await memories.updateMany({ seen_at: { $exists: false } }, { $set: { seen_at: options.now ?? new Date() } });
+  const movedDeaths = await DeathModel.collection.updateMany({ tenant: from }, { $set: { tenant: to } });
+  // A player with a state on both keeps the newer one.
+  const states = StateModel.collection;
+  let movedStates = 0;
+  for await (const state of states.find({ tenant: from })) {
+    const there = await states.findOne({ tenant: to, user_id: state.user_id });
+    if (there && there.updated_at >= state.updated_at) await states.deleteOne({ _id: state._id });
+    else {
+      if (there) await states.deleteOne({ _id: there._id });
+      await states.updateOne({ _id: state._id }, { $set: { tenant: to } });
+      movedStates++;
+    }
+  }
   // A player who agreed on both keeps the newer agreement.
   const consents = ConsentModel.collection;
   let movedConsents = 0;
@@ -109,7 +117,7 @@ export const retag = async (options: { from: string; to: string; pseudonyms: Pse
   const movedRuns = await runs.updateMany({ server: from }, { $set: { server: to } });
   const movedDays = await days.updateMany({ servers: from }, [{ $set: { servers: { $setUnion: [{ $setDifference: ["$servers", [from]] }, [to]] } } }]);
   const pseudonymised = await pseudonymiseRuns(options.pseudonyms);
-  return { memories: moved, consents: movedConsents, runs: movedRuns.modifiedCount, days: movedDays.modifiedCount, pseudonymised };
+  return { memories: moved, deaths: movedDeaths.modifiedCount, states: movedStates, consents: movedConsents, runs: movedRuns.modifiedCount, days: movedDays.modifiedCount, pseudonymised };
 };
 
 /** On a hosted backend: memories nobody can attribute to a tenant are deleted, since they reach nobody. */
