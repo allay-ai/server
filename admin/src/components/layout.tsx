@@ -205,18 +205,21 @@ export const Layout = () => {
   const [open, setOpen] = useState(false);
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[15rem_1fr]">
-      <aside className="sticky top-0 hidden h-dvh flex-col gap-6 border-r bg-sidebar px-3 py-5 lg:flex">
-        <Link to="/" className="px-3">
-          <Logo />
-        </Link>
-        <div className="flex-1 overflow-y-auto">
-          <Nav />
-        </div>
-        <div className="flex flex-col gap-2">
-          <About />
-          <UserMenu />
-        </div>
-      </aside>
+      {/* The column carries the sidebar's color down a long page; the sidebar itself stays in view. */}
+      <div className="hidden border-r bg-sidebar lg:block">
+        <aside className="sticky top-0 flex h-dvh flex-col gap-6 px-3 py-5">
+          <Link to="/" className="px-3">
+            <Logo />
+          </Link>
+          <div className="flex-1 overflow-y-auto">
+            <Nav />
+          </div>
+          <div className="flex flex-col gap-2">
+            <About />
+            <UserMenu />
+          </div>
+        </aside>
+      </div>
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background/90 px-4 backdrop-blur lg:hidden">
         <Link to="/">
           <Logo />
