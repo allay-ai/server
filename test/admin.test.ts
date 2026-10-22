@@ -320,7 +320,7 @@ describe("settings in the panel", () => {
   test("a change applies to the next read and lands in the audit log, secrets masked", async () => {
     const { call, admin, audit } = await withOwner();
     const before = (await call("GET", "/api/admin/settings")).body;
-    expect(before.fields.find((f: any) => f.key === "MAX_AGENT_STEPS")).toMatchObject({ value: 8, source: "default" });
+    expect(before.fields.find((f: any) => f.key === "MAX_AGENT_STEPS")).toMatchObject({ value: 26, source: "default" });
     // A self-hosted backend has no billing or bot fields.
     expect(before.fields.some((f: any) => f.group === "billing" || f.group === "telegram")).toBe(false);
 

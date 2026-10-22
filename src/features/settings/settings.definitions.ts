@@ -71,11 +71,17 @@ export const DEFINITIONS = {
   OPENROUTER_API_MODEL: {
     type: "string",
     group: "model",
-    default: "openai/gpt-6-luna",
+    default: "~anthropic/claude-haiku-latest",
     max: 200,
-    description: "The agent's model. It must support tool calling: perplexity/sonar* won't do",
+    description: "The agent's model; ~anthropic/claude-haiku-latest is the recommended one. It must support tool calling: perplexity/sonar* won't do",
   },
-  OPENROUTER_REASONING_EFFORT: { type: "enum", group: "model", options: ["low", "medium", "high"], description: "Reasoning effort for models that reason; empty leaves it to the model" },
+  OPENROUTER_REASONING_EFFORT: {
+    type: "enum",
+    group: "model",
+    options: ["unset", "low", "medium", "high"],
+    default: "medium",
+    description: "How hard a model that reasons thinks before it answers. unset sends nothing: OpenRouter then leaves it to the model, and Claude models don't reason at all",
+  },
   API_NAME: { type: "string", group: "model", default: "allay", max: 64, description: "The name OpenRouter shows for this backend's requests" },
 
   PERPLEXITY_API_KEY: { type: "secret", group: "search", description: "Perplexity's Search API for web search on the backend's own key; without it SEARCH_MODEL searches" },
@@ -83,8 +89,8 @@ export const DEFINITIONS = {
   OPENROUTER_API_CTX: { type: "enum", group: "search", options: ["low", "medium", "high"], default: "medium", description: "Search context size of the online model" },
 
   TOOL_TIMEOUT_MS: { type: "int", group: "limits", default: 15_000, min: 1_000, max: 120_000, description: "How long to wait for the plugin's tool result, in milliseconds" },
-  MAX_AGENT_STEPS: { type: "int", group: "limits", default: 8, min: 1, max: 50, description: "Model calls per question" },
-  MAX_TASK_STEPS: { type: "int", group: "limits", default: 16, min: 1, max: 100, description: "Model calls per wake of an automation agent" },
+  MAX_AGENT_STEPS: { type: "int", group: "limits", default: 26, min: 1, max: 50, description: "Model calls per question" },
+  MAX_TASK_STEPS: { type: "int", group: "limits", default: 32, min: 1, max: 100, description: "Model calls per wake of an automation agent" },
   MAX_ACTIVE_RUNS: { type: "int", group: "limits", default: 200, min: 1, max: 10_000, description: "Streaming questions at once" },
   SSE_PING_MS: { type: "int", group: "limits", default: 15_000, min: 1_000, max: 120_000, description: "Ping interval that keeps proxies from closing the stream, in milliseconds" },
   MEMORY_MAX: { type: "int", group: "limits", default: 200, min: 10, max: 1_000, description: "Memories a player may keep, places included" },

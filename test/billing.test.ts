@@ -293,6 +293,7 @@ describe("bring your own key", () => {
       Response.json({
         data: [
           { id: "openai/gpt-6-luna", supported_parameters: ["tools", "reasoning"] },
+          { id: "~anthropic/claude-haiku-latest", supported_parameters: ["tools", "reasoning"] },
           { id: "perplexity/sonar", supported_parameters: ["web_search_options"] },
           { id: "some/no-tools", supported_parameters: ["temperature"] },
         ],
@@ -319,7 +320,7 @@ describe("bring your own key", () => {
     const deps = testDeps(model, { billing: testBilling({ enabled: true, net: fakeNet(catalog) }) });
     const base = start(deps);
     await readSse(await chat(base, {}, { ...(await licensed(deps.billing)), "X-OpenRouter-Token": "sk-or-old-header-1" }));
-    expect(deps.lastProvider).toMatchObject({ baseURL: "https://openrouter.ai/api/v1", apiKey: "sk-or-old-header-1", model: "openai/gpt-6-luna" });
+    expect(deps.lastProvider).toMatchObject({ baseURL: "https://openrouter.ai/api/v1", apiKey: "sk-or-old-header-1", model: "~anthropic/claude-haiku-latest" });
     expect(offered[0]).toContain("search_web");
   });
 

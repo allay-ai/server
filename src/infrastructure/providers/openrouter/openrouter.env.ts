@@ -1,6 +1,6 @@
 import { settings } from "../../../features/settings/settings";
 
-export const DEFAULT_MODEL = "openai/gpt-6-luna";
+export const DEFAULT_MODEL = "~anthropic/claude-haiku-latest";
 export const DEFAULT_SEARCH_MODEL = "perplexity/sonar";
 
 // Perplexity models search but can't call tools. v1 deployments set one as the main model;
@@ -17,7 +17,8 @@ export const openrouterEnv = () => {
     model: searchOnly(model) ? DEFAULT_MODEL : model,
     searchModel,
     searchContext: settings.get("OPENROUTER_API_CTX"),
-    reasoningEffort: settings.get("OPENROUTER_REASONING_EFFORT") as "low" | "medium" | "high" | undefined,
+    // "unset" sends no reasoning at all, as an empty value did before 6.9.
+    reasoningEffort: (settings.get("OPENROUTER_REASONING_EFFORT") === "unset" ? undefined : settings.get("OPENROUTER_REASONING_EFFORT")) as "low" | "medium" | "high" | undefined,
     apiUrl: settings.get("API_URL"),
     apiName: settings.get("API_NAME"),
   };

@@ -10,7 +10,7 @@ describe("settings", () => {
   test("the environment wins, then the stored value, then the default", async () => {
     const store = memorySettings();
     const stored = fresh({}, store);
-    expect(stored.get("MAX_AGENT_STEPS")).toBe(8);
+    expect(stored.get("MAX_AGENT_STEPS")).toBe(26);
     expect(stored.source("MAX_AGENT_STEPS")).toBe("default");
     expect((await stored.update({ MAX_AGENT_STEPS: 12 }, 0, "owner")).ok).toBe(true);
     expect(stored.get("MAX_AGENT_STEPS")).toBe(12);
@@ -24,8 +24,8 @@ describe("settings", () => {
 
   test("an empty variable counts as unset, as compose passes ${X:-}", () => {
     const settings = fresh({ MAX_AGENT_STEPS: "", OPENROUTER_API_MODEL: " " });
-    expect(settings.get("MAX_AGENT_STEPS")).toBe(8);
-    expect(settings.get("OPENROUTER_API_MODEL")).toBe("openai/gpt-6-luna");
+    expect(settings.get("MAX_AGENT_STEPS")).toBe(26);
+    expect(settings.get("OPENROUTER_API_MODEL")).toBe("~anthropic/claude-haiku-latest");
   });
 
   test("a field the environment sets can't change in the panel", async () => {
