@@ -675,6 +675,41 @@ describe("players in the panel", () => {
     expect(seen.address).toBe("mc.example.com");
   });
 
+  test("a server has its own page with its players and runs, and a player's page lists the servers they asked on", async () => {
+    const ctx = await withOwner();
+    const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
+    Object.assign(ctx.deps, { runs });
+    const { call, deps } = ctx;
+    await deps.consents.give({ tenant: "self", userId: "uuid-steve" }, { version: 1 });
+    const registered = await fetch(`${ctx.base}/api/v2/server`, {
+      method: "PUT",
+      headers: { ...AUTH, "Content-Type": "application/json" },
+      body: JSON.stringify({ id: "srv-1", name: "Moonlands", motd: "A hard survival", address: "mc.example.com" }),
+    });
+    expect(registered.status).toBe(200);
+    const asked = await fetch(`${ctx.base}/api/v2/chat`, {
+      method: "POST",
+      headers: { ...AUTH, "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: "uuid-steve", player: { name: "Steve" }, message: "hi", server: { id: "srv-1", address: "mc.example.com" } }),
+    });
+    await asked.text();
+    const pseudonym = deps.pseudonyms.of("uuid-steve");
+    for (let i = 0; i < 50 && !(await runs.list({ limit: 1 })).length; i++) await Bun.sleep(10);
+
+    const page = (await call("GET", "/api/admin/servers/self/srv-1")).body;
+    expect(page.server).toMatchObject({ server: "self", server_id: "srv-1", name: "Moonlands", address: "mc.example.com", questions: 1, players: 1, license: null });
+    expect(page.players).toMatchObject([{ user_id: pseudonym, player: { name: "Steve" }, questions: 1 }]);
+    expect(page.runs).toMatchObject([{ user_id: pseudonym, server_id: "srv-1", server_name: "Moonlands" }]);
+    expect((await call("GET", "/api/admin/servers/self/nope")).status).toBe(404);
+    expect((await call("GET", "/api/admin/servers/bad tenant/srv-1")).status).toBe(404);
+
+    const player = (await call("GET", `/api/admin/players/${pseudonym}`)).body;
+    expect(player.seen_on).toMatchObject([{ server: "self", server_id: "srv-1", name: "Moonlands", questions: 1 }]);
+    expect(player.runs[0].server_name).toBe("Moonlands");
+    // The erase form's picker finds players on every server when it names none.
+    expect((await call("GET", "/api/admin/players/lookup?q=Ste")).body.players).toMatchObject([{ user_id: pseudonym, name: "Steve", server: "self" }]);
+  });
+
   test("full privacy keeps a player's name out of the panel, from the switch and from each question", async () => {
     const ctx = await withOwner();
     const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
@@ -775,6 +810,10 @@ describe("players in the panel", () => {
     expect(ctx.audit.entries.find((e) => e.action === "run.reveal")!.target).toBe(`self ${ctx.deps.pseudonyms.of("uuid-steve")} ${run}`);
     // The plain trace view still shows no word of it.
     expect(JSON.stringify((await ctx.call("GET", `/api/admin/traces/${run}`)).body)).not.toContain("stash");
+    // The list of traces carries each run's numbers, and no word either.
+    const listed = (await ctx.call("GET", "/api/admin/traces")).body.traces;
+    expect(listed[0]).toMatchObject({ trace_id: "t1", run: { id: run, model: "m", cost: 0.001 } });
+    expect(JSON.stringify(listed)).not.toContain("stash");
     await ctx.call("POST", "/api/admin/accounts", { username: "helper", password: PASSWORD, role: "admin" });
     await ctx.call("POST", "/api/admin/logout");
     await ctx.call("POST", "/api/admin/login", { username: "helper", password: PASSWORD });

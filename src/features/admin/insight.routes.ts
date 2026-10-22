@@ -76,34 +76,54 @@ const whoOf = async (deps: AllayDeps, pseudonyms: string[]): Promise<(id: string
 /** Private, loopback, and link-local ranges: a server there shares a network with the backend, like Moonlands with allay.chat. */
 const INTERNAL = rangesOf("10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16, ::1/128, fc00::/7, fe80::/10");
 
+/** The licenses' names by tenant, for the servers and runs that name a license. */
+const licenseNames = async (deps: AllayDeps, tenants: string[]) => {
+  const names = new Map<string, string>();
+  if (!deps.billing.enabled) return names;
+  for (const tenant of new Set(tenants.filter((t) => t.startsWith("license:")))) {
+    const license = await deps.billing.licenses.get(tenant.slice("license:".length)).catch(() => null);
+    if (license) names.set(tenant, serverName(license));
+  }
+  return names;
+};
+
 /**
- * Servers from the runs with what the directory knows: the address players join with, the game and plugin versions,
- * and the license's name. The address a server connects from may be someone's home, so only admins see it.
+ * Servers from the runs with what the directory knows: the name its owner gave it, the address players join with,
+ * the game and plugin versions, and the license behind it. The address a server connects from may be someone's home,
+ * so only admins see it. With [player], the counts are that player's on each server, and only their servers show.
  */
-export const serversView = async (ctx: Context, asked: ServerSummary[], tenant?: string) => {
+export const serversView = async (ctx: Context, asked: ServerSummary[], tenant?: string, player?: string) => {
   const { deps } = ctx;
   const known = (await deps.servers?.list(tenant)) ?? [];
-  // A server that registered but hasn't asked yet shows too, with nothing counted.
-  const quiet = known
-    .filter((k) => !asked.some((s) => s.server === k.tenant && (s.server_id ?? "") === k.server_id))
-    .map((k): ServerSummary => ({ server: k.tenant, ...(k.server_id ? { server_id: k.server_id } : {}), payer: k.tenant === "self" ? "self" : "license", questions: 0, players: 0, cost: 0, last_seen: k.last_seen }));
+  // A server that registered but hasn't asked yet shows too, with nothing counted; not on a player's page.
+  const quiet = player
+    ? []
+    : known
+        .filter((k) => !asked.some((s) => s.server === k.tenant && (s.server_id ?? "") === k.server_id))
+        .map(
+          (k): ServerSummary => ({
+            server: k.tenant,
+            ...(k.server_id ? { server_id: k.server_id } : {}),
+            payer: k.tenant === "self" ? "self" : "license",
+            questions: 0,
+            players: 0,
+            cost: 0,
+            first_seen: k.first_seen,
+            last_seen: k.last_seen,
+          }),
+        );
   const servers = [...asked, ...quiet];
   const admins = !!ctx.me && allows(ctx.me.role, "admin");
-  const names = new Map<string, string>();
-  if (deps.billing.enabled) {
-    for (const id of new Set(servers.filter((s) => s.server.startsWith("license:")).map((s) => s.server.slice("license:".length)))) {
-      const license = await deps.billing.licenses.get(id).catch(() => null);
-      if (license) names.set(`license:${id}`, serverName(license));
-    }
-  }
+  const licenses = await licenseNames(deps, servers.map((s) => s.server));
   return servers.map((s) => {
     const entry = known.find((k) => k.tenant === s.server && k.server_id === (s.server_id ?? ""));
     return {
       ...s,
+      server_id: s.server_id ?? null,
+      first_asked: s.questions ? s.first_seen.toISOString() : null,
       last_seen: s.last_seen.toISOString(),
-      // The server's own name; the license's, from /allay link, is its MOTD.
       name: entry?.name ?? null,
-      motd: entry?.motd ?? names.get(s.server) ?? null,
+      motd: entry?.motd ?? null,
       address: entry?.address ?? null,
       port: entry?.port ?? null,
       software: entry?.software ?? null,
@@ -111,16 +131,29 @@ export const serversView = async (ctx: Context, asked: ServerSummary[], tenant?:
       plugin_version: entry?.plugin_version ?? null,
       ip: admins ? (entry?.ip ?? null) : null,
       internal: entry ? inRanges(entry.ip, INTERNAL) : null,
+      // When the server first registered or asked, as the directory knows it.
       first_seen: entry?.first_seen.toISOString() ?? null,
+      license: s.server.startsWith("license:") ? { id: s.server.slice("license:".length), name: licenses.get(s.server) ?? null } : null,
     };
   });
 };
 
-const runView = (run: RunRecord, who: (id: string) => Who = () => null) => ({ ...run, at: run.at.toISOString(), player: who(run.user_id) });
+/** The name each server of these runs has in the directory, by tenant and server id. */
+const serverNamesOf = async (deps: AllayDeps, runs: RunRecord[]) => {
+  const known = runs.length ? ((await deps.servers?.list()) ?? []) : [];
+  return (run: RunRecord) => known.find((k) => k.tenant === run.server && k.server_id === (run.server_id ?? ""))?.name ?? null;
+};
+
+const runView = (run: RunRecord, who: (id: string) => Who = () => null, server: (run: RunRecord) => string | null = () => null) => ({
+  ...run,
+  at: run.at.toISOString(),
+  player: who(run.user_id),
+  server_name: server(run),
+});
 
 const runsView = async (deps: AllayDeps, runs: RunRecord[]) => {
-  const who = await whoOf(deps, runs.map((r) => r.user_id));
-  return runs.map((run) => runView(run, who));
+  const [who, server] = await Promise.all([whoOf(deps, runs.map((r) => r.user_id)), serverNamesOf(deps, runs)]);
+  return runs.map((run) => runView(run, who, server));
 };
 
 const limitOf = (url: URL, max = 100) => Math.min(max, Math.max(1, Number(url.searchParams.get("limit")) || 50));
@@ -206,7 +239,8 @@ export const insightRoutes: Route[] = [
     method: "GET",
     path: "/players/:id",
     access: "viewer",
-    async handle({ deps, admin, params }) {
+    async handle(ctx) {
+      const { deps, admin, params } = ctx;
       if (!PSEUDONYM.test(params.id)) return error(404, "NOT_FOUND", "No such player");
       const [summary, runs, tenants, bans, known] = await Promise.all([
         deps.runs?.players({ search: params.id, limit: 1, skip: 0 }),
@@ -236,6 +270,9 @@ export const insightRoutes: Route[] = [
       );
       const newest = entries[0];
       const who = () => (newest ? { name: newest.name, uuid: newest.user_id } : null);
+      // Every server they asked on, with their own numbers there.
+      const seenOn = await serversView(ctx, (await deps.runs?.servers({ user_id: params.id, limit: 100 })) ?? [], undefined, params.id);
+      const serverOf = await serverNamesOf(deps, runs);
       // Numbers and names only: never what the player asked or what Allay remembers.
       return Response.json({
         user_id: params.id,
@@ -247,8 +284,9 @@ export const insightRoutes: Route[] = [
         first_seen: player.first_seen?.toISOString() ?? null,
         last_seen: player.last_seen?.toISOString() ?? null,
         servers,
+        seen_on: seenOn,
         profile: profileOf(runs, admin.now()),
-        runs: runs.slice(0, 50).map((run) => runView(run, who)),
+        runs: runs.slice(0, 50).map((run) => runView(run, who, serverOf)),
       });
     },
   },
@@ -340,6 +378,34 @@ export const insightRoutes: Route[] = [
     },
   },
   {
+    // One server: what it is, the license behind it, its players, and its newest runs. `-` stands for no server id.
+    method: "GET",
+    path: "/servers/:tenant/:id",
+    access: "viewer",
+    async handle(ctx) {
+      const { deps, params } = ctx;
+      if (!TENANT.test(params.tenant)) return error(404, "NOT_FOUND", "No such server");
+      const serverId = params.id === "-" ? undefined : params.id;
+      const asked = (await deps.runs?.servers({ server: params.tenant, server_id: serverId, limit: 50 })) ?? [];
+      const all = await serversView(ctx, asked, params.tenant);
+      const server = all.find((s) => (s.server_id ?? "-") === params.id);
+      if (!server) return error(404, "NOT_FOUND", "No such server");
+      const [found, runs] = await Promise.all([
+        deps.runs?.players({ server: params.tenant, server_id: serverId, limit: 200, skip: 0 }),
+        deps.runs?.list({ server: params.tenant, server_id: serverId, limit: 50 }) ?? [],
+      ]);
+      // Runs without a server id belong to every server of the tenant otherwise; only the empty one may show them.
+      const own = serverId ? runs : runs.filter((r) => !r.server_id);
+      const who = await whoOf(deps, (found?.players ?? []).map((p) => p.user_id));
+      return Response.json({
+        server,
+        players: (found?.players ?? [])
+          .map((p) => ({ user_id: p.user_id, player: who(p.user_id), questions: p.questions, cost: p.cost, first_seen: p.first_seen.toISOString(), last_seen: p.last_seen.toISOString() })),
+        runs: await runsView(deps, own),
+      });
+    },
+  },
+  {
     method: "GET",
     path: "/runs",
     access: "viewer",
@@ -392,9 +458,12 @@ export const insightRoutes: Route[] = [
     method: "GET",
     path: "/traces",
     access: "viewer",
-    async handle({ admin, url }) {
+    async handle({ deps, admin, url }) {
       if (!admin.traces) return Response.json({ traces: [] });
-      return Response.json({ traces: await admin.traces.list({ before: beforeOf(url), limit: limitOf(url) }) });
+      const traces = await admin.traces.list({ before: beforeOf(url), limit: limitOf(url) });
+      // Each trace with its run's numbers, so the table says who, where, which model, and what it cost.
+      const runs = await runsView(deps, (await deps.runs?.many(traces.flatMap((t) => (t.run_id ? [t.run_id] : [])))) ?? []);
+      return Response.json({ traces: traces.map((t) => ({ ...t, run: runs.find((r) => r.id === t.run_id) ?? null })) });
     },
   },
   {

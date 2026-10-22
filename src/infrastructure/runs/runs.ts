@@ -89,6 +89,9 @@ export interface PlayerQuery {
   from?: Date;
   /** Newest first by default; `questions` ranks the busiest first. */
   sort?: "last_seen" | "questions";
+  /** Only questions on this tenant, and on this server of it. */
+  server?: string;
+  server_id?: string;
   limit: number;
   skip: number;
 }
@@ -100,7 +103,16 @@ export interface ServerSummary {
   questions: number;
   players: number;
   cost: number;
+  first_seen: Date;
   last_seen: Date;
+}
+
+/** Which servers to sum up: one tenant, one server of it, or the ones one player asked on. */
+export interface ServerQuery {
+  server?: string;
+  server_id?: string;
+  user_id?: string;
+  limit: number;
 }
 
 export interface RunFilter {
@@ -122,7 +134,9 @@ export interface RunStore {
   since(from: Date): Promise<RunRecord[]>;
   days(from: string, to: string): Promise<DayRollup[]>;
   players(options: PlayerQuery): Promise<{ players: PlayerSummary[]; total: number }>;
-  servers(options: { server?: string; limit: number }): Promise<ServerSummary[]>;
+  servers(options: ServerQuery): Promise<ServerSummary[]>;
+  /** These runs, for the traces of the panel; missing ones are left out. */
+  many(ids: string[]): Promise<RunRecord[]>;
   /** The numbers of a player's runs on one tenant, newest first, for their copy of what's kept. */
   of(userId: string, server: string, limit: number): Promise<RunRecord[]>;
   /** The tenants a player asked on, by pseudonym. */
@@ -261,9 +275,15 @@ export const mongoRuns: RunStore = {
   async days(from, to) {
     return (await DayModel.find({ day: { $gte: from, $lte: to } }, PROJECTION).sort({ day: 1 }).lean<DayRollup[]>()).map(decodeDay);
   },
-  async players({ search, ids, from, sort = "last_seen", limit, skip }) {
+  async players({ search, ids, from, sort = "last_seen", server, server_id, limit, skip }) {
     const user = ids ? { $in: ids } : search ? { $regex: `^${escape(search)}` } : { $ne: ERASED };
-    const match = { kind: { $ne: "summary" }, user_id: user, ...(from ? { at: { $gte: from } } : {}) };
+    const match = {
+      kind: { $ne: "summary" },
+      user_id: user,
+      ...(from ? { at: { $gte: from } } : {}),
+      ...(server ? { server } : {}),
+      ...(server_id ? { server_id } : {}),
+    };
     const [result] = await RunModel.aggregate<{ players: PlayerSummary[]; total: Array<{ n: number }> }>([
       { $match: match },
       { $sort: { at: 1 } },
@@ -298,9 +318,9 @@ export const mongoRuns: RunStore = {
     ]);
     return { players: result?.players ?? [], total: result?.total[0]?.n ?? 0 };
   },
-  async servers({ server, limit }) {
+  async servers({ server, server_id, user_id, limit }) {
     return RunModel.aggregate<ServerSummary>([
-      { $match: { kind: { $ne: "summary" }, ...(server ? { server } : {}) } },
+      { $match: { kind: { $ne: "summary" }, ...(server ? { server } : {}), ...(server_id ? { server_id } : {}), ...(user_id ? { user_id } : {}) } },
       { $sort: { at: 1 } },
       {
         $group: {
@@ -309,13 +329,17 @@ export const mongoRuns: RunStore = {
           questions: { $sum: 1 },
           players: { $addToSet: "$user_id" },
           cost: { $sum: "$cost" },
+          first_seen: { $first: "$at" },
           last_seen: { $last: "$at" },
         },
       },
-      { $project: { _id: 0, server: "$_id.server", server_id: "$_id.server_id", payer: 1, questions: 1, players: { $size: "$players" }, cost: 1, last_seen: 1 } },
+      { $project: { _id: 0, server: "$_id.server", server_id: "$_id.server_id", payer: 1, questions: 1, players: { $size: "$players" }, cost: 1, first_seen: 1, last_seen: 1 } },
       { $sort: { last_seen: -1 } },
       { $limit: limit },
     ]);
+  },
+  async many(ids) {
+    return ids.length ? RunModel.find({ id: { $in: ids } }, PROJECTION).lean<RunRecord[]>() : [];
   },
   async of(userId, server, limit) {
     return RunModel.find({ user_id: userId, server }, PROJECTION).sort({ at: -1 }).limit(limit).lean<RunRecord[]>();
@@ -379,10 +403,10 @@ export const memoryRuns = (): RunStore & { all: RunRecord[] } => {
     async days(from, to) {
       return [...days.values()].filter((d) => d.day >= from && d.day <= to).sort((a, b) => a.day.localeCompare(b.day)).map((d) => decodeDay(structuredClone(d)));
     },
-    async players({ search, ids, from, sort = "last_seen", limit, skip }) {
+    async players({ search, ids, from, sort = "last_seen", server, server_id, limit, skip }) {
       const byUser = new Map<string, PlayerSummary & { tenants: Set<string>; time: number }>();
       for (const run of [...all].sort((a, b) => a.at.getTime() - b.at.getTime())) {
-        if (run.kind === "summary" || (from && run.at < from)) continue;
+        if (run.kind === "summary" || (from && run.at < from) || (server && run.server !== server) || (server_id && run.server_id !== server_id)) continue;
         if (ids ? !ids.includes(run.user_id) : search ? !run.user_id.startsWith(search) : run.user_id === ERASED) continue;
         const known = byUser.get(run.user_id);
         const tenants = (known?.tenants ?? new Set<string>()).add(run.server);
@@ -410,12 +434,13 @@ export const memoryRuns = (): RunStore & { all: RunRecord[] } => {
         .sort((a, b) => (sort === "questions" ? b.questions - a.questions : 0) || b.last_seen.getTime() - a.last_seen.getTime());
       return { players: players.slice(skip, skip + limit), total: players.length };
     },
-    async servers({ server, limit }) {
+    async servers({ server, server_id, user_id, limit }) {
       const byServer = new Map<string, ServerSummary & { users: Set<string> }>();
       for (const run of [...all].sort((a, b) => a.at.getTime() - b.at.getTime())) {
-        if (run.kind === "summary" || (server && run.server !== server)) continue;
+        if (run.kind === "summary" || (server && run.server !== server) || (server_id && run.server_id !== server_id) || (user_id && run.user_id !== user_id)) continue;
         const key = `${run.server}\n${run.server_id ?? ""}`;
-        const known = byServer.get(key) ?? { server: run.server, server_id: run.server_id, payer: run.payer, questions: 0, players: 0, cost: 0, last_seen: run.at, users: new Set<string>() };
+        const known =
+          byServer.get(key) ?? { server: run.server, server_id: run.server_id, payer: run.payer, questions: 0, players: 0, cost: 0, first_seen: run.at, last_seen: run.at, users: new Set<string>() };
         known.questions++;
         known.cost += run.cost;
         known.users.add(run.user_id);
@@ -428,6 +453,9 @@ export const memoryRuns = (): RunStore & { all: RunRecord[] } => {
         .map(({ users: _, ...s }) => s)
         .sort((a, b) => b.last_seen.getTime() - a.last_seen.getTime())
         .slice(0, limit);
+    },
+    async many(ids) {
+      return structuredClone(all.filter((r) => ids.includes(r.id)));
     },
     async of(userId, server, limit) {
       return structuredClone(all.filter((r) => r.user_id === userId && r.server === server).sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, limit));
