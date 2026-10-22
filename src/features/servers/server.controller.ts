@@ -48,6 +48,8 @@ export const handleServer = (deps: AllayDeps) => async (req: Request, server?: S
   try {
     const result = await deps.servers.register({ tenant: caller.tenant, server_id: id, ip: clientAddress(req, server, trustOf(settings)), ...defined }, new Date());
     if (result === "taken") return jsonError({ code: "NAME_TAKEN", message: `Another server on this backend is called “${info.name}”; pick another name`, statusCode: 409 });
+    // The license takes the name its server goes by, so the bot and the panel call it that, not by the MOTD.
+    if (info.name && caller.license && caller.license.name !== info.name) await deps.billing.licenses.update(caller.license.id, { name: info.name });
     return Response.json({ registered: true, name: info.name ?? null });
   } catch (error) {
     logger.warn(`Couldn't register a server of ${caller.tenant}: ${String(error)}`);

@@ -7,6 +7,7 @@ import { createLicense, refreshClaim, statusOf, verifyLicense } from "./billing"
 import { clientAddress, rateKey } from "../../shared/lib/address";
 import { settings } from "../settings/settings";
 import { trustOf } from "../settings/trust";
+import { licenseTenant } from "../auth/caller";
 
 const bodySchema = z.object({ name: z.string().max(200).optional() }).catch({});
 
@@ -36,7 +37,9 @@ export const handleLicense = (deps: AllayDeps) => async (req: Request, server?: 
   if (header) {
     const license = await verifyLicense(billing, header);
     if (license instanceof ApiFailure) return jsonError(license.toApiError());
-    return Response.json(await refreshClaim(billing, license, name));
+    // A name a server registered beats what /allay link sends, which older plugins take from the MOTD.
+    const registered = (await deps.servers?.list(licenseTenant(license.id)))?.find((s) => s.name)?.name;
+    return Response.json(await refreshClaim(billing, license, registered ?? name));
   }
   // Behind a proxy the peer is the proxy, so the client's own address comes from it, and only from a trusted one.
   const now = billing.now().getTime();

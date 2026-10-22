@@ -144,6 +144,18 @@ describe("tenants never meet", () => {
     expect(servers.find((s) => s.server_id === "a-1")).toMatchObject({ motd: "☾ Moonlands ☾", address: "mc.example.com", software: "Paper" });
   });
 
+  test("a license takes its server's registered name, and /allay link's MOTD doesn't replace it", async () => {
+    const t = await twoServers();
+    const id = t.tenantA.slice("license:".length);
+    const send = (path: string, method: string, body: Record<string, unknown>) =>
+      fetch(`${t.base}${path}`, { method, headers: { ...t.A, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    expect((await send("/api/v2/server", "PUT", { id: "a-1", name: "Moonlands", motd: "☾ Moonlands ☾\nHard survival" })).status).toBe(200);
+    expect((await t.deps.billing.licenses.get(id))!.name).toBe("Moonlands");
+    expect((await send("/api/v2/license", "POST", { name: "☾ Moonlands ☾ Hard survival" })).status).toBe(200);
+    expect((await t.deps.billing.licenses.get(id))!.name).toBe("Moonlands");
+    expect((await t.deps.servers!.list(t.tenantA))[0]!.motd).toBe("☾ Moonlands ☾\nHard survival");
+  });
+
   test("B can't read, give, or withdraw A's consent, even with A's player id", async () => {
     const t = await twoServers();
     t.deps.consents = memoryConsents();
