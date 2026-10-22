@@ -1,5 +1,5 @@
 {
-  "app": { "name": "Allay Admin" },
+  "app": { "name": "Allay Room" },
   "nav": {
     "insight": "Insight",
     "dashboard": "Dashboard",
@@ -16,7 +16,11 @@
     "accounts": "Accounts",
     "audit": "Audit log"
   },
-  "layout": { "version": "Allay Server {{version}}", "menu": "Open the menu" },
+  "layout": {
+    "version": "Allay Server {{version}}",
+    "menu": "Open the menu",
+    "links": { "title": "The project", "source": "Source on GitHub", "issue": "Report a problem", "discussions": "Ask or suggest", "releases": "What's new" }
+  },
   "menu": {
     "theme": "Theme",
     "themes": { "light": "Light", "dark": "Dark", "system": "System" },
@@ -25,7 +29,7 @@
   },
   "roles": { "owner": "Owner", "admin": "Admin", "viewer": "Viewer" },
   "ranges": { "24h": "24 h", "7d": "7 d", "30d": "30 d", "90d": "90 d", "1y": "1 y" },
-  "plans": { "week": "Week", "month": "Month", "year": "Year" },
+  "plans": { "week": "Week", "month": "Month", "year": "Year", "infinity": "Infinity" },
   "common": {
     "cancel": "Cancel",
     "previous": "Previous",
@@ -34,7 +38,8 @@
     "all": "See all",
     "yes": "Yes",
     "no": "No",
-    "page": "Page {{page}} of {{pages}}"
+    "page": "Page {{page}} of {{pages}}",
+    "save": "Save"
   },
   "errors": { "network": "Couldn't reach the backend. Check your connection and try again." },
   "notFound": { "title": "Nothing here", "text": "This page doesn't exist, or it moved.", "home": "Back to the dashboard" },
@@ -145,7 +150,7 @@
   },
   "players": {
     "title": "Players",
-    "description": "Everyone who asked Allay, newest first, by the name of their last question. Players from before 6.4 show their pseudonym until they ask again. Open a player to clear their session, block them, or erase them.",
+    "description": "Everyone who asked Allay, newest first, by the name of their last question.",
     "search": "Name, UUID, or pseudonym",
     "none": "Nobody has asked yet.",
     "noMatch": "No player matches that.",
@@ -169,7 +174,7 @@
     },
     "erase": {
       "title": "Erase a player",
-      "description": "When a player asks to be forgotten: their name, memories, session, and agents' threads go, and their runs keep only numbers. Pick the server, then the player by name; a UUID or a pseudonym works too.",
+      "description": "When a player asks to be forgotten: their name, memories and places, deaths, settings, session, and agents' threads go, and their runs keep only numbers. Pick the player by name; a UUID or a pseudonym works too.",
       "server": "Server",
       "player": "Player",
       "placeholder": "Start typing a name",
@@ -178,7 +183,9 @@
       "confirmTitle": "Erase everything about this player on this server?",
       "confirmNamed": "Erase everything about {{name}} on this server?",
       "confirmText": "This can't be undone. The audit log keeps that it happened, under the player's pseudonym.",
-      "done": "Erased {{memories}} memories; {{runs}} runs now count as nobody's."
+      "done": "Erased {{memories}} memories; {{runs}} runs now count as nobody's.",
+      "noMatchAnywhere": "Nobody has that name. A UUID or a pseudonym still works.",
+      "on": "On {{server}}"
     }
   },
   "player": {
@@ -236,31 +243,52 @@
       "unblockDone": "Player unblocked.",
       "blockedSince": "Blocked since {{date}}.",
       "unknown": "Nothing kept on this server tells who this player is: no name, no consent, no memories, and their session has long expired. Erasing removes what's left, their runs and traces."
-    }
+    },
+    "noServers": "No questions on any server yet.",
+    "serverLine": "{{questions}} questions · {{cost}} · {{seen}}"
   },
   "servers": {
     "title": "Servers",
-    "description": "Minecraft servers that asked, by who pays: a license, the server's own key, or this backend. The address is where players join, when the plugin's config gives it; admins also see the address each server connects from.",
+    "description": "Every Minecraft server that registered or asked, with where players join and what it runs. Open one for its players and runs.",
     "none": "No server has asked yet.",
     "license": "License {{id}}",
     "byok": "Own key {{id}}",
     "self": "This backend's key",
     "columns": {
-      "server": "Server",
-      "address": "Address",
-      "ip": "Connects from",
-      "runs": "Runs",
+      "name": "Name",
+      "domain": "Domain",
+      "license": "License",
+      "ip": "IP",
+      "runtime": "Runtime",
       "questions": "Questions",
       "players": "Players",
       "cost": "Cost",
-      "lastSeen": "Last seen"
+      "lastUsed": "Last used"
     },
     "plugin": "Allay {{version}}",
     "internal": "internal",
     "internalHint": "This server reaches the backend over a private network they share, so the address says nothing about where players join.",
-    "noAddress": "Not given: server.address in the plugin's config (Allay 6.4)",
-    "since": "First question",
-    "firstSeen": "First question {{date}}"
+    "server": "Server",
+    "unnamed": "Unnamed server",
+    "noId": "No server id: a plugin before 6.0",
+    "noIp": "Not known",
+    "noRuntime": "Not reported yet",
+    "noDomain": "Not given",
+    "byokShort": "Its own key",
+    "allRuns": "All its runs",
+    "details": "Details",
+    "registered": "Registered",
+    "neverRegistered": "Never registered",
+    "firstQuestion": "First question",
+    "noQuestions": "No questions yet",
+    "motd": "MOTD",
+    "id": "Server id",
+    "players_one": "{{count}} player",
+    "players_other": "{{count}} players",
+    "playersHint": "Everyone who asked on this server, newest first.",
+    "noPlayers": "Nobody has asked here yet.",
+    "playerLine": "{{questions}} questions · {{cost}} · {{seen}}",
+    "runs": "Recent runs"
   },
   "runs": {
     "title": "Runs",
@@ -271,14 +299,7 @@
     "allKinds": "All kinds",
     "allResults": "All results",
     "clear": "Show all runs",
-    "kinds": {
-      "ask": "Question",
-      "askall": "Public question",
-      "askx": "Commands",
-      "task": "Agent wake",
-      "summary": "Summary",
-      "telegram": "Telegram"
-    },
+    "kinds": { "ask": "Question", "askall": "Public question", "askx": "Commands", "task": "Agent wake", "summary": "Summary", "telegram": "Telegram" },
     "results": { "ok": "Answered", "error": "Failed", "cancelled": "Cancelled" },
     "columns": {
       "when": "When",
@@ -289,13 +310,13 @@
       "tools": "Tools",
       "duration": "Took",
       "cost": "Cost",
-      "result": "Result"
+      "result": "Result",
+      "server": "Server"
     }
   },
   "run": {
     "title": "Run",
     "player": "Player",
-    "server": "Paid by",
     "model": "Model",
     "language": "Language",
     "duration": "Took",
@@ -304,7 +325,7 @@
     "tokens": "Tokens",
     "tokenSplit": "{{input}} read, {{output}} written, {{reasoning}} reasoning",
     "uuid": "UUID",
-    "serverName": "Server name",
+    "serverName": "Server",
     "payer": "Payment",
     "payers": { "license": "Subscription", "byok": "Server's own key", "self": "This backend's key" },
     "searches": "Web searches",
@@ -320,20 +341,44 @@
     "toolsHint": "Which tools ran and whether they worked; never what they were given or returned.",
     "noTools": "No tools ran.",
     "openTrace": "Open the trace",
-    "noTrace": "This run has no trace: tracing was off or sampled it out, or its trace expired."
+    "noTrace": "This run has no trace: tracing was off or sampled it out, or its trace expired.",
+    "license": "License",
+    "reveal": "Show text",
+    "revealTitle": "Open what this run was asked and answered?",
+    "revealText": "Only to look into a problem a player or a server reported. The backend decrypts this one run for you, and the audit log records that you opened it.",
+    "revealAction": "Open it",
+    "revealed": "What the run was asked and answered",
+    "revealedHint": "Decrypted for this look only; closing the window forgets it. Each step shows what went in and what came out.",
+    "input": "In",
+    "output": "Out",
+    "error": "Error"
   },
   "traces": {
     "title": "Traces",
-    "description": "The shape of traced runs: steps, tools, tokens, and timings. Prompts, questions, answers, and tool data never leave the backend.",
+    "description": "Traced runs with their numbers: who, where, which model, steps, tools, tokens, and timings. What was asked and answered stays encrypted; an owner opens one run from its page.",
     "none": "No traces yet. They appear with the next question, unless tracing is off (TRACE_SAMPLE).",
-    "columns": { "started": "Started", "run": "Run", "duration": "Took", "result": "Result" }
+    "columns": {
+      "started": "Started",
+      "run": "Run",
+      "duration": "Took",
+      "result": "Result",
+      "kind": "Kind",
+      "player": "Player",
+      "server": "Server",
+      "model": "Model",
+      "steps": "Steps",
+      "tokens": "Tokens in / out",
+      "cost": "Cost"
+    },
+    "stepsTools": "{{steps}} steps · {{tools}} tools",
+    "noRun": "No run"
   },
   "trace": {
     "title": "Trace",
     "description": "Each step of the run on one timeline.",
     "steps_one": "{{count}} span",
     "steps_other": "{{count}} spans",
-    "privacy": "Model steps in blue, tool calls in green. The panel never shows what was asked or answered.",
+    "privacy": "Model steps in blue, tool calls in green. What was asked and answered stays encrypted here; an owner opens it from the run's page.",
     "step": "Model step {{n}}",
     "tokens": "{{input}} in · {{output}} out"
   },
@@ -357,7 +402,7 @@
   },
   "licenses": {
     "title": "Licenses",
-    "description": "Servers on a subscription, in dollars; operators see only percentages.",
+    "description": "Every license, what it may spend, and the servers behind it.",
     "search": "Search by id or server name",
     "none": "No licenses yet.",
     "status": { "active": "Active", "expired": "Expired", "unpaid": "Never paid", "blocked": "Blocked", "revoked": "Revoked" },
@@ -366,16 +411,16 @@
       "status": "Status",
       "plan": "Plan",
       "paidUntil": "Paid until",
-      "budget": "Spent / budget",
+      "budget": "Budget",
       "from": "From",
       "to": "To",
-      "source": "Source"
+      "source": "Source",
+      "license": "License"
     },
     "plan": "Plan",
     "renews": "Renews by itself",
     "paidUntil": "Paid until",
-    "budgetNow": "Spent of the budget now",
-    "used": "{{percent}}% used",
+    "budgetNow": "Left of the budget now",
     "resets": "Budget resets",
     "details": "Details",
     "created": "Created",
@@ -383,7 +428,6 @@
     "unclaimed": "Not claimed yet",
     "language": "Language",
     "lastPayment": "Last payment",
-    "stopped": "Renewal stopped",
     "blockedAt": "Blocked",
     "grant": "Grant a budget",
     "grantTitle": "Grant a budget by hand",
@@ -414,8 +458,7 @@
     "byHand": "Granted by hand",
     "servers": "Servers behind it",
     "noServers": "No questions from this license yet.",
-    "unknownServer": "without a server id",
-    "serverLine": "{{questions}} questions · {{players}} players · {{cost}} · {{seen}}",
+    "serverLine": "{{questions}} questions · {{players}} players · {{seen}}",
     "payments": "Payments",
     "paymentsHint": "A refund returns the Stars through the bot and closes what they paid for.",
     "delete": "Delete",
@@ -431,7 +474,43 @@
     "forceText_other": "The payer keeps no access and gets no money back: {{stars}} Stars from {{count}} payments stay with us. This may break consumer protection law and Telegram's terms for Stars, and the payer may dispute it. The audit log records that you did it.",
     "forceAgree": "I understand the payer's rights may be broken, and I take responsibility for deleting this license without a refund.",
     "forceAction": "Delete for good",
-    "errors": { "usd": "Give an amount above 0 and up to 1000.", "days": "Give 1–366 days." }
+    "errors": {
+      "usd": "Give an amount above 0 and up to 1000.",
+      "days": "Give 1–366 days.",
+      "name": "Give a name of 1–64 characters.",
+      "language": "Use a code like ru or pt-br, or leave it empty."
+    },
+    "noServerYet": "No server yet",
+    "notPaid": "Not paid",
+    "noBudget": "No budget",
+    "grantedPlan": "Granted",
+    "noPlan": "No plan",
+    "grantedOn": "Granted {{date}}",
+    "never": "Never",
+    "spentOf": "{{spent}} of {{budget}} spent, {{percent}}%",
+    "withPeriod": "With the period",
+    "noLanguage": "Not set",
+    "renewal": "Renewal",
+    "stoppedOn": "Stopped {{date}}",
+    "blockedSince": "Since {{date}}",
+    "edit": "Edit",
+    "editTitle": "Name and language",
+    "editText": "The name shows in the panel and the bot; the language is the one the bot writes to the payer in.",
+    "name": "Name",
+    "languageHint": "A code like ru, de, or pt-br; empty clears it. Telegram sets it when the payer claims the license.",
+    "edited": "Saved.",
+    "actions": "Actions",
+    "budgetGroup": "Budget",
+    "budgetGroupText": "Give money for runs, or move the end of what's paid.",
+    "accessGroup": "Access",
+    "accessGroupText": "Stop the license's servers, or give the Stars back and revoke it.",
+    "deleteGroup": "Delete",
+    "deleteGroupText": "Removes the license and its windows for good; its payments stay on record.",
+    "infinity": "Grant Infinity",
+    "infinityTitle": "Grant Infinity to this license?",
+    "infinityText": "Our own plan, never sold: a budget of PLAN_INFINITY_BUDGET for 366 days, from now. The license shows Infinity as its plan.",
+    "infinityDone": "Infinity granted.",
+    "noWindows": "No budget given or paid yet."
   },
   "payments": {
     "title": "Payments",
@@ -492,13 +571,7 @@
       "clear": "Remove",
       "keep": "Keep"
     },
-    "checks": {
-      "model": "Test key and model",
-      "perplexity": "Test Perplexity",
-      "bot": "Test bot",
-      "running": "Testing…",
-      "ok": "{{detail}} in {{ms}} ms"
-    },
+    "checks": { "model": "Test key and model", "perplexity": "Test Perplexity", "bot": "Test bot", "running": "Testing…", "ok": "{{detail}} in {{ms}} ms" },
     "plansWarning": "New prices and budgets apply to new payments. Periods already paid keep what they bought.",
     "unsaved_one": "{{count}} unsaved change",
     "unsaved_other": "{{count}} unsaved changes",
@@ -522,6 +595,62 @@
       "url": "Enter an http or https address.",
       "long": "This is too long.",
       "pattern": "This doesn't have the expected form."
+    },
+    "recommended": "Recommended",
+    "useRecommended": "Use {{model}}",
+    "options": {
+      "OPENROUTER_REASONING_EFFORT": { "unset": "Unset: send nothing, the model decides", "low": "Low", "medium": "Medium", "high": "High" },
+      "OPENROUTER_API_CTX": { "low": "Low", "medium": "Medium", "high": "High" }
+    },
+    "names": {
+      "OPENROUTER_API_KEY": "OpenRouter key",
+      "OPENROUTER_API_URL": "OpenRouter address",
+      "OPENROUTER_API_MODEL": "Model",
+      "OPENROUTER_REASONING_EFFORT": "Reasoning effort",
+      "API_NAME": "Name at OpenRouter",
+      "PERPLEXITY_API_KEY": "Perplexity key",
+      "SEARCH_MODEL": "Search model",
+      "OPENROUTER_API_CTX": "Search context",
+      "TOOL_TIMEOUT_MS": "Wait for a tool",
+      "MAX_AGENT_STEPS": "Steps per question",
+      "MAX_TASK_STEPS": "Steps per agent wake",
+      "MAX_ACTIVE_RUNS": "Questions at once",
+      "SSE_PING_MS": "Stream ping",
+      "MEMORY_MAX": "Memories per player",
+      "DEATHS_MAX": "Deaths per player",
+      "CALC_TIMEOUT_MS": "Time per calculation",
+      "CHAT_TTL_SECONDS": "Conversation lifetime",
+      "PUBLIC_CHAT_TTL_SECONDS": "Public thread lifetime",
+      "TASK_CHAT_TTL_SECONDS": "Agent thread lifetime",
+      "CHAT_FOLD_TOKENS": "Fold past",
+      "CHAT_KEEP_TOKENS": "Keep after a fold",
+      "CHAT_MAX_TOKENS": "Fold before an answer past",
+      "TRACE_SAMPLE": "Share of runs traced",
+      "TRACE_DAYS": "Days traces stay",
+      "PLAN_WEEK_STARS": "Week: price",
+      "PLAN_WEEK_BUDGET": "Week: budget",
+      "PLAN_MONTH_STARS": "Month: price",
+      "PLAN_MONTH_BUDGET": "Month: budget",
+      "PLAN_YEAR_STARS": "Year: price",
+      "PLAN_YEAR_BUDGET": "Year: budget per 30 days",
+      "PLAN_INFINITY_BUDGET": "Infinity: budget",
+      "BYOK_PER_MINUTE": "Own key: questions a minute",
+      "BYOK_PER_DAY": "Own key: questions a day",
+      "BYOK_CONCURRENT": "Own key: questions at once",
+      "BYOK_ACTIVE_RUNS": "Own keys: questions at once in all",
+      "STAR_USD": "A Star in dollars",
+      "TELEGRAM_BOT_TOKEN": "Bot token",
+      "TELEGRAM_ADMIN_IDS": "Who may refund in the bot",
+      "TELEGRAM_WEBHOOK_SECRET": "Webhook secret",
+      "SUPPORT_CONTACT": "Support contact",
+      "TELEGRAM_POLLING": "Long polling",
+      "TELEGRAM_API_URL": "Bot API address",
+      "TELEGRAM_TEST_ENV": "Test environment",
+      "API_URL": "Backend address",
+      "PUBLIC_URL": "Address in a browser",
+      "PLUGIN_TOKEN": "Plugin token",
+      "TRUSTED_PROXIES": "Trusted proxies",
+      "CLIENT_IP_HEADER": "Client address header"
     }
   },
   "accounts": {
@@ -547,11 +676,16 @@
     "deleteTitle": "Delete {{name}}?",
     "deleteText": "They're signed out at once and can't sign in again.",
     "deleted": "{{name}} deleted.",
-    "columns": { "name": "Name", "role": "Role", "lastLogin": "Last sign-in", "actions": "Actions" }
+    "columns": { "name": "Name", "role": "Role", "lastLogin": "Last sign-in", "actions": "Actions" },
+    "generate": "Generate",
+    "generated": "Generated a password.",
+    "generatedCopied": "Generated a password and copied it.",
+    "show": "Show the password",
+    "hide": "Hide the password"
   },
   "audit": {
     "title": "Audit log",
-    "description": "Who changed what and when. Secrets show only their last characters.",
+    "description": "Who changed what and when, kept two years. Secrets show only their last characters.",
     "none": "Nothing logged yet.",
     "actions": {
       "setup": "created the first account",
@@ -571,8 +705,20 @@
       "license.unblock": "unblocked",
       "license.refund": "refunded and revoked",
       "license.delete": "deleted the license",
-      "payment.refund": "refunded"
-    }
+      "payment.refund": "refunded",
+      "license.edit": "edited",
+      "run.reveal": "opened what a run asked and answered, of",
+      "player.erase": "erased",
+      "player.reset": "cleared the session of",
+      "player.block": "blocked",
+      "player.unblock": "unblocked"
+    },
+    "area": "Area",
+    "actor": "Who",
+    "allAreas": "Everything",
+    "allActors": "Everyone",
+    "nothing": "nothing",
+    "areas": { "account": "Accounts", "settings": "Settings", "player": "Players", "license": "Licenses", "payment": "Payments", "run": "Opened runs" }
   },
   "profile": {
     "title": "Your account",
