@@ -6,6 +6,9 @@ import { memoryHistory, threadOf } from "../src/infrastructure/history/history";
 import { pseudonymsWith } from "../src/infrastructure/privacy/pseudonyms";
 import type { Owner } from "../src/shared/types/owner";
 import { memoryMemories } from "../src/infrastructure/memory/memory";
+import { memoryDeaths } from "../src/infrastructure/playerdata/deaths";
+import { memoryStates } from "../src/infrastructure/playerdata/state";
+import { memoryExports } from "../src/infrastructure/playerdata/exports";
 import { memoryConsents } from "../src/infrastructure/privacy/consents";
 import { memoryBans } from "../src/infrastructure/privacy/bans";
 import { memoryPlayers } from "../src/infrastructure/privacy/players";
@@ -135,6 +138,9 @@ export const testDeps = (
     lastModel: undefined as string | undefined,
     history: memoryHistory(),
     memories: memoryMemories(),
+    deaths: memoryDeaths(),
+    states: memoryStates(),
+    exports: memoryExports(),
     consents: memoryConsents(),
     bans: memoryBans(),
     bridge: new ToolBridge(options.toolTimeoutMs ?? 2_000),

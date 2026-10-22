@@ -8,6 +8,7 @@ import type { Emit } from "../features/chat/chat.events";
 import { settings } from "../features/settings/settings";
 import { exactCalculationsTool } from "../features/tools/exact-calculations.tool";
 import { gameTools, offeredTools } from "../features/tools/game.tools";
+import { DEATHS_PER_PAGE } from "../features/tools/deaths";
 import { memoryTools } from "../features/tools/memory.tools";
 import { type PerplexitySearch, searchWebTool } from "../features/tools/search-web.tool";
 import type { RunKind, RunRecord, RunStore } from "../infrastructure/runs/runs";
@@ -20,6 +21,9 @@ import type { ServerDirectory } from "../infrastructure/servers/servers";
 import type { TraceStore } from "../infrastructure/observability/traces";
 import type { Owner } from "../shared/types/owner";
 import type { Memory, MemoryStore } from "../infrastructure/memory/memory";
+import type { DeathStore } from "../infrastructure/playerdata/deaths";
+import type { StateStore } from "../infrastructure/playerdata/state";
+import type { ExportStore } from "../infrastructure/playerdata/exports";
 import { type ByokProvider, type ModelFactory, costOf } from "../infrastructure/providers/openrouter/openrouter.client";
 import { redact } from "../shared/lib/redact";
 import { logger } from "../shared/logging/logger";
@@ -35,6 +39,12 @@ export interface AllayDeps {
   models: ModelFactory;
   history: HistoryStore;
   memories: MemoryStore;
+  /** Since 6.9: each player's deaths, which the plugin kept on disk before. */
+  deaths: DeathStore;
+  /** Since 6.9: each player's time zone, settings, and goals, for the plugin. */
+  states: StateStore;
+  /** Since 6.9: one-day links to a player's copy of their data. */
+  exports: ExportStore;
   /** Which players agreed to have their data processed, as the plugin asked them. */
   consents: ConsentStore;
   /** Players operators stopped from asking. */
@@ -83,11 +93,17 @@ const remembers = (userId: string) => userId !== "anonymous";
 
 export const ownerOf = (context: RunContext): Owner => ({ tenant: context.tenant, userId: context.userId });
 
+/** The player asked: what's kept about them lives on, a year for their data and two for their agreement. */
+const touch = (deps: AllayDeps, owner: Owner) => {
+  for (const store of [deps.memories, deps.deaths, deps.states, deps.consents]) void store.touch(owner).catch(() => undefined);
+};
+
 const loadMemories = async (deps: AllayDeps, context: RunContext): Promise<Memory[]> => {
   if (!remembers(context.userId)) return [];
   try {
     const memories = await deps.memories.list(ownerOf(context));
-    if (memories.length) void deps.memories.touch(ownerOf(context)).catch(() => undefined);
+    if (context.platform === "minecraft") touch(deps, ownerOf(context));
+    else if (memories.length) void deps.memories.touch(ownerOf(context)).catch(() => undefined);
     return memories;
   } catch (error) {
     // Memories are a nicety, like history: answer without them.
@@ -268,7 +284,13 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       ...(context.mode === "task" ? { stopWhen: [stepsReach(settings.get("MAX_TASK_STEPS")), endsWake] } : {}),
       modelSettings: { maxRetries: 2 },
       toolsets: {
-        game: gameTools(offered, runId, deps.bridge, { offered: context.tools, readOnly: context.mode === "askx" }),
+        game: gameTools(offered, runId, deps.bridge, {
+          offered: context.tools,
+          readOnly: context.mode === "askx",
+          ...(remembers(context.userId)
+            ? { deaths: { page: (page: number) => deps.deaths.page(ownerOf(context), page, DEATHS_PER_PAGE), timezone: context.timezone, position: context.player?.position } }
+            : {}),
+        }),
         // A server that brought its own key without a search model gets no web search, and an automation agent never does.
         ...(context.mode === "task" || (context.provider && !context.provider.searchModel)
           ? {}

@@ -7,6 +7,9 @@ import { MONGODB_DATABASE, MONGODB_URI } from "../infrastructure/database/mongod
 import { mongoHistory } from "../infrastructure/history/history";
 import { tracing } from "../infrastructure/observability/tracing";
 import { mongoMemories } from "../infrastructure/memory/memory";
+import { mongoDeaths } from "../infrastructure/playerdata/deaths";
+import { mongoStates } from "../infrastructure/playerdata/state";
+import { mongoExports } from "../infrastructure/playerdata/exports";
 import { mongoConsents } from "../infrastructure/privacy/consents";
 import { mongoBans } from "../infrastructure/privacy/bans";
 import { mongoPlayers } from "../infrastructure/privacy/players";
@@ -37,6 +40,9 @@ export const productionDeps = (pseudonyms: Pseudonyms): AllayDeps => {
     models: openrouterModels,
     history: mongoHistory(),
     memories: mongoMemories,
+    deaths: mongoDeaths,
+    states: mongoStates,
+    exports: mongoExports(),
     consents: mongoConsents,
     bans: mongoBans,
     bridge,

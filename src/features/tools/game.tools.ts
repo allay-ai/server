@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Mode, TaskKind, Visibility } from "../../agent/agent.types";
 import type { ToolAnswer, ToolBridge } from "../chat/chat.bridge";
 import { forModel } from "./schema";
+import { type DeathHistory, historyPage } from "./deaths";
 
 const dimension = z.enum(["overworld", "the_nether", "the_end"]);
 const potionForm = z.enum(["potion", "splash_potion", "lingering_potion"]);
@@ -389,7 +390,7 @@ interface Composite {
   uses: readonly string[];
   /** Whether a call only reads the game, for askx; a whole tool that only reads needs none. */
   reads?: (input: Record<string, unknown>) => boolean;
-  run: (input: Record<string, unknown>, call: Call) => Promise<ToolAnswer>;
+  run: (input: Record<string, unknown>, call: Call, options: GameToolsOptions) => Promise<ToolAnswer>;
 }
 
 const without = (input: Record<string, unknown>, ...keys: string[]) =>
@@ -439,16 +440,22 @@ const composites: Partial<Record<keyof typeof definitions, Composite>> = {
   },
   get_locations: {
     uses: ["get_locations", "get_death_info"],
-    run: async (input, call) => {
-      // Plugins before 6.6 keep no history and ignore page.
-      const page = input.deaths_page === undefined ? {} : { page: input.deaths_page };
-      const [places, death] = await Promise.all([call("get_locations", {}), call("get_death_info", page)]);
+    run: async (input, call, options) => {
+      const page = (input.deaths_page as number | undefined) ?? 1;
+      // Since 6.9 the backend keeps the history; plugin 6.6 kept its own, and its page is the fallback.
+      const kept = options.deaths ? await historyPage(options.deaths, page).catch(() => undefined) : undefined;
+      const own = kept && !("error" in kept) && kept.total > 0 ? kept : undefined;
+      if (kept && "error" in kept) return { ok: false, error: String(kept.error) };
+      const [places, death] = await Promise.all([call("get_locations", {}), call("get_death_info", own || input.deaths_page === undefined ? {} : { page })]);
       // A page past the end comes back as the plugin's error, which names how many there are.
-      if (places.ok && !death.ok && (input.deaths_page as number) > 1) return death;
-      if (!places.ok || !death.ok || !isObject(places.result) || !isObject(death.result)) return places;
-      // get_death_info repeats the place under its own key; the rest goes next to the death point.
+      if (!own && places.ok && !death.ok && page > 1) return death;
+      if (!places.ok || !isObject(places.result)) return places;
+      // Never died: the places alone.
+      if (!own && !death.ok) return places;
       const last = isObject(places.result.last_death) ? places.result.last_death : {};
-      return { ok: true, result: { ...places.result, last_death: { ...last, ...without(death.result, "place") } } };
+      // get_death_info repeats the place under its own key; the rest goes next to the death point.
+      const live = death.ok && isObject(death.result) ? without(death.result, "place", ...(own ? ["history"] : [])) : {};
+      return { ok: true, result: { ...places.result, last_death: { ...last, ...live, ...(own ? { history: own } : {}) } } };
     },
   },
   notes: {
@@ -820,6 +827,8 @@ export interface GameToolsOptions {
   offered?: string[];
   /** askx: a tool that reads and writes, like notes, may only read. */
   readOnly?: boolean;
+  /** Since 6.9: the asking player's deaths as the backend keeps them, for get_locations. */
+  deaths?: DeathHistory;
 }
 
 /** Mastra tools for the client tools in this run; pass names through offeredTools first. */
@@ -844,7 +853,7 @@ export const gameTools = (names: GameToolName[], runId: string, bridge: ToolBrid
           if (composite && options.readOnly && composite.reads && !composite.reads(args)) {
             return { error: "Only reading here: this request turns into commands" };
           }
-          const answer = composite ? await composite.run(args, call) : await call(name, args);
+          const answer = composite ? await composite.run(args, call, options) : await call(name, args);
           return answer.ok ? trimmed(answer.result) : { error: answer.error };
         },
       });

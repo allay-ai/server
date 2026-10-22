@@ -10,13 +10,15 @@ import { handleLicense } from "../src/features/billing/license.controller";
 import { handleChat, handleToolResult } from "../src/features/chat/chat.controller";
 import { handleHealth } from "../src/features/health/health.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
-import { handleConsent, handleMemories, handleMemory, handlePrivacy, handleSession, handleUser } from "../src/features/users/users.controller";
+import {
+  handleConsent, handleDeaths, handleExport, handleExportDownload, handleMemories, handleMemory, handlePrivacy, handleSession, handleState, handleUser,
+} from "../src/features/users/users.controller";
 import { handleServer } from "../src/features/servers/server.controller";
 import { AUTH, finish, owner, readSse, scripted, testAdmin, testBilling, testDeps, text, thread, toolCall } from "./helpers";
 
 const handlers = {
   handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handlePrivacy, handleServer, handleMemories, handleMemory, handleLicense, handleTelegram,
-  handleAdminInit, handleAdmin,
+  handleAdminInit, handleAdmin, handleDeaths, handleState, handleExport, handleExportDownload,
 };
 let servers: Array<Server<undefined>> = [];
 
@@ -41,6 +43,8 @@ const PUBLIC = new Set([
   ...METHODS.map((m) => `${m} /api/telegram/webhook`),
   // A new license is free and only identifies; it's limited per client address.
   "POST /api/v2/license",
+  // A player's copy: 32 random bytes in the path are the key, for a day; anything else is 404.
+  `GET /api/v2/exports/${"x".repeat(43)}`,
   // The panel's sign-in, setup, and recovery: a password or a one-time code, behind the login limiter.
   ...ADMIN_ROUTES.filter((r) => r.access === "public").map((r) => `${r.method} /api/admin${r.path}`),
 ]);
@@ -50,7 +54,7 @@ const pathsOf = (table: Record<string, unknown>) =>
   Object.keys(table).flatMap((path) => {
     if (path === "/api/admin/*") return [...new Set(ADMIN_ROUTES.map((r) => `/api/admin${r.path.replace(/:[a-zA-Z]+/g, "x1")}`))];
     if (path.startsWith("/admin")) return [];
-    return [path.replace(":userId", "player-1").replace(":runId", crypto.randomUUID()).replace(":callId", "call-1").replace(":memoryId", "abcde")];
+    return [path.replace(":userId", "player-1").replace(":runId", crypto.randomUUID()).replace(":callId", "call-1").replace(":memoryId", "abcde").replace(":token", "x".repeat(43))];
   });
 
 const routeOf = (method: string, path: string): (typeof ADMIN_ROUTES)[number] | undefined =>
@@ -83,7 +87,7 @@ describe("every route identifies its caller", () => {
   test("health says up, the version, and billing, and nothing about the process", async () => {
     const { base } = start(testDeps(scripted([]).model));
     const response = await fetch(`${base}/api/health`);
-    expect(Object.keys((await response.json()) as object).sort()).toEqual(["billing", "name", "status", "version"]);
+    expect(Object.keys((await response.json()) as object).sort()).toEqual(["billing", "name", "policy_revision", "status", "version"]);
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
   });
 });
@@ -144,7 +148,7 @@ describe("tenants never meet", () => {
     const url = `${t.base}/api/v2/users/player-1/consent`;
     const given = (await (await fetch(url, { method: "PUT", headers: t.A, body: JSON.stringify({ version: 1 }) })).json()) as any;
     expect(given.consent.version).toBe(1);
-    expect(await (await fetch(url, { headers: t.B })).json()).toEqual({ consent: null });
+    expect(((await (await fetch(url, { headers: t.B })).json()) as any).consent).toBeNull();
     expect(await (await fetch(url, { method: "DELETE", headers: t.B })).json()).toEqual({ withdrawn: false });
     expect(((await (await fetch(url, { headers: t.A })).json()) as any).consent).toEqual(given.consent);
   });

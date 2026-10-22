@@ -8,7 +8,9 @@ import { MAX_MEMORY_CHARS, type Place } from "../../infrastructure/memory/memory
 import { DIMENSIONS } from "../../agent/agent.types";
 import { identify } from "../auth/caller";
 import { erasePlayer, exportPlayer } from "./privacy";
-import { MAX_CONSENT_VERSION } from "../../infrastructure/privacy/consents";
+import { type Agreement, MAX_CONSENT_VERSION } from "../../infrastructure/privacy/consents";
+import { POLICY_REVISION } from "../../shared/policy";
+import { settings } from "../settings/settings";
 
 type Params = { userId?: string; memoryId?: string };
 type Routed = Request & { params?: Params };
@@ -23,8 +25,39 @@ const PlaceBody = z.object({
   world: z.string().min(1).max(64).optional(),
 });
 const MemoryBody = z.object({ text: z.string().trim().min(3).max(MAX_MEMORY_CHARS), place: PlaceBody.optional() });
-const ConsentBody = z.object({ version: z.number().int().min(1).max(MAX_CONSENT_VERSION) });
+// hash since 6.9: SHA-256 of the notice the player saw and the policy's revision, hex.
+// age_confirmed since 6.9: the player said they're 13 or older, which the plugin asks players in the USA.
+const ConsentBody = z.object({
+  version: z.number().int().min(1).max(MAX_CONSENT_VERSION),
+  hash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  age_confirmed: z.boolean().optional(),
+});
 const PrivacyBody = z.object({ full: z.boolean() });
+const ID = z.string().min(1).max(64);
+// Since 6.9: what the plugin's death listener reports; ids and names as the game gives them.
+const DeathBody = z.object({
+  at: z.number().int().positive(),
+  world: z.string().min(1).max(64),
+  dimension: z.string().regex(/^[a-z0-9_.:/-]{1,64}$/),
+  x: z.number().int(),
+  y: z.number().int(),
+  z: z.number().int(),
+  cause: ID.optional(),
+  killer: ID.optional(),
+  killer_name: z.string().min(1).max(64).optional(),
+  message: z.string().min(1).max(256).optional(),
+  level: z.number().int().min(0).max(1_000_000),
+  kept_inventory: z.boolean().optional(),
+  drops: z.record(ID, z.number().int().min(1).max(1_000_000)).refine((d) => Object.keys(d).length <= 20, "at most 20 kinds").optional(),
+  experience: z.number().int().min(0).max(100_000_000).optional(),
+});
+/** A player's state as the plugin keeps it; the backend checks its shape and size, not what's inside. */
+const StateBody = z.object({
+  timezone: z.string().min(1).max(64).optional(),
+  settings: z.record(z.string().max(64), z.unknown()).optional(),
+  goals: z.array(z.unknown()).max(100).optional(),
+});
+export const MAX_STATE_BYTES = 32 * 1024;
 
 const badUser = () => jsonError(apierror(API_ERRORS.BAD_REQUEST, "user_id must be 1–64 letters, digits, - or _"));
 
@@ -72,15 +105,21 @@ export const handleConsent = (deps: AllayDeps) => async (req: Routed): Promise<R
   if (!["GET", "PUT", "DELETE"].includes(req.method)) return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
   const owner = await ownerOf(deps, req);
   if (owner instanceof Response) return owner;
-  let version: number | undefined;
+  let agreement: Agreement | undefined;
   if (req.method === "PUT") {
     const body = ConsentBody.safeParse(await req.json().catch(() => undefined));
-    if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `version must be a whole number from 1 to ${MAX_CONSENT_VERSION}`));
-    version = body.data.version;
+    if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `version must be a whole number from 1 to ${MAX_CONSENT_VERSION}, hash 64 hex digits`));
+    agreement = {
+      version: body.data.version,
+      ...(body.data.hash ? { hash: body.data.hash } : {}),
+      ...(body.data.age_confirmed !== undefined ? { age_confirmed: body.data.age_confirmed } : {}),
+      revision: POLICY_REVISION,
+    };
   }
   try {
-    if (req.method === "GET") return noStore({ consent: await deps.consents.get(owner) });
-    if (version !== undefined) return noStore({ consent: await deps.consents.give(owner, version) });
+    // The current revision comes along, so the plugin can hash the notice it would show now and compare.
+    if (req.method === "GET") return noStore({ consent: await deps.consents.get(owner), revision: POLICY_REVISION });
+    if (agreement) return noStore({ consent: await deps.consents.give(owner, agreement), revision: POLICY_REVISION });
     return noStore({ withdrawn: await deps.consents.withdraw(owner) });
   } catch (error) {
     return failed("reach the consent", error);
@@ -156,5 +195,88 @@ export const handlePrivacy = (deps: AllayDeps) => async (req: Routed): Promise<R
     return noStore({ full: body.data.full, forgotten });
   } catch (error) {
     return failed("change the player's privacy", error);
+  }
+};
+
+/** POST /api/v2/users/{user_id}/deaths: the plugin reports a death as it happens; the newest DEATHS_MAX stay, sealed. */
+export const handleDeaths = (deps: AllayDeps) => async (req: Routed): Promise<Response> => {
+  if (req.method !== "POST") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
+  const owner = await ownerOf(deps, req);
+  if (owner instanceof Response) return owner;
+  const body = DeathBody.safeParse(await req.json().catch(() => undefined));
+  if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `${body.error.issues[0]?.path.join(".") || "body"}: ${body.error.issues[0]?.message}`));
+  // A clock far ahead would keep one death on top forever.
+  if (body.data.at > Date.now() + 86_400_000) return jsonError(apierror(API_ERRORS.BAD_REQUEST, "at: in the future"));
+  try {
+    await deps.deaths.add(owner, body.data);
+    return Response.json({ saved: true });
+  } catch (error) {
+    return failed("keep the death", error);
+  }
+};
+
+/** GET and PUT /api/v2/users/{user_id}/state: the player's time zone, settings, and goals, replaced whole. */
+export const handleState = (deps: AllayDeps) => async (req: Routed): Promise<Response> => {
+  if (req.method !== "GET" && req.method !== "PUT") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
+  const owner = await ownerOf(deps, req);
+  if (owner instanceof Response) return owner;
+  try {
+    if (req.method === "GET") {
+      const stored = await deps.states.get(owner);
+      return noStore({ state: stored?.state ?? null, updated_at: stored?.updated_at ?? null });
+    }
+    const raw = await req.text();
+    if (raw.length > MAX_STATE_BYTES) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `state: at most ${MAX_STATE_BYTES} bytes`));
+    let json: unknown;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      return jsonError(apierror(API_ERRORS.BAD_REQUEST, "state: not JSON"));
+    }
+    const body = StateBody.safeParse(json);
+    if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `${body.error.issues[0]?.path.join(".") || "state"}: ${body.error.issues[0]?.message}`));
+    const stored = await deps.states.put(owner, body.data);
+    return noStore({ state: stored.state, updated_at: stored.updated_at });
+  } catch (error) {
+    return failed("reach the player's state", error);
+  }
+};
+
+/** The address links to a player's copy start with: where people reach this backend in a browser. */
+const publicBase = () => String(settings.get("PUBLIC_URL") || settings.get("API_URL")).replace(/\/+$/, "");
+
+/** POST /api/v2/users/{user_id}/export: a link to everything kept about the player, good for a day. */
+export const handleExport = (deps: AllayDeps) => async (req: Routed): Promise<Response> => {
+  if (req.method !== "POST") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
+  const owner = await ownerOf(deps, req);
+  if (owner instanceof Response) return owner;
+  try {
+    const issued = await deps.exports.issue(owner);
+    return noStore({ url: `${publicBase()}/api/v2/exports/${issued.token}`, expires_at: issued.expires_at });
+  } catch (error) {
+    return failed("make the export link", error);
+  }
+};
+
+/**
+ * GET /api/v2/exports/{token}: the player's copy as a JSON file. The token is the key, so the route takes no
+ * credentials; a wrong, expired, or erased one is 404, the same for each.
+ */
+export const handleExportDownload = (deps: AllayDeps) => async (req: Request & { params?: { token?: string } }): Promise<Response> => {
+  if (req.method !== "GET") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
+  const notFound = () => jsonError({ code: "NOT_FOUND", message: "This link expired or never existed", statusCode: 404 });
+  try {
+    const owner = await deps.exports.redeem(req.params?.token ?? "");
+    if (!owner) return notFound();
+    const copy = await exportPlayer(deps, owner);
+    return new Response(JSON.stringify(copy, null, 2), {
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Content-Disposition": `attachment; filename="allay-${owner.userId}.json"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (error) {
+    return failed("build the export", error);
   }
 };

@@ -9,7 +9,9 @@ import type { handleChat, handleToolResult } from "../features/chat/chat.control
 import type { handleLicense } from "../features/billing/license.controller";
 import type { handleHealth } from "../features/health/health.controller";
 import type { handleTelegram } from "../features/telegram/telegram.controller";
-import type { handleConsent, handleMemories, handleMemory, handlePrivacy, handleSession, handleUser } from "../features/users/users.controller";
+import type {
+  handleConsent, handleDeaths, handleExport, handleExportDownload, handleMemories, handleMemory, handlePrivacy, handleSession, handleState, handleUser,
+} from "../features/users/users.controller";
 
 interface Handlers {
   handleAsk: typeof handleAsk;
@@ -29,6 +31,11 @@ interface Handlers {
   handlePrivacy?: typeof handlePrivacy;
   /** Since 6.7. */
   handleServer?: typeof handleServer;
+  /** Since 6.9: what the plugin kept on disk before, and the player's copy by link. */
+  handleDeaths?: typeof handleDeaths;
+  handleState?: typeof handleState;
+  handleExport?: typeof handleExport;
+  handleExportDownload?: typeof handleExportDownload;
   handleAdmin?: typeof handleAdmin;
   /** The panel's built pages, served at /admin. */
   adminPages?: (req: Request) => Promise<Response>;
@@ -50,7 +57,7 @@ const secured =
 /**
  * The HTTP routes, built from injected services so tests can serve them with fakes. Every route identifies its
  * caller (a plugin's license or token, or a panel session) except health, the Telegram webhook (its own secret),
- * license creation, and the panel's pages and sign-in; `test/access.test.ts` walks this table to keep it so.
+ * license creation, a player's copy by link (the token is the key), and the panel's pages and sign-in; `test/access.test.ts` walks this table to keep it so.
  */
 export const routes = (deps: AllayDeps, h: Handlers): Record<string, Route> => {
   const api: Record<string, Route> = {
@@ -64,6 +71,10 @@ export const routes = (deps: AllayDeps, h: Handlers): Record<string, Route> => {
     "/api/v2/users/:userId/consent": h.handleConsent(deps),
     ...(h.handleServer ? { "/api/v2/server": h.handleServer(deps) } : {}),
     ...(h.handlePrivacy ? { "/api/v2/users/:userId/privacy": h.handlePrivacy(deps) } : {}),
+    ...(h.handleDeaths ? { "/api/v2/users/:userId/deaths": h.handleDeaths(deps) } : {}),
+    ...(h.handleState ? { "/api/v2/users/:userId/state": h.handleState(deps) } : {}),
+    ...(h.handleExport ? { "/api/v2/users/:userId/export": h.handleExport(deps) } : {}),
+    ...(h.handleExportDownload ? { "/api/v2/exports/:token": h.handleExportDownload(deps) } : {}),
     "/api/v2/users/:userId/memories": h.handleMemories(deps),
     "/api/v2/users/:userId/memories/:memoryId": h.handleMemory(deps),
     "/api/v2/license": h.handleLicense(deps),

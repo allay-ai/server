@@ -537,7 +537,7 @@ describe("players in the panel", () => {
     Object.assign(ctx.deps, { runs });
     const { call, deps, audit } = ctx;
     const steve = { tenant: "self", userId: "uuid-steve" };
-    await deps.consents.give(steve, 1);
+    await deps.consents.give(steve, { version: 1 });
     await deps.memories.add(steve, "base at 120 64 -300");
     await deps.history.append(thread("uuid-steve"), { role: "user", content: "hi" });
     const pseudonym = deps.pseudonyms.of("uuid-steve");
@@ -582,7 +582,7 @@ describe("players in the panel", () => {
     const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
     Object.assign(ctx.deps, { runs });
     const { call, deps } = ctx;
-    await deps.consents.give({ tenant: "self", userId: "uuid-steve" }, 1);
+    await deps.consents.give({ tenant: "self", userId: "uuid-steve" }, { version: 1 });
     const asked = await fetch(`${ctx.base}/api/v2/chat`, {
       method: "POST",
       headers: { ...AUTH, "Content-Type": "application/json" },
@@ -612,7 +612,7 @@ describe("players in the panel", () => {
     const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
     Object.assign(ctx.deps, { runs });
     const { call, deps } = ctx;
-    await deps.consents.give({ tenant: "self", userId: "uuid-steve" }, 1);
+    await deps.consents.give({ tenant: "self", userId: "uuid-steve" }, { version: 1 });
     const response = await fetch(`${ctx.base}/api/v2/chat`, {
       method: "POST",
       headers: { ...AUTH, "Content-Type": "application/json" },
@@ -642,7 +642,7 @@ describe("players in the panel", () => {
     const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
     Object.assign(ctx.deps, { runs });
     const { call, deps } = ctx;
-    await deps.consents.give({ tenant: "self", userId: "uuid-steve" }, 1);
+    await deps.consents.give({ tenant: "self", userId: "uuid-steve" }, { version: 1 });
     const pseudonym = deps.pseudonyms.of("uuid-steve");
     const ask = async (player: Record<string, unknown>) => {
       const response = await fetch(`${ctx.base}/api/v2/chat`, {
