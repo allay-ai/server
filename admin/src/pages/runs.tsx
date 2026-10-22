@@ -1,15 +1,19 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, Eye, XCircle } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Definition, ErrorBox, Loading, PageHeader, PlayerHead, PlayerLink, ResultBadge, RunsTable, StatTile } from "@/components/common";
+import { Confirm, Definition, ErrorBox, LicenseButton, Loading, PageHeader, PlayerHead, PlayerLink, ResultBadge, RunsTable, ServerButton, StatTile } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { api } from "@/lib/api";
+import { api, post } from "@/lib/api";
 import { compact, dateTime, duration, number, percent, usd } from "@/lib/format";
-import type { Run } from "@/lib/types";
+import { showErrors } from "@/lib/forms";
+import { useCan } from "@/lib/session";
+import type { RevealedSpan, Run } from "@/lib/types";
 
 const KINDS = ["ask", "askall", "askx", "task", "summary", "telegram"];
 const PAGE = 50;
@@ -106,8 +110,74 @@ export const RunsPage = () => {
   );
 };
 
+/** What a step held, readable: text as it is, anything else as indented JSON. */
+const Shown = ({ label, value }: { label: string; value: unknown }) => {
+  if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) return null;
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <pre className="max-h-72 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs break-words whitespace-pre-wrap">{text}</pre>
+    </div>
+  );
+};
+
+/**
+ * An owner reads what a run was asked, answered, and called, to look into a problem a player or a server reported.
+ * The backend decrypts it for this one look and writes the look to the audit log; nothing is kept in the page.
+ */
+const RevealButton = ({ id }: { id: string }) => {
+  const { t } = useTranslation();
+  const [spans, setSpans] = useState<RevealedSpan[] | null>(null);
+  const open = async () => {
+    try {
+      setSpans((await post<{ spans: RevealedSpan[] }>(`/runs/${encodeURIComponent(id)}/reveal`)).spans);
+    } catch (error) {
+      showErrors(error);
+    }
+  };
+  return (
+    <>
+      <Confirm
+        label={
+          <>
+            <Eye className="size-4" aria-hidden />
+            {t("run.reveal")}
+          </>
+        }
+        title={t("run.revealTitle")}
+        text={t("run.revealText")}
+        action={t("run.revealAction")}
+        onConfirm={open}
+      />
+      <Dialog open={spans !== null} onOpenChange={(next) => !next && setSpans(null)}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{t("run.revealed")}</DialogTitle>
+            <DialogDescription>{t("run.revealedHint")}</DialogDescription>
+          </DialogHeader>
+          <ol className="flex flex-col gap-4">
+            {spans?.map((span) => (
+              <li key={span.span_id} className="flex min-w-0 flex-col gap-2 border-l-2 border-primary/30 pl-3">
+                <span className="text-sm font-medium">
+                  {span.type === "model_step" ? t("trace.step", { n: span.label.replace("step ", "") }) : span.label}
+                  <span className="ml-2 font-mono text-xs text-muted-foreground">{span.type}</span>
+                </span>
+                <Shown label={t("run.input")} value={span.input} />
+                <Shown label={t("run.output")} value={span.output} />
+                <Shown label={t("run.error")} value={span.error} />
+              </li>
+            ))}
+          </ol>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};
+
 export const RunPage = () => {
   const { t } = useTranslation();
+  const can = useCan();
   const { id } = useParams({ from: "/app/runs/$id" });
   const query = useQuery({
     queryKey: ["run", id],
@@ -144,17 +214,17 @@ export const RunPage = () => {
               <Definition
                 items={[
                   [t("run.player"), <PlayerLink key="p" id={run.user_id} player={run.player} />],
-                  [t("run.uuid"), run.player ? <span key="u" className="font-mono text-xs">{run.player.uuid}</span> : "—"],
-                  [t("run.server"), <ServerLabel key="s" server={run.server} serverId={run.server_id} />],
-                  [t("run.serverName"), query.data?.server_name ?? "—"],
+                  !!run.player && [t("run.uuid"), <span key="u" className="font-mono text-xs">{run.player.uuid}</span>],
+                  [t("run.serverName"), <ServerButton key="s" server={run} name={run.server_name} />],
+                  run.server.startsWith("license:") && [t("run.license"), <LicenseButton key="l" id={run.server.slice("license:".length)} name={query.data?.server_name} />],
                   [t("run.payer"), t(`run.payers.${run.payer}`)],
                   [t("run.model"), <span key="m" className="font-mono text-xs">{run.model}</span>],
-                  [t("run.language"), run.language ?? "—"],
+                  !!run.language && [t("run.language"), run.language],
                   [t("run.steps"), number(run.steps)],
                   [t("run.searches"), number(run.searches)],
                   [t("run.tokens"), t("run.tokenSplit", { input: number(run.input_tokens), output: number(run.output_tokens), reasoning: number(run.reasoning_tokens) })],
-                  [t("run.spans"), query.data?.span_count === null || query.data?.span_count === undefined ? "—" : number(query.data.span_count)],
-                  [t("run.errorCode"), run.error_code ? <span key="e" className="font-mono text-xs">{run.error_code}</span> : "—"],
+                  query.data?.span_count !== null && query.data?.span_count !== undefined && [t("run.spans"), number(query.data.span_count)],
+                  !!run.error_code && [t("run.errorCode"), <span key="e" className="font-mono text-xs">{run.error_code}</span>],
                 ]}
               />
             </CardContent>
@@ -175,11 +245,14 @@ export const RunPage = () => {
             </CardContent>
           </Card>
           {query.data?.trace_id ? (
-            <Button asChild variant="outline" className="self-start">
-              <Link to="/traces/$id" params={{ id: query.data!.trace_id! }}>
-                {t("run.openTrace")}
-              </Link>
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link to="/traces/$id" params={{ id: query.data!.trace_id! }}>
+                  {t("run.openTrace")}
+                </Link>
+              </Button>
+              {can("owner") && <RevealButton id={run.id} />}
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">{t("run.noTrace")}</p>
           )}
