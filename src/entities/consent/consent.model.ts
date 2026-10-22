@@ -11,9 +11,13 @@ export interface ConsentDocument {
   hash?: string;
   /** Since 6.9: the privacy policy's revision when the player agreed. */
   revision?: string;
-  /** Since 6.9: the player said they're 13 or older, which the plugin asks players in the USA (COPPA). */
+  /** Since 6.9: the player is old enough to agree where they play (GDPR art. 8, LOPDGDD art. 7, COPPA). */
   age_confirmed?: boolean;
+  /** Since 6.9: the age group they picked: under_13, 13, 14_15, 16_17, or 18_plus. */
+  age_band?: string;
   accepted_at: Date;
+  /** Since 6.9: when they took it back; kept as proof of what the data rested on until the record goes. */
+  withdrawn_at?: Date;
   /** When the player last asked: an agreement goes with the player, CONSENT_DAYS after their last question. */
   seen_at: Date;
 }
@@ -28,7 +32,9 @@ const schema = new Schema<ConsentDocument>({
   hash: { type: String, match: /^[0-9a-f]{64}$/ },
   revision: String,
   age_confirmed: Boolean,
+  age_band: { type: String, enum: ["under_13", "13", "14_15", "16_17", "18_plus"] },
   accepted_at: { type: Date, default: Date.now },
+  withdrawn_at: Date,
   seen_at: { type: Date, default: Date.now },
 });
 

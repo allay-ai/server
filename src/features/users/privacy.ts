@@ -37,7 +37,7 @@ export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<Playe
     deps.memories.list(owner),
     deps.deaths.list(owner),
     deps.states.get(owner),
-    deps.consents.get(owner),
+    deps.consents.record(owner),
     deps.history.export(owner),
     deps.runs?.of(pseudonym, owner.tenant, EXPORT_RUNS) ?? [],
     deps.bans.of([pseudonym]),
@@ -68,7 +68,7 @@ export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<Playe
       memories: "until the player deletes them, or 365 days after their last question",
       deaths: "the newest DEATHS_MAX (100 by default), and 365 days after the player's last question",
       state: "365 days after the player's last question",
-      consent: "until the player withdraws it, their data is erased, or 730 days after their last question",
+      consent: "the agreement, and after a withdrawal its record, until the data is erased or 730 days after their last question",
       session: "CHAT_TTL_SECONDS after the last question (30 days by default)",
       runs: "730 days, by pseudonym",
       name: "730 days after the last question, for the panel",
@@ -109,11 +109,34 @@ export const erasePlayer = async (deps: AllayDeps, owner: Owner): Promise<Erased
   await deps.states.clear(owner);
   await deps.exports.revoke(owner);
   await deps.players?.forget(owner.tenant, deps.pseudonyms.of(owner.tenant, owner.userId));
-  await deps.consents.withdraw(owner);
+  await deps.consents.erase(owner);
   await deps.history.erase(owner);
   const runIds = (await deps.runs?.forget(deps.pseudonyms.of(owner.tenant, owner.userId), owner.tenant)) ?? [];
   const traces = (await deps.traces?.forget(runIds)) ?? 0;
   return { memories, deaths, runs: runIds.length, traces };
+};
+
+/** What a withdrawal removed, as counts only. */
+export interface Withdrawn {
+  withdrawn: boolean;
+  memories: number;
+  deaths: number;
+}
+
+/**
+ * A player takes their agreement back (GDPR art. 7(3), 17(1)(b)): what it covered goes, memories and places, deaths,
+ * their state, open export links, their session, pending task outcomes, and their agents' threads. The record of the
+ * agreement stays, marked withdrawn, as proof of what the data rested on; the runs keep their numbers under the
+ * pseudonym, which rest on the backend's legitimate interest, and the name stays in the directory until it ages out.
+ */
+export const withdrawPlayer = async (deps: AllayDeps, owner: Owner): Promise<Withdrawn> => {
+  const withdrawn = await deps.consents.withdraw(owner);
+  const memories = await deps.memories.clear(owner);
+  const deaths = await deps.deaths.clear(owner);
+  await deps.states.clear(owner);
+  await deps.exports.revoke(owner);
+  await deps.history.erase(owner);
+  return { withdrawn, memories, deaths };
 };
 
 /**

@@ -153,6 +153,38 @@ describe("consent", () => {
     await fetch(url, { method: "PUT", body: JSON.stringify({ version: 3 }) });
     expect(((await (await fetch(url)).json()) as any).consent.age_confirmed).toBe(false);
   });
+
+  test("keeps the age group the player picked, and refuses one it doesn't know", async () => {
+    const base = start(testDeps(scripted([[finish()]]).model));
+    const url = `${base}/api/v2/users/player-1/consent`;
+    const given = (await (await fetch(url, { method: "PUT", body: JSON.stringify({ version: 2, age_confirmed: true, age_band: "14_15" }) })).json()) as any;
+    expect(given.consent).toMatchObject({ age_confirmed: true, age_band: "14_15" });
+    expect((await fetch(url, { method: "PUT", body: JSON.stringify({ version: 2, age_band: "12" }) })).status).toBe(400);
+  });
+
+  test("a withdrawal erases what the agreement covered and keeps its record as proof", async () => {
+    const deps = testDeps(scripted([[finish()]]).model);
+    const base = start(deps);
+    const url = `${base}/api/v2/users/player-1/consent`;
+    const me = owner("player-1");
+    await fetch(url, { method: "PUT", body: JSON.stringify({ version: 2, age_confirmed: true }) });
+    await deps.memories.add(me, "base at the lake", { x: 1, y: 2, z: 3, dimension: "overworld" });
+    await deps.deaths.add(me, death(Date.now()));
+    await deps.states.put(me, { timezone: "Europe/Madrid" });
+
+    const withdrawn = (await (await fetch(url, { method: "DELETE" })).json()) as any;
+    expect(withdrawn).toEqual({ withdrawn: true, memories: 1, deaths: 1 });
+    expect(await deps.memories.list(me)).toEqual([]);
+    expect(await deps.states.get(me)).toBeNull();
+    expect(await (await fetch(url)).json()).toEqual({ consent: null, revision: POLICY_REVISION });
+    // The record stays, marked, in the player's copy of what's kept.
+    const copy = (await (await fetch(`${base}/api/v2/users/player-1`)).json()) as any;
+    expect(copy.consent).toMatchObject({ version: 2, withdrawn_at: expect.any(String) });
+    expect(((await (await fetch(url, { method: "DELETE" })).json()) as any).withdrawn).toBe(false);
+    // Agreeing again clears the withdrawal.
+    await fetch(url, { method: "PUT", body: JSON.stringify({ version: 2 }) });
+    expect(((await (await fetch(url)).json()) as any).consent.withdrawn_at).toBeUndefined();
+  });
 });
 
 const MONGODB = process.env.ALLAY_TEST_MONGODB;

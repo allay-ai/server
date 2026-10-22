@@ -149,7 +149,7 @@ describe("tenants never meet", () => {
     const given = (await (await fetch(url, { method: "PUT", headers: t.A, body: JSON.stringify({ version: 1 }) })).json()) as any;
     expect(given.consent.version).toBe(1);
     expect(((await (await fetch(url, { headers: t.B })).json()) as any).consent).toBeNull();
-    expect(await (await fetch(url, { method: "DELETE", headers: t.B })).json()).toEqual({ withdrawn: false });
+    expect(await (await fetch(url, { method: "DELETE", headers: t.B })).json()).toEqual({ withdrawn: false, memories: 0, deaths: 0 });
     expect(((await (await fetch(url, { headers: t.A })).json()) as any).consent).toEqual(given.consent);
   });
 

@@ -7,8 +7,8 @@ import { z } from "zod";
 import { MAX_MEMORY_CHARS, type Place } from "../../infrastructure/memory/memory";
 import { DIMENSIONS } from "../../agent/agent.types";
 import { identify } from "../auth/caller";
-import { erasePlayer, exportPlayer } from "./privacy";
-import { type Agreement, MAX_CONSENT_VERSION } from "../../infrastructure/privacy/consents";
+import { erasePlayer, exportPlayer, withdrawPlayer } from "./privacy";
+import { AGE_BANDS, type Agreement, MAX_CONSENT_VERSION } from "../../infrastructure/privacy/consents";
 import { POLICY_REVISION } from "../../shared/policy";
 import { settings } from "../settings/settings";
 
@@ -26,11 +26,12 @@ const PlaceBody = z.object({
 });
 const MemoryBody = z.object({ text: z.string().trim().min(3).max(MAX_MEMORY_CHARS), place: PlaceBody.optional() });
 // hash since 6.9: SHA-256 of the notice the player saw and the policy's revision, hex.
-// age_confirmed since 6.9: the player said they're 13 or older, which the plugin asks players in the USA.
+// age_confirmed and age_band since 6.9: the player is old enough to agree where they play, and the group they picked.
 const ConsentBody = z.object({
   version: z.number().int().min(1).max(MAX_CONSENT_VERSION),
   hash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   age_confirmed: z.boolean().optional(),
+  age_band: z.enum(AGE_BANDS).optional(),
 });
 const PrivacyBody = z.object({ full: z.boolean() });
 const ID = z.string().min(1).max(64);
@@ -98,8 +99,9 @@ export const handleUser = (deps: AllayDeps) => async (req: Routed): Promise<Resp
 
 /**
  * GET /api/v2/users/{user_id}/consent reads whether the player agreed to Allay's notice, PUT records their agreement,
- * DELETE withdraws it: the plugin's buttons before a first question and `/allay privacy withdraw`. Data already kept
- * stays until erased; the plugin asks again before the next question.
+ * DELETE withdraws it: the plugin's buttons before a first question and `/allay privacy withdraw`. Since 6.9 a
+ * withdrawal also erases what the agreement covered (memories, deaths, state, the session); the plugin asks again
+ * before the next question.
  */
 export const handleConsent = (deps: AllayDeps) => async (req: Routed): Promise<Response> => {
   if (!["GET", "PUT", "DELETE"].includes(req.method)) return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
@@ -113,6 +115,7 @@ export const handleConsent = (deps: AllayDeps) => async (req: Routed): Promise<R
       version: body.data.version,
       ...(body.data.hash ? { hash: body.data.hash } : {}),
       ...(body.data.age_confirmed !== undefined ? { age_confirmed: body.data.age_confirmed } : {}),
+      ...(body.data.age_band ? { age_band: body.data.age_band } : {}),
       revision: POLICY_REVISION,
     };
   }
@@ -120,7 +123,8 @@ export const handleConsent = (deps: AllayDeps) => async (req: Routed): Promise<R
     // The current revision comes along, so the plugin can hash the notice it would show now and compare.
     if (req.method === "GET") return noStore({ consent: await deps.consents.get(owner), revision: POLICY_REVISION });
     if (agreement) return noStore({ consent: await deps.consents.give(owner, agreement), revision: POLICY_REVISION });
-    return noStore({ withdrawn: await deps.consents.withdraw(owner) });
+    // Withdrawing takes away what the agreement covered; the record stays, marked, as proof.
+    return noStore(await withdrawPlayer(deps, owner));
   } catch (error) {
     return failed("reach the consent", error);
   }
