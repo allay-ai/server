@@ -230,8 +230,9 @@ export const insightRoutes: Route[] = [
       const text = url.searchParams.get("q")?.trim().slice(0, 32) ?? "";
       if ((server && !TENANT.test(server)) || (text && !NAME_SEARCH.test(text) && !USER_ID.test(text) && !PSEUDONYM.test(text))) return Response.json({ players: [] });
       const found = (await deps.players?.search(text, { tenant: server, limit: 10 })) ?? [];
+      const names = await licenseNames(deps, found.map((p) => p.tenant));
       return Response.json({
-        players: found.map((p) => ({ user_id: p.pseudonym, name: p.name, uuid: p.user_id, server: p.tenant, last_seen: p.last_seen.toISOString() })),
+        players: found.map((p) => ({ user_id: p.pseudonym, name: p.name, uuid: p.user_id, server: p.tenant, server_name: names.get(p.tenant) ?? null, last_seen: p.last_seen.toISOString() })),
       });
     },
   },

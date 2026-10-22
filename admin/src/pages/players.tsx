@@ -4,8 +4,9 @@ import { Search } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { ColumnChart, RankBars } from "@/components/charts";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { toast } from "sonner";
-import { Confirm, Definition, Empty, ErrorBox, Loading, PageHeader, Pager, PlayerHead, PlayerLink, RunsTable, StatTile, TableFrame } from "@/components/common";
+import { Confirm, Definition, Empty, ErrorBox, Loading, PageHeader, Pager, PlayerHead, PlayerLink, RunsTable, StatTile, TableFrame, rowLink, serverParams } from "@/components/common";
 import { FormField } from "@/components/form-field";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,12 +16,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { api, post } from "@/lib/api";
 import { compact, dateTime, duration, number, percent, relative, shortDate, usd } from "@/lib/format";
 import { showErrors } from "@/lib/forms";
-import { useCan } from "@/lib/session";
+import { useAppState, useCan } from "@/lib/session";
 import type { FoundPlayer, PlayerDetail, PlayerSummary, ServerSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ServerLabel } from "./runs";
+import { ServerName, joinAddress } from "./servers";
 
 const LIMIT = 50;
+
+/** A tenant in words, where nothing better names it: a license by its id, or this backend's own key. */
+export const tenantLabel = (t: TFunction, tenant: string) => {
+  const [kind, id] = tenant.split(":");
+  return kind === "license" ? t("servers.license", { id }) : kind === "byok" ? t("servers.byok", { id }) : t("servers.self");
+};
 
 /** A search box that waits for a pause in typing before it asks the backend. */
 export const SearchBox = ({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) => {
@@ -39,6 +47,34 @@ export const SearchBox = ({ value, onChange, placeholder }: { value: string; onC
   );
 };
 
+/** The players page's search: a dropdown of matching players that opens the one picked; Enter filters the table instead. */
+const PlayerSearch = ({ value, onSearch }: { value: string; onSearch: (text: string) => void }) => {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  return (
+    <div className="relative w-full sm:w-80">
+      <Search className="pointer-events-none absolute top-1/2 left-3 z-10 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+      <div className="[&_input]:pl-9">
+        <PlayerPicker
+          id="players-search"
+          text={text}
+          picked={null}
+          onText={(next) => {
+            setText(next);
+            if (!next) onSearch("");
+          }}
+          onPick={(player) => player && navigate({ to: "/players/$id", params: { id: player.user_id } })}
+          onEnter={onSearch}
+          placeholder={t("players.search")}
+          label={t("players.search")}
+        />
+      </div>
+    </div>
+  );
+};
+
 export const PlayersPage = () => {
   const { t } = useTranslation();
   const { search = "", page = 0 } = useSearch({ from: "/app/players" });
@@ -53,7 +89,7 @@ export const PlayersPage = () => {
       <PageHeader
         title={t("players.title")}
         description={t("players.description")}
-        actions={<SearchBox value={search} onChange={(value) => navigate({ search: { search: value || undefined, page: 0 } })} placeholder={t("players.search")} />}
+        actions={<PlayerSearch value={search} onSearch={(value) => navigate({ search: { search: value || undefined, page: 0 } })} />}
       />
       {query.isPending && <Loading />}
       {query.error && <ErrorBox error={query.error} />}
@@ -81,7 +117,7 @@ export const PlayersPage = () => {
                 </TableHeader>
                 <TableBody>
                   {query.data.players.map((p) => (
-                    <TableRow key={p.user_id}>
+                    <TableRow key={p.user_id} {...(p.user_id === "erased" ? {} : rowLink(() => navigate({ to: "/players/$id", params: { id: p.user_id } })))}>
                       <TableCell>
                         <PlayerHead id={p.user_id} size={32} known={!!p.player} />
                       </TableCell>
@@ -170,27 +206,35 @@ const ServerSelect = ({ id, value, onChange, servers }: { id: string; value: str
  * A combobox over the players the backend knows on one server: type the start of a name, pick the right face. What's
  * typed and not picked goes as it is, so a UUID or a pseudonym still works.
  */
-const PlayerPicker = ({
+export const PlayerPicker = ({
   id,
   server,
   text,
   picked,
   onText,
   onPick,
+  onEnter,
   placeholder,
+  label,
 }: {
   id: string;
-  server: string;
+  /** Only this server's players; every server's without one. */
+  server?: string;
   text: string;
   picked: FoundPlayer | null;
   onText: (text: string) => void;
   onPick: (player: FoundPlayer | null) => void;
+  /** Enter with nothing highlighted, as a search box would take it. */
+  onEnter?: (text: string) => void;
   placeholder: string;
+  label?: string;
 }) => {
   const { t } = useTranslation();
   const list = useId();
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
+  // A search box starts with nothing highlighted, so Enter searches; arrows pick a player.
+  const first = onEnter ? -1 : 0;
+  const [active, setActive] = useState(first);
   const [query, setQuery] = useState(text);
   useEffect(() => {
     const timer = setTimeout(() => setQuery(text.trim()), 200);
@@ -198,7 +242,7 @@ const PlayerPicker = ({
   }, [text]);
   const found = useQuery({
     queryKey: ["players", "lookup", server, query],
-    queryFn: () => api<{ players: FoundPlayer[] }>(`/players/lookup?server=${encodeURIComponent(server)}&q=${encodeURIComponent(query)}`),
+    queryFn: () => api<{ players: FoundPlayer[] }>(`/players/lookup?${server ? `server=${encodeURIComponent(server)}&` : ""}q=${encodeURIComponent(query)}`),
     enabled: open,
     placeholderData: (previous) => previous,
   });
@@ -223,7 +267,7 @@ const PlayerPicker = ({
           onChange={(e) => {
             onText(e.target.value);
             onPick(null);
-            setActive(0);
+            setActive(first);
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
@@ -239,9 +283,14 @@ const PlayerPicker = ({
             } else if (e.key === "Enter" && open && options[active]) {
               e.preventDefault();
               pick(options[active]);
+            } else if (e.key === "Enter" && onEnter) {
+              e.preventDefault();
+              setOpen(false);
+              onEnter(text.trim());
             } else if (e.key === "Escape") setOpen(false);
           }}
           placeholder={placeholder}
+          aria-label={label}
           autoComplete="off"
           spellCheck={false}
           className={cn(picked && "pl-9")}
@@ -249,7 +298,7 @@ const PlayerPicker = ({
       </div>
       {open && (options.length > 0 || (found.isFetched && query)) && (
         <ul id={list} role="listbox" className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
-          {options.length === 0 && <li className="px-2 py-1.5 text-sm text-muted-foreground">{t("players.erase.noMatch")}</li>}
+          {options.length === 0 && <li className="px-2 py-1.5 text-sm text-muted-foreground">{t(server ? "players.erase.noMatch" : "players.erase.noMatchAnywhere")}</li>}
           {options.map((player, i) => (
             <li
               key={`${player.server} ${player.user_id}`}
@@ -266,7 +315,10 @@ const PlayerPicker = ({
                 <span className="truncate font-medium">{player.name}</span>
                 <span className="truncate font-mono text-xs text-muted-foreground">{player.uuid}</span>
               </span>
-              <span className="ml-auto shrink-0 text-xs text-muted-foreground">{relative(player.last_seen)}</span>
+              <span className="ml-auto flex shrink-0 flex-col items-end text-xs text-muted-foreground">
+                {!server && <span className="max-w-32 truncate">{player.server_name ?? tenantLabel(t, player.server)}</span>}
+                <span>{relative(player.last_seen)}</span>
+              </span>
             </li>
           ))}
         </ul>
@@ -279,14 +331,19 @@ const PlayerPicker = ({
 const EraseCard = () => {
   const { t } = useTranslation();
   const can = useCan();
+  const state = useAppState();
   const client = useQueryClient();
-  const known = useQuery({ queryKey: ["servers"], queryFn: () => api<{ servers: ServerSummary[] }>("/servers"), enabled: can("admin") });
-  const servers = [...new Set(["self", ...(known.data?.servers.map((s) => s.server).filter((s) => s === "self" || s.startsWith("license:")) ?? [])])];
-  const [server, setServer] = useState("self");
+  const known = useQuery({ queryKey: ["servers"], queryFn: () => api<{ servers: ServerSummary[] }>("/servers?limit=500"), enabled: can("admin") });
+  // The tenants that ever asked; a hosted backend's own key answers nobody, so `self` only counts where it asked or runs alone.
+  const asked = [...new Set(known.data?.servers.map((s) => s.server).filter((s) => s === "self" || s.startsWith("license:")) ?? [])];
+  const servers = asked.length ? asked : state?.billing ? [] : ["self"];
+  const [chosen, setChosen] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [picked, setPicked] = useState<FoundPlayer | null>(null);
+  // A picked player brings their server; a typed id needs one chosen, the only one when there's one.
+  const server = picked?.server ?? chosen ?? servers[0] ?? "";
   const erase = useMutation({
-    mutationFn: () => post<{ memories: number; runs: number }>("/players/erase", { server: server.trim(), user_id: picked?.user_id ?? text.trim() }),
+    mutationFn: () => post<{ memories: number; runs: number }>("/players/erase", { server, user_id: picked?.user_id ?? text.trim() }),
     onSuccess: async (result) => {
       toast.success(t("players.erase.done", { memories: result.memories, runs: result.runs }));
       setText("");
@@ -302,28 +359,22 @@ const EraseCard = () => {
         <CardTitle className="text-base">{t("players.erase.title")}</CardTitle>
         <CardDescription>{t("players.erase.description")}</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto] sm:items-end">
-        <FormField id="erase-server" label={t("players.erase.server")}>
-          <ServerSelect
-            id="erase-server"
-            value={server}
-            onChange={(value) => {
-              setServer(value);
-              setPicked(null);
-            }}
-            servers={servers}
-          />
+      <CardContent className={cn("grid gap-4 sm:items-end", !picked && text.trim() && servers.length > 1 ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto]" : "sm:grid-cols-[minmax(0,1fr)_auto]")}>
+        <FormField id="erase-player" label={t("players.erase.player")} hint={picked ? t("players.erase.on", { server: picked.server_name ?? tenantLabel(t, picked.server) }) : undefined}>
+          <PlayerPicker id="erase-player" text={text} picked={picked} onText={setText} onPick={setPicked} placeholder={t("players.erase.placeholder")} />
         </FormField>
-        <FormField id="erase-player" label={t("players.erase.player")}>
-          <PlayerPicker id="erase-player" server={server} text={text} picked={picked} onText={setText} onPick={setPicked} placeholder={t("players.erase.placeholder")} />
-        </FormField>
+        {!picked && text.trim() && servers.length > 1 && (
+          <FormField id="erase-server" label={t("players.erase.server")}>
+            <ServerSelect id="erase-server" value={server} onChange={setChosen} servers={servers} />
+          </FormField>
+        )}
         <Confirm
           label={t("players.erase.action")}
           title={picked ? t("players.erase.confirmNamed", { name: picked.name }) : t("players.erase.confirmTitle")}
           text={t("players.erase.confirmText")}
           action={t("players.erase.action")}
           destructive
-          disabled={!server.trim() || !text.trim()}
+          disabled={!server || !text.trim()}
           onConfirm={() => erase.mutateAsync()}
         />
       </CardContent>
@@ -430,13 +481,13 @@ export const PlayerPage = () => {
                 <Definition
                   items={[
                     [t("player.name"), player.player?.name ?? t("player.noName")],
-                    [t("player.uuid"), player.player ? <span key="u" className="font-mono text-xs">{player.player.uuid}</span> : "—"],
+                    !!player.player && [t("player.uuid"), <span key="u" className="font-mono text-xs">{player.player.uuid}</span>],
                     [t("player.pseudonym"), <span key="p" className="font-mono text-xs">{id}</span>],
-                    [t("player.op"), player.op === null ? "—" : player.op ? t("common.yes") : t("common.no")],
-                    [t("player.language"), player.language ?? "—"],
-                    [t("player.firstSeen"), dateTime(player.first_seen)],
-                    [t("player.lastSeen"), dateTime(player.last_seen)],
-                    [t("player.serverCount"), number(player.servers.length)],
+                    player.op !== null && [t("player.op"), player.op ? t("common.yes") : t("common.no")],
+                    !!player.language && [t("player.language"), player.language],
+                    !!player.first_seen && [t("player.firstSeen"), dateTime(player.first_seen)],
+                    !!player.last_seen && [t("player.lastSeen"), dateTime(player.last_seen)],
+                    [t("player.serverCount"), number(player.seen_on.length || player.servers.length)],
                   ]}
                 />
                 {!player.player && <p className="mt-4 text-sm text-muted-foreground">{t("player.nameLater")}</p>}
@@ -524,18 +575,37 @@ export const PlayerPage = () => {
               <CardTitle className="text-base">{t("player.servers")}</CardTitle>
               <CardDescription>{t("player.privacy")}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col divide-y">
-              {player.servers.map((s) => (
-                <div key={s.server} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                  <span className="flex min-w-0 items-center gap-3">
-                    <ServerLabel server={s.server} />
-                    {s.name && <span className="text-muted-foreground">{t("player.as", { name: s.name })}</span>}
-                    {s.op && <Badge variant="outline">{t("player.opBadge")}</Badge>}
-                    {s.blocked_at && <Badge variant="destructive">{t("player.blocked")}</Badge>}
-                  </span>
-                  <span className="text-muted-foreground">{s.first_seen ? t("player.since", { date: dateTime(s.first_seen) }) : ""}</span>
-                </div>
-              ))}
+            <CardContent className="grid gap-3 sm:grid-cols-2">
+              {player.seen_on.length === 0 && <span className="text-sm text-muted-foreground">{t("player.noServers")}</span>}
+              {player.seen_on.map((s) => {
+                const tenant = player.servers.find((entry) => entry.server === s.server);
+                return (
+                  <Link
+                    key={`${s.server}/${s.server_id ?? ""}`}
+                    to="/servers/$tenant/$id"
+                    params={serverParams(s)}
+                    className="flex min-w-0 flex-col gap-1.5 rounded-lg border p-3 text-sm transition-colors hover:border-primary/40 hover:bg-accent/40"
+                  >
+                    <span className="flex min-w-0 items-center justify-between gap-2">
+                      <ServerName server={s} />
+                      <span className="flex shrink-0 gap-1">
+                        {tenant?.op && <Badge variant="outline">{t("player.opBadge")}</Badge>}
+                        {tenant?.blocked_at && <Badge variant="destructive">{t("player.blocked")}</Badge>}
+                      </span>
+                    </span>
+                    {joinAddress(s) && <span className="truncate font-medium text-primary">{joinAddress(s)}</span>}
+                    <span className="text-xs text-muted-foreground">
+                      {[
+                        tenant?.name && t("player.as", { name: tenant.name }),
+                        s.license?.name,
+                        t("player.serverLine", { questions: number(s.questions), cost: usd(s.cost), seen: relative(s.last_seen) }),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  </Link>
+                );
+              })}
             </CardContent>
           </Card>
           {can("admin") && <PlayerActions key={id} id={id} servers={player.servers} />}
