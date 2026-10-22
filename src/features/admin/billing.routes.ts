@@ -135,6 +135,9 @@ const licenseOr404 = async (ctx: Context) => {
 const revoked = () => error(409, "REVOKED", "This license is revoked");
 
 // Infinity takes no numbers: its budget is PLAN_INFINITY_BUDGET for INFINITY_DAYS.
+/** A date as people read it in the audit log: “23 October 2027”, in UTC like the budget's windows. */
+const day = (at: Date) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(at);
+
 const grantSchema = z.union([z.object({ plan: z.literal("infinity") }), z.object({ usd: z.number().positive().max(1_000), days: z.number().int().min(1).max(366) })]);
 const extendSchema = z.object({ days: z.number().int().min(1).max(366) });
 const deleteSchema = z.object({ force: z.boolean().optional() });
@@ -247,7 +250,7 @@ export const billingRoutes: Route[] = [
         target: license.id,
         changes: [
           ...(infinity ? [{ field: "plan", old: license.plan ?? "", new: "infinity" }] : []),
-          { field: "budget", old: "", new: `+$${usd} until ${ends.toISOString()}` },
+          { field: "budget", old: "", new: `+$${usd} until ${day(ends)}` },
         ],
         ip: ctx.ip,
       });

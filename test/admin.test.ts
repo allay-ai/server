@@ -501,6 +501,8 @@ describe("billing in the panel", () => {
     expect(Math.abs(new Date(granted.body.grant.ends).getTime() - deps.billing.now().getTime() - 366 * 86_400_000)).toBeLessThan(1_000);
     expect((await deps.billing.licenses.get("inf1"))!.plan).toBe("infinity");
     expect(ctx.audit.entries.find((e) => e.action === "license.grant")!.changes![0]).toEqual({ field: "plan", old: "", new: "infinity" });
+    // The end reads as a date, not a raw timestamp.
+    expect(ctx.audit.entries.find((e) => e.action === "license.grant")!.changes![1].new).toMatch(/^\+\$1000 until \d{1,2} [A-Z][a-z]+ \d{4}$/);
     await call("POST", "/api/admin/accounts", { username: "helper", password: PASSWORD, role: "admin" });
     await call("POST", "/api/admin/logout");
     await call("POST", "/api/admin/login", { username: "helper", password: PASSWORD });
