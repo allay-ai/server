@@ -407,6 +407,14 @@
     "description": "Every license, what it may spend, and the servers behind it.",
     "search": "Search by id or server name",
     "none": "No licenses yet.",
+    "notify": {
+      "button": "Notify license holders",
+      "title": "Write to every license holder",
+      "description": "The bot sends this text to each license's Telegram chat, a few a second. Use it for a breach notice the servers' owners must get without delay, or news they need. The audit log keeps how many got it, not the text.",
+      "text": "Message",
+      "send": "Send to everyone",
+      "done": "Sent to {{sent}}; {{failed}} failed; {{unclaimed}} have no Telegram chat yet"
+    },
     "status": { "active": "Active", "expired": "Expired", "unpaid": "Never paid", "blocked": "Blocked", "revoked": "Revoked" },
     "columns": {
       "server": "Server",

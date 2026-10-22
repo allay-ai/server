@@ -439,6 +439,49 @@ describe("billing in the panel", () => {
     expect(ctx.audit.entries.map((e) => e.action)).toContain("license.refund");
   });
 
+  test("an owner writes to every license holder through the bot, a few at a time; the log keeps counts, not the text", async () => {
+    const ctx = await withOwner({ selfHosted: false, billing: true });
+    const { billing } = ctx.deps;
+    const now = billing.now();
+    await billing.licenses.create({ id: "n1", secret_hash: "x", created_at: now, renews: false, telegram_user_id: 11 });
+    await billing.licenses.create({ id: "n2", secret_hash: "x", created_at: now, renews: false, telegram_user_id: 12, telegram_chat_id: 22 });
+    await billing.licenses.create({ id: "n3", secret_hash: "x", created_at: now, renews: false });
+    await billing.licenses.create({ id: "n4", secret_hash: "x", created_at: now, renews: false, telegram_user_id: 14 });
+    const calls: Array<{ method: string; params: any }> = [];
+    let busy = true;
+    billing.bot.api = {
+      call: async <T>(method: string, params?: any) => {
+        calls.push({ method, params });
+        if (params?.chat_id === 14) throw new Error("Telegram sendMessage: Forbidden: bot was blocked by the user");
+        // The first message hits Telegram's limit once; the route waits and sends it again.
+        if (busy) {
+          busy = false;
+          throw new Error("Telegram sendMessage: Too Many Requests: retry after 0");
+        }
+        return true as T;
+      },
+    };
+    const text = "We found a leak on 23 October; your players' data may be affected.";
+    const done = await ctx.call("POST", "/api/admin/licenses/notify", { text });
+    expect(done.body).toEqual({ sent: 2, failed: 1, unclaimed: 1 });
+    const sent = calls.filter((c) => c.method === "sendMessage");
+    expect(sent.map((c) => c.params.chat_id).sort()).toEqual([11, 11, 14, 22]);
+    expect(sent.every((c) => c.params.text === text)).toBe(true);
+    const entry = ctx.audit.entries.find((e) => e.action === "licenses.notify")!;
+    expect(entry.changes).toEqual([{ field: "sent", old: "", new: "2" }, { field: "failed", old: "", new: "1" }, { field: "unclaimed", old: "", new: "1" }]);
+    expect(JSON.stringify(ctx.audit.entries)).not.toContain("leak");
+
+    // Only the listed licenses, and only for owners.
+    calls.length = 0;
+    expect((await ctx.call("POST", "/api/admin/licenses/notify", { text: "hi", licenses: ["n2"] })).body).toEqual({ sent: 1, failed: 0, unclaimed: 0 });
+    expect(calls.map((c) => c.params.chat_id)).toEqual([22]);
+    expect((await ctx.call("POST", "/api/admin/licenses/notify", { text: "" })).status).toBe(400);
+    await ctx.call("POST", "/api/admin/accounts", { username: "helper", password: PASSWORD, role: "admin" });
+    await ctx.call("POST", "/api/admin/logout");
+    await ctx.call("POST", "/api/admin/login", { username: "helper", password: PASSWORD });
+    expect((await ctx.call("POST", "/api/admin/licenses/notify", { text: "hi" })).status).toBe(403);
+  });
+
   test("a license nobody paid for has nothing to refund", async () => {
     const ctx = await withOwner({ selfHosted: false, billing: true });
     await ctx.deps.billing.licenses.create({ id: "free1", secret_hash: "x", created_at: ctx.deps.billing.now(), renews: false });

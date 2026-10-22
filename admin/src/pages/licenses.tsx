@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { Ban, Coins, Infinity as InfinityIcon, Pencil, Trash2, Wallet } from "lucide-react";
+import { Ban, Coins, Infinity as InfinityIcon, Megaphone, Pencil, Trash2, Wallet } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -15,6 +15,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { api, post } from "@/lib/api";
 import { date, dateTime, number, relative, usd } from "@/lib/format";
 import { showErrors } from "@/lib/forms";
@@ -51,8 +53,63 @@ const usePlan = () => {
   return (license: License) => (license.plan ? t(`plans.${license.plan}`, { defaultValue: license.plan }) : license.granted_at ? t("licenses.grantedPlan") : t("licenses.noPlan"));
 };
 
+/**
+ * An owner writes to every license holder through the bot: how a breach notice reaches the servers' owners (GDPR art.
+ * 33(2)), or news they need. Each holder gets it in the chat where they claimed their license; the audit log keeps the
+ * counts, not the text.
+ */
+const NotifyButton = () => {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    setBusy(true);
+    try {
+      const done = await post<{ sent: number; failed: number; unclaimed: number }>("/licenses/notify", { text: text.trim() });
+      toast.success(t("licenses.notify.done", done));
+      setOpen(false);
+      setText("");
+    } catch (error) {
+      showErrors(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          <Megaphone className="size-4" aria-hidden />
+          {t("licenses.notify.button")}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t("licenses.notify.title")}</DialogTitle>
+          <DialogDescription>{t("licenses.notify.description")}</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="notify-text">{t("licenses.notify.text")}</Label>
+          <Textarea id="notify-text" value={text} rows={6} maxLength={3000} onChange={(event) => setText(event.target.value)} />
+          <span className="text-right text-xs text-muted-foreground">{text.length} / 3000</span>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            {t("common.cancel")}
+          </Button>
+          <Button disabled={!text.trim() || busy} onClick={send}>
+            {t("licenses.notify.send")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 export const LicensesPage = () => {
   const { t } = useTranslation();
+  const can = useCan();
   const plan = usePlan();
   const { search = "", page = 0 } = useSearch({ from: "/app/licenses" });
   const navigate = useNavigate({ from: "/licenses" });
@@ -66,7 +123,12 @@ export const LicensesPage = () => {
       <PageHeader
         title={t("licenses.title")}
         description={t("licenses.description")}
-        actions={<SearchBox value={search} onChange={(value) => navigate({ search: { search: value || undefined, page: 0 } })} placeholder={t("licenses.search")} />}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {can("owner") && <NotifyButton />}
+            <SearchBox value={search} onChange={(value) => navigate({ search: { search: value || undefined, page: 0 } })} placeholder={t("licenses.search")} />
+          </div>
+        }
       />
       {query.isPending && <Loading />}
       {query.error && <ErrorBox error={query.error} />}

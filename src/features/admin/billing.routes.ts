@@ -138,6 +138,17 @@ const revoked = () => error(409, "REVOKED", "This license is revoked");
 /** A date as people read it in the audit log: “23 October 2027”, in UTC like the budget's windows. */
 const day = (at: Date) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(at);
 
+// What every license holder, or the listed ones, gets through the bot: a breach notice (GDPR art. 33(2)) or news.
+const notifySchema = z.object({ text: z.string().trim().min(1).max(3_000), licenses: z.array(z.string().min(1).max(64)).max(1_000).optional() });
+
+/** Telegram takes about 30 messages a second from a bot; this stays well under it. */
+export const NOTIFY_GAP_MS = 50;
+
+/** How long Telegram asks to wait after a 429, from its description (“retry after 5”); a second when it doesn't say. */
+const retryAfter = (failure: unknown) => Number(/retry after (\d+)/i.exec(String(failure))?.[1] ?? 1) * 1_000;
+
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const grantSchema = z.union([z.object({ plan: z.literal("infinity") }), z.object({ usd: z.number().positive().max(1_000), days: z.number().int().min(1).max(366) })]);
 const extendSchema = z.object({ days: z.number().int().min(1).max(366) });
 const deleteSchema = z.object({ force: z.boolean().optional() });
@@ -305,6 +316,62 @@ export const billingRoutes: Route[] = [
       }),
     }),
   ),
+  {
+    // Owners only: the text goes to every license's claimed Telegram chat, or the listed licenses' only, one by one.
+    method: "POST",
+    path: "/licenses/notify",
+    access: "owner",
+    handle: hosted(async (ctx) => {
+      const input = notifySchema.safeParse(await body(ctx.req));
+      if (!input.success) return error(400, "BAD_REQUEST", "Write the text, up to 3000 characters, and optionally the licenses' ids");
+      const { billing } = ctx.deps;
+      const api = billing.bot.api;
+      if (!api) return error(503, "BOT_OFF", "The bot isn't running, so it can't write to anyone");
+      const wanted = input.data.licenses ? new Set(input.data.licenses) : null;
+      const licenses = [];
+      for (let skip = 0; ; skip += 200) {
+        const page = (await billing.licenses.list({ limit: 200, skip })).licenses;
+        licenses.push(...page.filter((l) => !wanted || wanted.has(l.id)));
+        if (page.length < 200) break;
+      }
+      let sent = 0;
+      let failed = 0;
+      let unclaimed = 0;
+      for (const license of licenses) {
+        const chat = license.telegram_chat_id ?? license.telegram_user_id;
+        if (!chat) {
+          unclaimed++;
+          continue;
+        }
+        const send = () => api.call("sendMessage", { chat_id: chat, text: input.data.text, disable_web_page_preview: true });
+        try {
+          await send().catch(async (failure) => {
+            // Too many at once: wait as long as Telegram says, then once more.
+            if (!/too many requests|429/i.test(String(failure))) throw failure;
+            await pause(retryAfter(failure));
+            await send();
+          });
+          sent++;
+        } catch {
+          failed++;
+        }
+        await pause(NOTIFY_GAP_MS);
+      }
+      // The count, never the text: it may describe a breach in more detail than the log should keep.
+      await record(ctx.admin, {
+        actor: ctx.me!.username,
+        action: "licenses.notify",
+        target: wanted ? `${wanted.size} licenses` : "every license",
+        changes: [
+          { field: "sent", old: "", new: String(sent) },
+          { field: "failed", old: "", new: String(failed) },
+          { field: "unclaimed", old: "", new: String(unclaimed) },
+        ],
+        ip: ctx.ip,
+      });
+      return Response.json({ sent, failed, unclaimed });
+    }),
+  },
   {
     method: "POST",
     path: "/licenses/:id/refund",
