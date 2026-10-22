@@ -3,6 +3,7 @@ import { logger } from "../../shared/logging/logger";
 import { type Billing, quotaFor, serverName, sha256 } from "../billing/billing";
 import { type Plan, planOf, plans, windowsFor } from "../billing/plans";
 import type { SuccessfulPayment, TelegramApi, TelegramUser, Update } from "./telegram.client";
+import { settings } from "../settings/settings";
 import { PLAN_NAMES, dateIn, fill, languageOf, textsOf } from "./telegram.texts";
 
 /** Telegram allows only this period for Stars subscriptions: 30 days. */
@@ -23,7 +24,8 @@ const planButtons = (language: string, license: LicenseRecord): Button[][] =>
 
 const planList = (language: string) => {
   const t = textsOf(language);
-  return [t.plans, "", ...plans().map((plan) => `• ${t.plan[plan.id]} — ${plan.stars} ⭐`)].join("\n");
+  const contact = settings.get("SUPPORT_CONTACT")?.trim();
+  return [t.plans, "", ...plans().map((plan) => `• ${t.plan[plan.id]} — ${plan.stars} ⭐`), ...(contact ? ["", fill(t.more, { contact })] : [])].join("\n");
 };
 
 const showPlans = (api: TelegramApi, chat: number, language: string, license: LicenseRecord) =>

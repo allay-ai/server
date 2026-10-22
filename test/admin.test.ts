@@ -491,6 +491,22 @@ describe("billing in the panel", () => {
     expect((await call("DELETE", "/api/admin/licenses/lic1")).status).toBe(404);
   });
 
+  test("an owner grants Infinity: its budget for 366 days, and the license says so; an admin can't", async () => {
+    const ctx = await withOwner({ selfHosted: false, billing: true });
+    const { call, deps } = ctx;
+    await deps.billing.licenses.create({ id: "inf1", secret_hash: "x", name: "Moonlands", created_at: deps.billing.now(), renews: false });
+    const granted = await call("POST", "/api/admin/licenses/inf1/grant", { plan: "infinity" });
+    expect(granted.body.grant.budget).toBe(1000);
+    expect(new Date(granted.body.grant.ends).getTime() - deps.billing.now().getTime()).toBe(366 * 86_400_000);
+    expect((await deps.billing.licenses.get("inf1"))!.plan).toBe("infinity");
+    expect(ctx.audit.entries.find((e) => e.action === "license.grant")!.changes![0]).toEqual({ field: "plan", old: "", new: "infinity" });
+    await call("POST", "/api/admin/accounts", { username: "helper", password: PASSWORD, role: "admin" });
+    await call("POST", "/api/admin/logout");
+    await call("POST", "/api/admin/login", { username: "helper", password: PASSWORD });
+    expect((await call("POST", "/api/admin/licenses/inf1/grant", { plan: "infinity" })).status).toBe(403);
+    expect((await call("POST", "/api/admin/licenses/inf1/grant", { usd: 5, days: 7 })).status).toBe(200);
+  });
+
   test("revenue sums payments by week", async () => {
     const ctx = await withOwner({ selfHosted: false, billing: true });
     await paid(ctx);

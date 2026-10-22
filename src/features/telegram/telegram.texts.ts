@@ -10,6 +10,8 @@ type Texts = {
   claimed: string;
   claim_failed: string;
   plans: string;
+  /** Under the plans when SUPPORT_CONTACT is set. */
+  more: string;
   plan: Record<PlanId, string>;
   plan_button: string;
   pay_button: string;
@@ -48,6 +50,7 @@ const en: Texts = {
   claimed: "Server {server} is linked to your Telegram account.",
   claim_failed: "This link has expired or was already used. Run /allay link on the server again.",
   plans: "Pick a plan. A payment while a plan runs adds to it: the limit grows at once, and the end date moves.",
+  more: "Need more than a year gives? Contact us: {contact}",
   plan: {
     week: "Week: 7 days, for a try or a small server",
     month: "Month: 30 days, renews by itself every month",
@@ -94,6 +97,7 @@ const ru: Texts = {
   claimed: "Сервер {server} привязан к вашему аккаунту Telegram.",
   claim_failed: "Ссылка устарела или уже использована. Выполните /allay link на сервере ещё раз.",
   plans: "Выберите тариф. Оплата во время действующего тарифа добавляется к нему: лимит растёт сразу, а срок сдвигается.",
+  more: "Нужно больше, чем даёт год? Напишите нам: {contact}",
   plan: {
     week: "Неделя — 7 дней, чтобы попробовать или для небольшого сервера",
     month: "Месяц — 30 дней, продлевается сам каждый месяц",
@@ -140,6 +144,7 @@ const es: Texts = {
   claimed: "El servidor {server} está vinculado a tu cuenta de Telegram.",
   claim_failed: "Este enlace caducó o ya se usó. Vuelve a ejecutar /allay link en el servidor.",
   plans: "Elige un plan. Si pagas mientras un plan sigue activo, se suma: el límite crece al momento y la fecha final se aplaza.",
+  more: "¿Necesitas más de lo que da un año? Escríbenos: {contact}",
   plan: {
     week: "Semana: 7 días, para probar o para un servidor pequeño",
     month: "Mes: 30 días, se renueva solo cada mes",
@@ -186,6 +191,7 @@ const pt: Texts = {
   claimed: "O servidor {server} está vinculado à sua conta do Telegram.",
   claim_failed: "Este link expirou ou já foi usado. Execute /allay link no servidor de novo.",
   plans: "Escolha um plano. Um pagamento com um plano ainda ativo se soma a ele: o limite cresce na hora e a data final avança.",
+  more: "Precisa de mais do que um ano oferece? Fale conosco: {contact}",
   plan: {
     week: "Semana: 7 dias, para testar ou para um servidor pequeno",
     month: "Mês: 30 dias, renova sozinho todo mês",
@@ -232,6 +238,7 @@ const de: Texts = {
   claimed: "Server {server} ist mit deinem Telegram-Konto verknüpft.",
   claim_failed: "Dieser Link ist abgelaufen oder wurde schon benutzt. Führ /allay link auf dem Server noch einmal aus.",
   plans: "Wähl einen Tarif. Zahlst du, während ein Tarif läuft, kommt er obendrauf: Das Limit wächst sofort, und das Enddatum rückt nach hinten.",
+  more: "Brauchst du mehr, als ein Jahr bietet? Schreib uns: {contact}",
   plan: {
     week: "Woche: 7 Tage, zum Ausprobieren oder für einen kleinen Server",
     month: "Monat: 30 Tage, verlängert sich jeden Monat von selbst",

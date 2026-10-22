@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { GrantRecord, LicenseRecord, PaymentRecord } from "../../infrastructure/billing/licenses";
 import { type Billing, quotaFor, serverName } from "../billing/billing";
-import { quotaOf } from "../billing/plans";
+import { INFINITY_DAYS, infinityBudget, quotaOf } from "../billing/plans";
 import { LicenseRefundFailure, refundLicense, refundPayment } from "../telegram/telegram.bot";
 import { allows, record } from "./admin";
 import { type Context, type Route, body, error } from "./admin.http";
@@ -131,7 +131,8 @@ const licenseOr404 = async (ctx: Context) => {
 /** A revoked license is history: nothing changes it any more. */
 const revoked = () => error(409, "REVOKED", "This license is revoked");
 
-const grantSchema = z.object({ usd: z.number().positive().max(1_000), days: z.number().int().min(1).max(366) });
+// Infinity takes no numbers: its budget is PLAN_INFINITY_BUDGET for INFINITY_DAYS.
+const grantSchema = z.union([z.object({ plan: z.literal("infinity") }), z.object({ usd: z.number().positive().max(1_000), days: z.number().int().min(1).max(366) })]);
 const extendSchema = z.object({ days: z.number().int().min(1).max(366) });
 const deleteSchema = z.object({ force: z.boolean().optional() });
 
@@ -193,17 +194,25 @@ export const billingRoutes: Route[] = [
       if (!license) return error(404, "NOT_FOUND", "No such license");
       if (license.revoked_at) return revoked();
       const input = grantSchema.safeParse(await body(ctx.req));
-      if (!input.success) return error(400, "BAD_REQUEST", "Give usd (up to 1000) and days (1–366)");
+      if (!input.success) return error(400, "BAD_REQUEST", "Give usd (up to 1000) and days (1–366), or plan infinity");
+      const infinity = "plan" in input.data;
+      if (infinity && !allows(ctx.me!.role, "owner")) return error(403, "FORBIDDEN", "Only an owner grants Infinity");
+      const usd = "plan" in input.data ? infinityBudget() : input.data.usd;
+      const days = "plan" in input.data ? INFINITY_DAYS : input.data.days;
       const now = ctx.deps.billing.now();
       // The budget is there at once and lasts the given days, or to the end of what's paid, whichever is later.
       const quota = await quotaFor(ctx.deps.billing, license);
-      const ends = new Date(Math.max(now.getTime() + input.data.days * DAY, quota.active && quota.paidUntil ? quota.paidUntil.getTime() : 0));
-      const grant = await ctx.deps.billing.licenses.grant(license.id, { budget: input.data.usd, starts: now, ends });
+      const ends = new Date(Math.max(now.getTime() + days * DAY, quota.active && quota.paidUntil ? quota.paidUntil.getTime() : 0));
+      const grant = await ctx.deps.billing.licenses.grant(license.id, { budget: usd, starts: now, ends });
+      if (infinity) await ctx.deps.billing.licenses.update(license.id, { plan: "infinity" });
       await record(ctx.admin, {
         actor: ctx.me!.username,
         action: "license.grant",
         target: license.id,
-        changes: [{ field: "budget", old: "", new: `+$${input.data.usd} until ${ends.toISOString()}` }],
+        changes: [
+          ...(infinity ? [{ field: "plan", old: license.plan ?? "", new: "infinity" }] : []),
+          { field: "budget", old: "", new: `+$${usd} until ${ends.toISOString()}` },
+        ],
         ip: ctx.ip,
       });
       return Response.json({ grant: { ...grant, starts: iso(grant.starts), ends: iso(grant.ends) } });

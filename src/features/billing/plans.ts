@@ -27,6 +27,10 @@ export const plans = (): Plan[] => [
 
 export const planOf = (id: string): Plan | undefined => plans().find((plan) => plan.id === id);
 
+/** Infinity: one budget for 366 days, mostly for the operator's own servers. Never sold in Stars; an owner grants it. */
+export const INFINITY_DAYS = 366;
+export const infinityBudget = () => settings.get("PLAN_INFINITY_BUDGET");
+
 const DAY = 86_400_000;
 
 /**
