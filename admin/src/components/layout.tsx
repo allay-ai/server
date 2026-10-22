@@ -3,17 +3,22 @@ import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
   BarChart3,
+  Bug,
   CreditCard,
+  ExternalLink,
   FileClock,
+  GitBranch,
   KeyRound,
   LogOut,
   Menu,
+  MessagesSquare,
   Monitor,
   Moon,
   Receipt,
   ScrollText,
   Server,
   Settings,
+  Sparkles,
   Sun,
   UserCog,
   Users,
@@ -153,10 +158,50 @@ const UserMenu = () => {
   );
 };
 
+const REPOSITORY = "https://github.com/allay-ai/server";
+
+/** Where a self-hosted backend's operator finds the code, reports a problem, and reads what changed. */
+const LINKS = [
+  { href: REPOSITORY, label: "layout.links.source", icon: GitBranch },
+  { href: `${REPOSITORY}/issues/new/choose`, label: "layout.links.issue", icon: Bug },
+  { href: `${REPOSITORY}/discussions`, label: "layout.links.discussions", icon: MessagesSquare },
+  { href: `${REPOSITORY}/releases`, label: "layout.links.releases", icon: Sparkles },
+];
+
+/** The version, and on a self-hosted backend the project's links: the hosted one is ours, so it needs none. */
+const About = () => {
+  const { t } = useTranslation();
+  const state = useAppState();
+  return (
+    <div className="flex flex-col gap-2 px-3">
+      {state?.selfhosted && (
+        <div className="flex flex-col gap-0.5 rounded-lg border bg-background/60 p-1.5">
+          <div className="px-1.5 pt-0.5 pb-1 text-xs font-medium text-muted-foreground">{t("layout.links.title")}</div>
+          {LINKS.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <link.icon className="size-3.5 shrink-0" aria-hidden />
+              <span className="flex-1">{t(link.label)}</span>
+              <ExternalLink className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+            </a>
+          ))}
+        </div>
+      )}
+      <a href={/^\d+\.\d+\.\d+$/.test(state?.version ?? "") ? `${REPOSITORY}/releases/tag/v${state!.version}` : `${REPOSITORY}/releases`} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:underline">
+        {t("layout.version", { version: state?.version ?? "" })}
+      </a>
+    </div>
+  );
+};
+
 /** The signed-in frame: a sidebar on wide screens, a menu sheet on phones. */
 export const Layout = () => {
   const { t } = useTranslation();
-  const state = useAppState();
   const [open, setOpen] = useState(false);
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[15rem_1fr]">
@@ -167,9 +212,9 @@ export const Layout = () => {
         <div className="flex-1 overflow-y-auto">
           <Nav />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-2">
+          <About />
           <UserMenu />
-          <div className="px-3 text-xs text-muted-foreground">{t("layout.version", { version: state?.version ?? "" })}</div>
         </div>
       </aside>
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background/90 px-4 backdrop-blur lg:hidden">
@@ -189,6 +234,7 @@ export const Layout = () => {
             <div className="flex-1 overflow-y-auto">
               <Nav onPick={() => setOpen(false)} />
             </div>
+            <About />
             <UserMenu />
           </SheetContent>
         </Sheet>
