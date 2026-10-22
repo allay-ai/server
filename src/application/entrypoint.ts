@@ -15,6 +15,7 @@ import { logger } from "../shared/logging/logger";
 import { connect as mongoConnect, disconnect as mongoDisconnect } from "../infrastructure/database/mongodb.client";
 import { settings } from "../features/settings/settings";
 import { productionVault } from "../infrastructure/settings/secrets";
+import { DATA_KEY_LABEL, useDataKey } from "../infrastructure/crypto/data";
 import { mongoSettings } from "../infrastructure/settings/store";
 import { migrate } from "../infrastructure/database/migrations";
 import { PSEUDONYM_LABEL, pseudonymsWith } from "../infrastructure/privacy/pseudonyms";
@@ -29,6 +30,8 @@ await mongoConnect();
 const vault = productionVault();
 await settings.attach(mongoSettings, vault);
 const pseudonyms = pseudonymsWith(await vault.derive(PSEUDONYM_LABEL));
+// Players' memories, sessions, deaths, state, and traces are sealed with a key of their own, derived from the vault's.
+useDataKey(await vault.derive(DATA_KEY_LABEL));
 await migrate({ selfHosted: selfHosted(), pseudonyms, now: new Date() });
 const deps = productionDeps(pseudonyms);
 
