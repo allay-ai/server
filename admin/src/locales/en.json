@@ -133,6 +133,7 @@
     },
     "topPlayers": "Busiest players",
     "topPlayersHint": "Who asked the most in this period.",
+    "player": "Player",
     "questionCount_one": "{{count}} question",
     "questionCount_other": "{{count}} questions",
     "models": "Models",

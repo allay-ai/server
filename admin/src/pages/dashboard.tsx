@@ -22,6 +22,46 @@ const ChartCard = ({ title, description, children }: { title: string; descriptio
   </Card>
 );
 
+/**
+ * The busiest players as a ranked table: rank, face and name, then questions and cost in their own right-aligned
+ * columns, with a bar under each name that shows the player's share of the leader's questions.
+ */
+const TopPlayers = ({ players }: { players: Stats["top_players"] }) => {
+  const { t } = useTranslation();
+  const most = Math.max(1, ...players.map((p) => p.questions));
+  return (
+    <TableFrame>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-10 text-right">#</TableHead>
+            <TableHead>{t("dashboard.player")}</TableHead>
+            <TableHead className="text-right">{t("dashboard.questions")}</TableHead>
+            <TableHead className="text-right">{t("dashboard.cost")}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {players.map((p, i) => (
+            <TableRow key={p.user_id}>
+              <TableCell className="tabular w-10 text-right text-muted-foreground">{i + 1}</TableCell>
+              <TableCell className="max-w-0 w-full">
+                <span className="flex min-w-0 flex-col gap-1.5">
+                  <PlayerLink id={p.user_id} player={p.player} head />
+                  <span className="h-1 w-full max-w-64 overflow-hidden rounded-full bg-muted" aria-hidden>
+                    <span className="block h-full rounded-full bg-primary/70" style={{ width: `${(p.questions / most) * 100}%` }} />
+                  </span>
+                </span>
+              </TableCell>
+              <TableCell className="tabular text-right">{number(p.questions)}</TableCell>
+              <TableCell className="tabular text-right text-muted-foreground">{usd(p.cost)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableFrame>
+  );
+};
+
 export const DashboardPage = () => {
   const { t } = useTranslation();
   const { range = "7d" } = useSearch({ from: "/app/" });
@@ -120,19 +160,7 @@ export const DashboardPage = () => {
               </div>
               {stats.top_players.length > 0 && (
                 <ChartCard title={t("dashboard.topPlayers")} description={t("dashboard.topPlayersHint")}>
-                  <ol className="grid gap-x-6 gap-y-2 px-2 sm:grid-cols-2">
-                    {stats.top_players.map((p, i) => (
-                      <li key={p.user_id} className="flex min-w-0 items-center gap-3 text-sm">
-                        <span className="tabular w-5 shrink-0 text-right text-muted-foreground">{i + 1}</span>
-                        <span className="min-w-0 flex-1 truncate">
-                          <PlayerLink id={p.user_id} player={p.player} head />
-                        </span>
-                        <span className="tabular shrink-0 text-muted-foreground">
-                          {t("dashboard.questionCount", { count: p.questions })} · {usd(p.cost)}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
+                  <TopPlayers players={stats.top_players} />
                 </ChartCard>
               )}
               <div className="grid gap-4 lg:grid-cols-2">
