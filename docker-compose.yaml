@@ -27,13 +27,13 @@ services:
       SEARCH_MODEL: ${SEARCH_MODEL:-perplexity/sonar}
       PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
       TRACE_SAMPLE: ${TRACE_SAMPLE:-}
-      TRACE_DAYS: ${TRACE_DAYS:-7}
+      TRACE_DAYS: ${TRACE_DAYS:-}
       SELFHOSTED: ${SELFHOSTED:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ADMIN_IDS: ${TELEGRAM_ADMIN_IDS:-}
       TELEGRAM_POLLING: ${TELEGRAM_POLLING:-}
       TOOL_TIMEOUT_MS: ${TOOL_TIMEOUT_MS:-15000}
-      MAX_AGENT_STEPS: ${MAX_AGENT_STEPS:-8}
+      MAX_AGENT_STEPS: ${MAX_AGENT_STEPS:-}
       PORT: ${PORT}
       # Self-hosted: the token every plugin sends as server.token; at least 24 characters (openssl rand -hex 24).
       PLUGIN_TOKEN: ${PLUGIN_TOKEN:-}
