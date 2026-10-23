@@ -387,7 +387,7 @@ The status:
 
 A payment while a period runs adds its budget at once and moves `paid_until` further.
 
-Since 6.12 a Solo license buys Solo plans instead, and a server's license never does. The bot sells them only while `SOLO_PLANS` is on (off until the mods ship), and its prices are drafts the owner settles before then:
+Since 6.12 a Solo license buys Solo plans instead, and a server's license never does. The bot sells them only while `SOLO_PLANS` is on (off until the mods ship):
 
 | Plan | Stars | Period | Budget |
 |---|---|---|---|
