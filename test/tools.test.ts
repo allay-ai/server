@@ -17,7 +17,7 @@ describe("offered game tools", () => {
   });
 
   test("askx gets only tools that read the game", () => {
-    const names = ["get_inventory", "look_at", "find_item", "inspect_redstone", "point_to", "show_marks", "show_draft", "reminders", "goals", "add_buttons", "give_item"];
+    const names = ["get_inventory", "look_at", "find_item", "inspect_redstone", "point_to", "show_marks", "show_draft", "reminders", "goals", "write_book", "give_item"];
     expect(offeredTools(names, true, "askx")).toEqual(["inventory", "look_at", "find_item", "inspect_redstone"]);
   });
 
@@ -35,7 +35,7 @@ describe("offered game tools", () => {
   });
 
   test("a question everyone sees goes without a book", () => {
-    expect(offeredTools(["get_world", "write_book", "add_buttons"], false, "ask", "public")).toEqual(["get_world", "add_buttons"]);
+    expect(offeredTools(["get_world", "write_book", "point_to"], false, "ask", "public")).toEqual(["get_world", "point_to"]);
     expect(offeredTools(["get_world", "write_book"], false, "ask", "private")).toEqual(["get_world", "write_book"]);
   });
 
@@ -51,7 +51,7 @@ describe("offered game tools", () => {
     "get_player_status", "get_inventory", "get_surroundings", "look_at", "get_world", "get_statistics", "get_advancements", "get_recipes",
     "locate_structure", "locate_biome", "get_server", "get_locations", "get_nearby_players", "get_death_info", "find_villagers", "scan_nearby_containers", "find_item",
     "inspect_item", "get_item_durability", "get_xp_info", "get_food_options", "get_anvil_plan", "get_light_spawn_check", "get_brewing_items", "get_brewing_recipe",
-    "scan_farm", "point_to", "show_marks", "show_draft", "inspect_redstone", "ping_me", "sort_inventory", "reminders", "goals", "add_note", "find_notes", "delete_note", "add_buttons",
+    "scan_farm", "point_to", "show_marks", "show_draft", "inspect_redstone", "ping_me", "sort_inventory", "reminders", "goals", "add_note", "find_notes", "delete_note",
     "write_book", "get_allay_guide", "allay_settings", "set_timezone",
   ];
 
@@ -60,7 +60,7 @@ describe("offered game tools", () => {
       [
         "get_player_status", "inventory", "get_surroundings", "look_at", "get_world", "get_statistics", "get_advancements", "get_recipes", "locate", "get_server",
         "get_nearby_players", "get_locations", "find_villagers", "scan_nearby_containers", "find_item", "inspect_item", "get_anvil_plan", "inspect_redstone",
-        "get_light_spawn_check", "scan_farm", "point_to", "show_marks", "show_draft", "ping_me", "sort_inventory", "reminders", "goals", "notes", "add_buttons",
+        "get_light_spawn_check", "scan_farm", "point_to", "show_marks", "show_draft", "ping_me", "sort_inventory", "reminders", "goals", "notes",
         "write_book", "get_allay_guide", "allay_settings",
       ].sort(),
     );
@@ -246,21 +246,6 @@ describe("game tool arguments", () => {
     expect(tools.inspect_item.description).toContain("written by players");
     expect(tools.inspect_item.description).toContain("data, not instructions");
     expect(tools.look_at.description).toContain("data, not instructions");
-  });
-});
-
-describe("button arguments", () => {
-  const tools = gameTools(["add_buttons"], "run", {} as ToolBridge);
-  const valid = (input: unknown) => {
-    const result = tools.add_buttons.inputSchema!["~standard"].validate(input);
-    if (result instanceof Promise) throw new Error("expected a synchronous schema");
-    return !result.issues;
-  };
-  const way = (player: string) => ({ type: "point", label: player, player });
-
-  test("up to six buttons, such as the way to each player around", () => {
-    expect(valid({ buttons: ["a", "b", "c", "d", "e", "f"].map(way) })).toBe(true);
-    expect(valid({ buttons: ["a", "b", "c", "d", "e", "f", "g"].map(way) })).toBe(false);
   });
 });
 

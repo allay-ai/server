@@ -92,16 +92,16 @@ describe("task requests", () => {
 });
 
 describe("task tools", () => {
-  const every = ["get_inventory", "look_at", "show_marks", "add_buttons", "write_book", "get_nearby_players", "give_item", ...AUTOMATION_TOOLS];
+  const every = ["get_inventory", "look_at", "show_marks", "write_book", "get_nearby_players", "give_item", ...AUTOMATION_TOOLS];
 
   test("the chat starts and steers tasks; the automation tools stay with the agents", () => {
     expect(offeredTools(every, true, "ask")).toEqual([
-      "inventory", "look_at", "get_nearby_players", "show_marks", "add_buttons", "write_book", "start_task", "message_task", "cancel_task", "give_item",
+      "inventory", "look_at", "get_nearby_players", "show_marks", "write_book", "start_task", "message_task", "cancel_task", "give_item",
     ]);
   });
 
   test("a question everyone sees can't start or steer a task", () => {
-    expect(offeredTools(every, false, "ask", "public")).toEqual(["inventory", "look_at", "show_marks", "add_buttons"]);
+    expect(offeredTools(every, false, "ask", "public")).toEqual(["inventory", "look_at", "show_marks"]);
   });
 
   test("an agent gets the automation tools, and starts and steers sub-agents only above the depth limit", () => {
@@ -239,7 +239,7 @@ describe("task prompts", () => {
     const without = systemPrompt({ ...context({}), mode: "ask", tools: ["get_world"] });
     expect(without).not.toContain("# Drafts: how to build it");
     expect(without).not.toContain("# Redstone");
-    expect(without).toContain("# Buttons under the answer");
+    expect(without).toContain("# Buttons in the answer");
     const withDraft = systemPrompt({ ...context({}), mode: "ask", tools: ["show_draft"] });
     expect(withDraft).toContain("# Drafts: how to build it");
     expect(withDraft).not.toContain("# Redstone");
@@ -255,10 +255,10 @@ describe("task runs", () => {
     ]);
     const deps = testDeps(model);
     const url = start(deps);
-    const tools = ["look_at", "add_buttons", "say", "wait", "finish", "chests", "start_task", "remember"];
+    const tools = ["look_at", "write_book", "say", "wait", "finish", "chests", "start_task", "remember"];
     const first = await readSse(await chat(url, { mode: "task", task, message: "Sort my chests. Russian.", tools }), answerAll(url));
     expect(first.at(-1)).toEqual({ event: "done", data: { answer: "", duration_ms: expect.any(Number) } });
-    // No web search, no memory tools, no buttons in a task.
+    // No web search, no memory tools, no books in a task.
     expect(offered[0].sort()).toEqual(["chests", "exact_calculations", "finish", "look_at", "say", "start_task", "wait"]);
     expect(JSON.stringify(prompts[0])).toContain("Automation agent: Сортировка сундуков");
 

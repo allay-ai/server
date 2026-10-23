@@ -58,7 +58,7 @@ Every request through OpenRouter carries `provider: { data_collection: "deny" }`
 
 `player.private` (optional, since 6.5) is `true` while the player has full privacy on. The backend then keeps no name, UUID, or operator status for the admin panel and forgets what it had, so the panel knows the player by pseudonym only; memories, the session, and traces work as before.
 
-`tools` lists the client tools this plugin offers (server admins can switch some off). The backend registers only those for this run. The plugin lists operator tools only when the asking player is an operator, and the backend drops them anyway when `player.op` is false. An `askx` run gets only the tools that read the game: no actions (`point_to`, `show_marks`, `reminders`, `goals`, notes, buttons, books, automations) and no operator tools. Since 5.5 the backend also sorts the automation tools by mode (see “Automation agents”): `ask` keeps `start_task`, `message_task`, and `cancel_task` and drops the ones only agents use; a public `ask` drops those three too.
+`tools` lists the client tools this plugin offers (server admins can switch some off). The backend registers only those for this run. The plugin lists operator tools only when the asking player is an operator, and the backend drops them anyway when `player.op` is false. An `askx` run gets only the tools that read the game: no actions (`point_to`, `show_marks`, `reminders`, `goals`, notes, books, automations) and no operator tools. Since 5.5 the backend also sorts the automation tools by mode (see “Automation agents”): `ask` keeps `start_task`, `message_task`, and `cancel_task` and drops the ones only agents use; a public `ask` drops those three too.
 
 `tasks` (optional, since 5.5) lists the asker's running automations, at most 4: `[{ "id": "k3f9", "name": "Furnaces", "state": "working" | "waiting" | "asking", "question"?: "≤ 200 chars" }]`. `id` is `[a-z0-9]{1,16}`, `name` ≤ 40 chars, `question` what a task in state `asking` asked the player. Since plugin 5.14, `asking` means the agent showed buttons or a picking mode, said a line with a question mark, or said a line with no job and no sub-agent left to wake it; a line said while a job runs (“smelting takes 3 minutes”) leaves it `waiting`. Its `question` stays until the player answers (`[player]`, `[button]`, or the end of picking), so a `[job]` or `[timer]` wake in between doesn't drop it. The prompt shows them to the model as data, so it can pass a free-text answer on with `message_task`. Since 5.10.1, `task` mode takes it too: there it lists the waking agent's own running sub-agents, so the agent never claims an ended one still works. `askx` ignores it.
 
@@ -79,6 +79,36 @@ Every request through OpenRouter carries `provider: { data_collection: "deny" }`
 | `usage` | `{ "input_tokens": 0, "output_tokens": 0, "reasoning_tokens": 0, "cost": 0.0 }` | Totals for the run so far: sent after every model step and once more, final, right before `done`. Each one replaces the last |
 | `done` | `{ "answer": "full text", "duration_ms": 5321 }` | The run finished; for askx `answer` may be a short note; for task it is the agent's note to itself, often empty |
 | `error` | `{ "code": "AI_REQUEST_FAILED", "message": "…" }` | The run failed; the stream ends after it. Codes stay compatible with v1 (`QUESTION_TOO_LONG`, `NETWORK_ERROR`, …) plus `TOOL_TIMEOUT`, `RUN_NOT_FOUND` |
+
+### Buttons in the answer
+
+Since server 6.11 the model writes buttons straight into the answer text, and the plugin (Allay 6.9 or newer) turns each into a clickable `[Label]` in place when it shows the finished answer. The tool that put buttons under the answer is gone, with no fallback: older plugins show the tags as text. The backend passes the tags through untouched in `text` and `done`.
+
+```
+<button action="ACTION" attr="value" …>Label</button>
+```
+
+- The label is the element's text: a word or two, at most 24 characters, in the answer's language, with no tags or line breaks inside.
+- Attribute values go in double quotes; `&quot;`, `&amp;`, `&lt;`, and `&gt;` are the only escapes.
+- At most 8 buttons in one answer, anywhere in it: mid-sentence, at the end of a line, or on a line of their own.
+- A tag the plugin can't use (an unknown action, a missing attribute, a recipe that doesn't exist, a player not on the locator bar) shows as its plain label without a click. The model gets no error back.
+
+| `action` | Attributes | The click | In a public answer |
+|---|---|---|---|
+| `ask` | `question` (≤ 200) | Asks Allay that question, as if typed | Yes: asks everyone again |
+| `point` | `x`, `z`, `y`?, `dimension`? | A trail and the compass to the spot | Yes |
+| `point` | `player`: an exact name on the clicker's locator bar | A trail that follows that player | Yes |
+| `copy` | `text` (≤ 200), such as `-20 95 120` | Puts the text into the clipboard | Yes |
+| `note` | `text` (≤ 200), `x`, `z`, `y`?, `dimension`? | Saves a memory with that place | Yes |
+| `recipe` | `item` | The recipe window | Yes |
+| `brewing` | `potion`, `form`? (`potion`, `splash_potion`, `lingering_potion`) | The brewing steps window | Yes |
+| `anvil` | `slots`? (inventory slots 0–35, comma separated) | The anvil plan for the item in hand | The asker only |
+| `enchants` | – | The enchanting window for the item in hand | Yes |
+| `villagers` | `item`? | The villagers around and their trades | Yes |
+| `command` | `command`, starting with `/` | Runs it as the player who clicks, minus the plugin's `blocked_commands` | Never: private answers only |
+| `say` | `text` (≤ 256) | Sends the text to the public chat as the player who clicks, as if typed | Never: private answers only |
+
+`dimension` is `overworld`, `the_nether`, or `the_end`; `x`, `y`, and `z` are integers. Books (`write_book`) and automation agents' `say` keep their own buttons.
 
 ## Tool results
 
@@ -134,7 +164,6 @@ with the same `Authorization` as the question. Answers: `200 { "accepted": true 
 | `add_note` | `{ "text": "≤ 200", "here"?: true, "x"?, "y"?, "z"?, "dimension"? }` | Plugins before 6.7 only; since 6.9 places are memories (the `memories` server tool). A note kept on disk (200 per player by default, `tools.notes.max_per_player`). By default where the player stands; with `here: false`, the given `x`, `z` (and optional `y`, `dimension`), or no place at all. Returns `{ id, text, x?, y?, z?, dimension? }` |
 | `find_notes` | `{ "query"?, "near"?, "limit"?: 1–50 }` | Plugins before 6.7 only. matched, total, notes [{id, text, x?, y?, z?, dimension?, distance?, direction?, created_at}] |
 | `delete_note` | `{ "id": "k3f9" }` | `{ deleted }` |
-| `add_buttons` | `{ "buttons": [{ "type", "label", "question"?, "x"?, "y"?, "z"?, "dimension"?, "player"?, "text"?, "item"?, "potion"?, "form"?, "slots"? }] }` | Puts up to 5 buttons under the answer (6 since plugin 5.4). `ask` asks `question` on click; `point` shows the way to x, y, z; `note` saves `text` with x, y, z; `copy` (since plugin 5.3; older plugins refuse it) puts `text` into the clipboard; `brewing` (5.3) opens the brewing steps for `potion` in `form`; `anvil` (5.3) opens the anvil plan with what the player has, or only `slots`; `recipe` opens the recipe window for `item`; `enchants` the enchanting window for the item in hand; `villagers` the villager window, optionally for `item`. Under a public answer (since plugin 5.3) every player online gets the buttons, and `ask` asks everyone. Returns `{ added, total }`. Since plugin 5.4, `point` with `player` instead of coordinates follows that player, checked against the presser's locator bar on every press; under a public answer nobody gets the way to themself |
 | `write_book` | `{ "title": "≤ 32", "text": "≤ 8000" }` | Writes the text into a book and adds buttons to open and take it under the answer; returns `{ pages }` |
 | `set_timezone` | `{ "zone": "Asia/Yekaterinburg" }` | Stores the player's IANA zone for later requests; returns `{ zone, local_time }` |
 | `get_allay_guide` | – | Since 4.0 (3.x calls it `get_buddy_guide`). How Allay works for this player here: plugin_version, commands [{usage, does}] they have permission for, chat_mode {prefixes {"!", "?", "~"}: what each does, only those this player may use}, settings {chat_mode, hints, timezone}, features [names of what the server has on: notes, goals, reminders, windows, books, buttons, compass, sorting, operator_tools], limits {notes, reminders, goals, public_cooldown_seconds} |
@@ -215,7 +244,7 @@ Since 5.5, for plugin 5.7. The chat hands work in the world (sorting chests, sme
 - **Ending.** Since plugin 5.14, stopping an agent (`/allay cancel`, `cancel_task`, interference, the limits) also cancels its wake if one is out, and its tools refuse to act for it from then on.
 - **End of a wake.** The agent ends every wake with `wait` or `finish`. Its final text, often empty, is a note for its own next wake; the backend records it and the plugin doesn't show it. An empty final text is not an error in task mode: `done` comes with `answer: ""`.
 - **Steps.** A wake gets up to `MAX_TASK_STEPS` model steps (32 by default since 6.9), against `MAX_AGENT_STEPS` (26) for a question.
-- **Tools.** A wake gets the client tools the plugin offers minus operator tools, `add_buttons`, `write_book`, and `get_nearby_players`; `start_task`, `message_task`, and `cancel_task` only at depth 1 (before server 5.12, only `start_task`). Server tools: `exact_calculations` only, no `search_web`, no `memories`. The prompt still shows the player's memories, read-only.
+- **Tools.** A wake gets the client tools the plugin offers minus operator tools, `write_book`, and `get_nearby_players`; `start_task`, `message_task`, and `cancel_task` only at depth 1 (before server 5.12, only `start_task`). Server tools: `exact_calculations` only, no `search_web`, no `memories`. The prompt still shows the player's memories, read-only.
 - **Prompt.** `minecraft-task.md` plus the agent's name, kind, and depth, and the player.
 - **Depth.** The chat is depth 0. A task the chat starts is 1, a task started by a task is 2 and can't start another.
 
@@ -223,7 +252,7 @@ Since 5.5, for plugin 5.7. The chat hands work in the world (sorting chests, sme
 |---|---|---|
 | `ask` | `start_task`, `message_task`, `cancel_task` | `say`, `wait`, `finish`, `pick_blocks`, `chests`, `smelt`, `brew`, `craft` |
 | public `ask` | — | all automation tools |
-| `task` | `say`, `wait`, `finish`, `pick_blocks`, `chests`, `smelt`, `brew`, `craft`; `start_task`, `message_task`, `cancel_task` at depth 1 | operator tools, `add_buttons`, `write_book`, `get_nearby_players`, `search_web`, `memories` |
+| `task` | `say`, `wait`, `finish`, `pick_blocks`, `chests`, `smelt`, `brew`, `craft`; `start_task`, `message_task`, `cancel_task` at depth 1 | operator tools, `write_book`, `get_nearby_players`, `search_web`, `memories` |
 | `askx` | — | all automation tools |
 
 ## Conversation memory
@@ -378,5 +407,7 @@ The recovery page posts `{ code, username, password }` to the panel's `POST /api
 |---|---|---|
 | Allay 5.x | Works | `401` everywhere: it sends no token, and a BYOK server sends no license |
 | Allay 6.0 | Works; a self-hosted backend ignores the token | Works |
+
+Since server 6.11 buttons come inline in the answer text (see “Buttons in the answer”) and the tool that put buttons under the answer is gone. Allay 6.8 and older keep working against it, but show the tags as text; Allay 6.9 or newer is needed for buttons.
 
 Since server 6.9 the backend keeps what the plugin kept on disk. Allay 6.6 and older keep working against it: their notes tool, their own death history, and their files stay as they were until the plugin updates. Allay 6.7 needs server 6.9: against an older backend its deaths, state, and export link answer `404`, and it keeps them in memory only.

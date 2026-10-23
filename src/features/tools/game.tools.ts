@@ -336,32 +336,6 @@ const definitions = {
       id: z.string().min(1).max(32).optional().describe("delete: the note's id"),
     }),
   },
-  add_buttons: {
-    description:
-      "Clickable buttons under your answer, at most 6. ask: the click asks question. point: the way to x, y, z in dimension, or with player, a trail that follows them (label: their name). note: saves text with x, y, z in the clicker's notebook. copy: puts text, such as «-20 95 120», into the clipboard. recipe: the recipe window for item. brewing: the brewing steps for potion in form. anvil: the anvil plan for the item in hand (or only slots). enchants: the enchanting window for the item in hand. villagers: the villagers around, optionally only trades with item.",
-    input: z.object({
-      buttons: z
-        .array(
-          z.object({
-            type: z.enum(["ask", "point", "note", "copy", "recipe", "brewing", "anvil", "enchants", "villagers"]),
-            label: z.string().min(1).max(24).describe("A word or two in the language you answer in, never the game locale's when they differ"),
-            question: z.string().max(200).optional().describe("ask: the full question, in the language you answer in"),
-            x: z.number().int().optional(),
-            y: z.number().int().optional(),
-            z: z.number().int().optional(),
-            dimension: dimension.optional(),
-            player: z.string().min(1).max(32).optional().describe("point: the exact name of a player on the locator bar, instead of x and z"),
-            text: z.string().max(200).optional().describe("note: what to write; copy: what to copy"),
-            item: z.string().max(64).optional().describe("recipe or villagers"),
-            potion: z.string().max(64).optional().describe("brewing"),
-            form: potionForm.optional().describe("brewing"),
-            slots: z.array(z.number().int().min(0).max(35)).max(8).optional().describe("anvil"),
-          }),
-        )
-        .min(1)
-        .max(6),
-    }),
-  },
   write_book: {
     description:
       "Writes a long answer into a book the player can open or take for free; buttons for both appear under your answer. Only when the player explicitly asks for detail. Plain text with line breaks; & color codes work.",
@@ -724,7 +698,7 @@ const isOperatorTool = (name: string) => name in operatorDefinitions;
 
 /** Tools that do something for the player rather than read the game; askx only writes commands, so it gets none of them. */
 const ACTION_TOOLS: ReadonlySet<string> = new Set([
-  "point_to", "show_marks", "show_draft", "ping_me", "sort_inventory", "reminders", "goals", "add_buttons", "write_book", "allay_settings", ...AUTOMATION_TOOLS,
+  "point_to", "show_marks", "show_draft", "ping_me", "sort_inventory", "reminders", "goals", "write_book", "allay_settings", ...AUTOMATION_TOOLS,
 ]);
 
 /**
@@ -738,7 +712,7 @@ const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book", "get_nearby_pl
 const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil"]);
 
 /** What an automation agent never gets: it talks through say. */
-const NOT_IN_TASKS: ReadonlySet<string> = new Set(["add_buttons", "write_book", "get_nearby_players"]);
+const NOT_IN_TASKS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players"]);
 
 /** What starts and steers sub-agents: an agent gets these only while it may start one, and steers only its own. */
 const SUB_AGENT_TOOLS: ReadonlySet<string> = new Set(["start_task", "message_task", "cancel_task"]);
