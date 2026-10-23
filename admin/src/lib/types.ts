@@ -209,6 +209,9 @@ export interface ServerSummary {
   software: string | null;
   version: string | null;
   plugin_version: string | null;
+  /** What Allay runs on and where (Allay 6.10): `spigot`, `fabric`, or `neoforge`; `server`, `integrated`, or `client`. */
+  loader: string | null;
+  side: string | null;
   /** Where the server connects from; admins only. */
   ip: string | null;
   /** The server shares a private network with the backend, so its address says little. */
@@ -271,6 +274,12 @@ export interface License {
   /** The license's server as the panel heads it: its own name and where players join. */
   server: { name: string | null; address: string | null } | null;
   created_at: string | null;
+  /** Who it serves (Allay Server 6.12): a server, or one player in their own game. */
+  kind: "server" | "solo";
+  /** Since when a Solo license's player has it; null before anyone asked, and for a server's. */
+  bound_at: string | null;
+  /** When the payer last handed a Solo license to another player in the bot. */
+  released_at: string | null;
   plan: string | null;
   status: "active" | "expired" | "unpaid" | "blocked" | "revoked";
   paid_until: string | null;

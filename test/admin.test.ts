@@ -575,6 +575,23 @@ describe("billing in the panel", () => {
     expect((await call("PATCH", "/api/admin/licenses/lic2", { name: "Mine" })).status).toBe(403);
   });
 
+  test("an owner makes a license Solo and back; an admin hands a Solo license to the next player", async () => {
+    const ctx = await withOwner({ selfHosted: false, billing: true });
+    const { call, deps, audit } = ctx;
+    await deps.billing.licenses.create({ id: "solo1", secret_hash: "x", created_at: deps.billing.now(), renews: false });
+    expect((await call("POST", "/api/admin/licenses/solo1/release")).status).toBe(409);
+    const made = await call("PATCH", "/api/admin/licenses/solo1", { kind: "solo" });
+    expect(made.body.license).toMatchObject({ kind: "solo", bound_at: null });
+    await deps.billing.licenses.bind("solo1", "p_00000000000000000000", deps.billing.now());
+    expect((await call("GET", "/api/admin/licenses/solo1")).body.license.bound_at).toBeString();
+    const released = await call("POST", "/api/admin/licenses/solo1/release");
+    expect(released.body.license.bound_at).toBeNull();
+    expect((await deps.billing.licenses.get("solo1"))!.player).toBeUndefined();
+    expect(audit.entries.map((e) => e.action)).toEqual(expect.arrayContaining(["license.edit", "license.release"]));
+    expect((await call("PATCH", "/api/admin/licenses/solo1", { kind: "server" })).body.license.kind).toBe("server");
+    expect((await deps.billing.licenses.get("solo1"))!.kind).toBeUndefined();
+  });
+
   test("a license goes by its server's own name, never the MOTD, and a hand-given budget of Infinity's size is Infinity", async () => {
     const ctx = await withOwner({ selfHosted: false, billing: true });
     Object.assign(ctx.deps, { runs: (await import("../src/infrastructure/runs/runs")).memoryRuns() });

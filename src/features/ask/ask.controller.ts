@@ -2,6 +2,7 @@ import { type AllayDeps, runAllay } from "../../agent/allay";
 import { identify } from "../auth/caller";
 import { mayKeep } from "../auth/consent";
 import { admit } from "../billing/gate";
+import { soloRefusal } from "../billing/solo";
 import { silent } from "../chat/chat.events";
 import { readJson } from "../../shared/lib/http";
 import { logger } from "../../shared/logging/logger";
@@ -44,6 +45,8 @@ export const handleAsk = (deps: AllayDeps) => async (req: Request): Promise<Resp
   const userId = body.user_id || "anonymous";
   if (await deps.bans.has(caller.tenant, deps.pseudonyms.of(caller.tenant, userId))) return error(apierror(API_ERRORS.PLAYER_BLOCKED));
   if (!(await mayKeep(deps, caller.tenant, userId))) return error(apierror(API_ERRORS.CONSENT_REQUIRED));
+  const solo = await soloRefusal(deps.billing, deps.pseudonyms, caller, userId);
+  if (solo) return error(solo.toApiError());
   const admitted = await admit(deps.billing, req.headers, undefined, caller);
   if (!admitted.ok) return error(admitted.error.toApiError());
   const { admission } = admitted;

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { GrantRecord, LicenseRecord, PaymentRecord } from "../../infrastructure/billing/licenses";
 import { type Billing, licenseName, quotaFor, serverName } from "../billing/billing";
-import { INFINITY_DAYS, infinityBudget, quotaOf } from "../billing/plans";
+import { INFINITY_DAYS, LICENSE_KINDS, infinityBudget, kindOf, quotaOf } from "../billing/plans";
 import { LicenseRefundFailure, refundLicense, refundPayment } from "../telegram/telegram.bot";
 import { allows, record } from "./admin";
 import { type Context, type Route, body, error } from "./admin.http";
@@ -48,6 +48,10 @@ const licenseView = async (billing: Billing, license: LicenseRecord, grants?: Gr
     own_name: license.name ?? null,
     server: headOf(license, known),
     created_at: iso(license.created_at),
+    kind: kindOf(license),
+    // A Solo license's player stays a pseudonym on the license; the panel says only whether and since when one has it.
+    bound_at: kindOf(license) === "solo" ? iso(license.player_bound_at ?? (license.player ? license.created_at : null)) : null,
+    released_at: iso(license.released_at),
     plan: license.plan ?? (infinity ? "infinity" : null),
     status: license.revoked_at ? "revoked" : license.blocked_at ? "blocked" : quota.active ? "active" : license.last_payment_at ? "expired" : "unpaid",
     paid_until: iso(quota.paidUntil),
@@ -161,9 +165,14 @@ const grantSchema = z.union([z.object({ plan: z.literal("infinity") }), z.object
 const extendSchema = z.object({ days: z.number().int().min(1).max(366) });
 const deleteSchema = z.object({ force: z.boolean().optional() });
 // The license's own name for the panel, and the language the bot writes in: Telegram's code, like ru or pt-br.
+// Since 6.12 the kind too: a Solo license answers one player.
 const editSchema = z
-  .object({ name: z.string().trim().min(1).max(64).optional(), language: z.string().trim().regex(/^[a-z]{2,3}(-[a-z0-9]{2,8})?$/i).nullable().optional() })
-  .refine((v) => v.name !== undefined || v.language !== undefined);
+  .object({
+    name: z.string().trim().min(1).max(64).optional(),
+    language: z.string().trim().regex(/^[a-z]{2,3}(-[a-z0-9]{2,8})?$/i).nullable().optional(),
+    kind: z.enum(LICENSE_KINDS).optional(),
+  })
+  .refine((v) => v.name !== undefined || v.language !== undefined || v.kind !== undefined);
 
 export const billingRoutes: Route[] = [
   {
@@ -222,7 +231,7 @@ export const billingRoutes: Route[] = [
       const license = await licenseOr404(ctx);
       if (!license) return error(404, "NOT_FOUND", "No such license");
       const input = editSchema.safeParse(await body(ctx.req));
-      if (!input.success) return error(400, "BAD_REQUEST", "Give a name (1–64 characters) or a language code like ru, or null to clear it");
+      if (!input.success) return error(400, "BAD_REQUEST", "Give a name (1–64 characters), a language code like ru or null to clear it, or a kind: server or solo");
       const patch: Partial<LicenseRecord> = {};
       const changes: Array<{ field: string; old: string; new: string }> = [];
       if (input.data.name !== undefined && input.data.name !== license.name) {
@@ -236,9 +245,32 @@ export const billingRoutes: Route[] = [
           changes.push({ field: "language", old: license.language ?? "", new: language ?? "" });
         }
       }
+      if (input.data.kind !== undefined && input.data.kind !== kindOf(license)) {
+        // Either way the license starts over without a player: a Solo one takes the next who asks.
+        Object.assign(patch, { kind: input.data.kind === "solo" ? "solo" : undefined, player: undefined, player_bound_at: undefined });
+        changes.push({ field: "kind", old: kindOf(license), new: input.data.kind });
+      }
       if (changes.length) {
         await ctx.deps.billing.licenses.update(license.id, patch);
         await record(ctx.admin, { actor: ctx.me!.username, action: "license.edit", target: license.id, changes, ip: ctx.ip });
+      }
+      const known = (await ctx.deps.servers?.list(`license:${license.id}`)) ?? [];
+      return Response.json({ license: await licenseView(ctx.deps.billing, (await ctx.deps.billing.licenses.get(license.id))!, undefined, seesPayers(ctx), known) });
+    }),
+  },
+  {
+    method: "POST",
+    path: "/licenses/:id/release",
+    access: "admin",
+    handle: hosted(async (ctx) => {
+      const license = await licenseOr404(ctx);
+      if (!license) return error(404, "NOT_FOUND", "No such license");
+      if (license.revoked_at) return revoked();
+      if (kindOf(license) !== "solo") return error(409, "NOT_SOLO", "Only a Solo license belongs to one player");
+      // The panel isn't held to SOLO_RELEASE_DAYS, and doesn't move the payer's own next chance.
+      if (license.player) {
+        await ctx.deps.billing.licenses.update(license.id, { player: undefined, player_bound_at: undefined });
+        await record(ctx.admin, { actor: ctx.me!.username, action: "license.release", target: license.id, changes: [], ip: ctx.ip });
       }
       const known = (await ctx.deps.servers?.list(`license:${license.id}`)) ?? [];
       return Response.json({ license: await licenseView(ctx.deps.billing, (await ctx.deps.billing.licenses.get(license.id))!, undefined, seesPayers(ctx), known) });

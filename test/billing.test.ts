@@ -432,6 +432,90 @@ describe("bring your own key", () => {
   });
 });
 
+describe("Solo licenses", () => {
+  /** A hosted backend whose license came from a player's own game, while Solo plans are on. */
+  const solo = async () => {
+    process.env.SOLO_PLANS = "true";
+    const h = await hosted();
+    const made = await body(fetch(`${h.base}/api/v2/license`, { method: "POST", body: JSON.stringify({ name: "Steve", loader: "fabric", side: "client" }) }));
+    return { ...h, made, soloAuth: { Authorization: `Bearer ${made.license}` } };
+  };
+  afterEach(() => delete process.env.SOLO_PLANS);
+
+  test("a license from a player's game is Solo only while Solo plans are on; one from a server never", async () => {
+    const h = await solo();
+    expect((await h.billing.licenses.get(h.made.license_id))!.kind).toBe("solo");
+    expect((await h.billing.licenses.get(h.created.license_id))!.kind).toBeUndefined();
+    expect(await body(fetch(`${h.base}/api/v2/license`, { headers: h.soloAuth }))).toMatchObject({ kind: "solo", bound: false });
+    expect(await body(fetch(`${h.base}/api/v2/license`, { headers: h.auth }))).toMatchObject({ kind: "server" });
+    delete process.env.SOLO_PLANS;
+    const later = await body(fetch(`${h.base}/api/v2/license`, { method: "POST", body: JSON.stringify({ side: "integrated" }) }));
+    expect((await h.billing.licenses.get(later.license_id))!.kind).toBeUndefined();
+  });
+
+  test("the first player takes a Solo license; anyone else is refused before anything runs", async () => {
+    const h = await solo();
+    await h.billing.licenses.grant(h.made.license_id, { budget: 1, starts: T0, ends: new Date(T0.getTime() + 7 * DAY) });
+    const first = await readSse(await chat(h.base, { user_id: "player-1" }, h.soloAuth));
+    expect(first.at(-1)!.event).toBe("done");
+    const license = (await h.billing.licenses.get(h.made.license_id))!;
+    // The license keeps the player by pseudonym, never by id.
+    expect(license.player).toMatch(/^p_[0-9a-f]{20}$/);
+    expect(license.player_bound_at).toEqual(T0);
+    const other = await chat(h.base, { user_id: "player-2" }, h.soloAuth);
+    expect(other.status).toBe(403);
+    expect((await body(other)).error.code).toBe("SOLO_PLAYER_TAKEN");
+    const v1 = await fetch(`${h.base}/api/ask`, { method: "POST", headers: h.soloAuth, body: JSON.stringify({ question: "hi", user_id: "player-3" }) });
+    expect((await body(v1)).code).toBe("SOLO_PLAYER_TAKEN");
+    expect((await readSse(await chat(h.base, { user_id: "player-1" }, h.soloAuth))).at(-1)!.event).toBe("done");
+    // A server's license answers everyone, as before.
+    await h.pay("week", "charge-1");
+    expect((await readSse(await chat(h.base, { user_id: "player-2" }, h.auth))).at(-1)!.event).toBe("done");
+  });
+
+  test("the bot sells a Solo license Solo plans only, and hands it to another player once a while", async () => {
+    const h = await solo();
+    const code = new URL(h.made.pay_url).searchParams.get("start")!;
+    await handleUpdate(h.billing, h.telegram.api, message(`/start ${code}`) as any);
+    const id = h.made.license_id;
+    expect(h.telegram.last("sendMessage").reply_markup.inline_keyboard.map((row: any) => row[0].callback_data)).toEqual([
+      `buy:solo_week:${id}`, `buy:solo_month:${id}`, `buy:solo_year:${id}`,
+    ]);
+    const callback = (data: string) =>
+      handleUpdate(h.billing, h.telegram.api, { update_id: 3, callback_query: { id: "cb", from: user(), message: { chat: { id: 7 } }, data } } as any);
+    // A server's plan isn't for sale to it, and the pre-checkout refuses one too.
+    const invoices = h.telegram.calls.filter((c) => c.method === "createInvoiceLink").length;
+    await callback(`buy:week:${id}`);
+    expect(h.telegram.calls.filter((c) => c.method === "createInvoiceLink")).toHaveLength(invoices);
+    await handleUpdate(h.billing, h.telegram.api, {
+      update_id: 4,
+      pre_checkout_query: { id: "pc", from: user(), currency: "XTR", total_amount: planOf("week")!.stars, invoice_payload: `week:${id}` },
+    } as any);
+    expect(h.telegram.last("answerPreCheckoutQuery")).toMatchObject({ ok: false });
+    await callback(`buy:solo_month:${id}`);
+    expect(h.telegram.last("createInvoiceLink")).toMatchObject({ prices: [{ amount: planOf("solo_month")!.stars }], subscription_period: 2592000 });
+
+    await h.billing.licenses.bind(id, "p_00000000000000000000", T0);
+    await handleUpdate(h.billing, h.telegram.api, message("/status") as any);
+    const buttons = h.telegram.last("sendMessage").reply_markup.inline_keyboard.flat().map((b: any) => b.callback_data);
+    expect(buttons).toContain(`release:${id}`);
+    await callback(`release:${id}`);
+    expect((await h.billing.licenses.get(id))!.player).toBeUndefined();
+    await h.billing.licenses.bind(id, "p_11111111111111111111", T0);
+    // Within SOLO_RELEASE_DAYS the bot says when it may again, and keeps the player.
+    await callback(`release:${id}`);
+    expect((await h.billing.licenses.get(id))!.player).toBe("p_11111111111111111111");
+    h.tick(31 * DAY);
+    await callback(`release:${id}`);
+    expect((await h.billing.licenses.get(id))!.player).toBeUndefined();
+
+    // With Solo plans off again, a Solo license has nothing to buy.
+    delete process.env.SOLO_PLANS;
+    await callback(`plans:${id}`);
+    expect(h.telegram.last("sendMessage").reply_markup).toBeUndefined();
+  });
+});
+
 describe("the Telegram bot", () => {
   test("a claim code ties the server to the account once and offers the plans", async () => {
     const h = await hosted();

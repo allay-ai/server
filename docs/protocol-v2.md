@@ -39,7 +39,7 @@ Headers: `Content-Type: application/json`, `Accept: text/event-stream`, `X-Plugi
   "locale": "ru_ru",
   "timezone": "Europe/Moscow",
   "player": { "name": "Steve", "uuid": "5627dd98-…", "op": false, "dimension": "the_nether", "position": { "x": -212, "y": 64, "z": 540, "dimension": "the_nether", "world": "world_nether" } },
-  "server": { "id": "0f8c…", "software": "Paper", "version": "26.3", "plugin_version": "3.0.0" },
+  "server": { "id": "0f8c…", "software": "Paper", "version": "26.3", "plugin_version": "3.0.0", "loader": "spigot", "side": "server" },
   "tools": ["get_player_status", "get_inventory", "get_surroundings", "look_at", "get_world", "get_statistics", "get_advancements", "get_recipes", "locate_structure", "get_server"]
 }
 ```
@@ -51,6 +51,8 @@ Headers: `Content-Type: application/json`, `Accept: text/event-stream`, `X-Plugi
 `player.dimension` (optional, since 5.1) is the dimension the player stood in when they asked: `overworld`, `the_nether`, or `the_end`. The prompt tells the model, so a place named without a dimension lands where the player is; any other value is dropped.
 
 `server.address` and `server.port` (optional, since 6.6) say where players join: the address the server's owner set in the plugin and the game port. The admin panel shows them with the address the request came from; a bad value is dropped, not refused.
+
+`server.loader` and `server.side` (optional, since 6.12) say what Allay runs on and where. `loader` is `spigot` (the plugin for Bukkit, Spigot, Paper, and their forks), `fabric`, or `neoforge`. `side` is `server` for a dedicated server, `integrated` for the server inside a player's own game (a singleplayer world, or one opened to LAN), and `client` for a mod in the player's game on a server that runs no Allay. Without them a request counts as `spigot` on a `server`, as every plugin before 6.10 is. The prompt tells the model where it runs, and that a modded game has blocks and items the vanilla game doesn't; the admin panel shows both. Unknown values are dropped, not refused. `PUT /api/v2/server` and `POST /api/v2/license` take the same two.
 
 `player.position` (optional, since 6.9) is where the player stands: whole `x`, `y`, `z`, a `dimension` as above, and the Bukkit `world` (≤ 64 chars). The backend measures distances and directions to remembered places and deaths from it, and the `memories` tool saves `here` there; a bad one is dropped, not refused.
 
@@ -281,7 +283,7 @@ Endpoints for the plugin's `/allay new`, `/allay memory [text]`, `/allay forget`
 | `PUT /api/v2/users/{user_id}/state` with `{ "timezone"?: "≤ 64", "settings"?: { … }, "goals"?: [ … ≤ 100 ] }` | Since 6.9. Replaces the player's state whole, at most 32 KB of JSON; the backend checks the shape, not what `settings` and `goals` hold. `200` with the same body as `GET` |
 | `DELETE /api/v2/users/{user_id}/session` | `200 { "cleared": true }`; memories stay |
 | `GET /api/v2/users/{user_id}/consent` | Since 6.1. `200 { "consent": { "version": 1, "accepted_at": "ISO-8601" } }`, or `{ "consent": null }` when the player hasn't agreed. Since 6.9 the consent adds `hash` and `revision` when it has them and always `age_confirmed` (false when the player wasn't asked), and the answer adds `revision`, the privacy policy's current revision (a date, also in `/api/health`): the plugin hashes its notice with it and asks again when the hash differs from the stored one |
-| `PUT /api/v2/server` with `{ id, name?, motd?, software?, version?, plugin_version?, address?, port? }` | Since 6.7. The plugin registers its server at start. `name` (2–32 letters, digits, spaces, or `. _ ' -`) belongs to one server on the backend: `409 NAME_TAKEN` when another tenant's server holds it; a server of the same tenant takes it over. `200 { "registered": true, "name" }` |
+| `PUT /api/v2/server` with `{ id, name?, motd?, software?, version?, plugin_version?, address?, port?, loader?, side? }` | Since 6.7. The plugin registers its server at start. `name` (2–32 letters, digits, spaces, or `. _ ' -`) belongs to one server on the backend: `409 NAME_TAKEN` when another tenant's server holds it; a server of the same tenant takes it over. `200 { "registered": true, "name" }` |
 | `PUT /api/v2/users/{user_id}/privacy` with `{ "full": true }` | Since 6.5. The player turned full privacy on (`true`) or off: on, the admin panel forgets their name, UUID, and face at once: `200 { "full": true, "forgotten": true }`. Off changes nothing until the next question without `player.private`. The plugin keeps the switch |
 | `PUT /api/v2/users/{user_id}/consent` with `{ "version": 1, "hash"?: "64 hex", "age_confirmed"?: true, "age_band"?: "16_17" }` | Since 6.1. Records that the player agreed to the plugin's notice of that version (a whole number, 1–1000), replacing an older agreement whole: `200 { "consent": { "version", "hash"?, "revision", "age_confirmed"?, "accepted_at" }, "revision" }`. Since 6.9 `hash` is the SHA-256 (hex) of the English notice texts the plugin showed, joined by newlines, a newline, and the revision; `revision` is the policy's revision then; `age_confirmed` says the player is old enough to agree where they play, and `age_band` is the age group they picked (`under_13`, `13`, `14_15`, `16_17`, `18_plus`), which plugin 6.7 asks every player. An agreement goes with the player 730 days after their last question |
 | `DELETE /api/v2/users/{user_id}/consent` | Since 6.1. `200 { "withdrawn": true }`, or `false` when there was none. Since 6.9 it also erases what the agreement covered, memories and places, deaths, state, export links, the session, pending outcomes, and agents' threads, and answers `{ "withdrawn", "memories", "deaths" }` with the counts; the record stays, marked `withdrawn_at` in the player's copy, as proof, and `GET` answers `null` until the player agrees again. Before 6.9 what was kept stayed until erased |
@@ -332,6 +334,7 @@ Without a key, the request runs on the backend's own key and models. The plugin 
 | `SUBSCRIPTION_INACTIVE` | 402 | Nothing paid for now, the period ended, or the license is blocked |
 | `QUOTA_EXCEEDED` | 402 | This period's limit is spent; `resets_at` (ISO-8601) says when it refills, absent when only a new payment helps |
 | `PLAYER_BLOCKED` | 403 | Since 6.2: the backend's operators blocked this player on this server (also from `/api/v1/ask` and `/api/v1/askx`). Plugins before 6.2 show it as a general error |
+| `SOLO_PLAYER_TAKEN` | 403 | Since 6.12: a Solo license answers the first player who asked on it, and this is another one (also from `/api/v1/ask` and `/api/v1/askx`). The payer hands it to another player in the bot, an admin in the panel |
 | `CONSENT_REQUIRED` | 403 | Since 6.9, on a hosted backend: the player has no agreement in force on this server, so the backend runs, traces, and keeps nothing (also from `/api/v1/ask` and `/api/v1/askx`, and `POST /memories`, `POST /deaths`, `PUT /state`). `console` and requests without a player pass. The plugin shows the notice again |
 
 Before a stream these come as `{ "error": { "code", "message", "resets_at"?, "retry_after"? } }`.
@@ -349,7 +352,7 @@ A backend with billing off (`SELFHOSTED=1`, as on a server's own backend) never 
 | `GET /api/v2/license` with `Authorization` | `200` with the status below |
 | any of them with billing off | `200 { "billing": false }` |
 
-Both `POST`s take an optional body `{ "name": "…" }` (≤ 64 chars): the server's name as the bot shows it to the payer. The plugin sends its MOTD without formatting codes.
+Both `POST`s take an optional body `{ "name": "…", "loader"?, "side"? }`: `name` (≤ 64 chars) is the server's name as the bot shows it to the payer; the plugin sends its MOTD without formatting codes. Since 6.12, a new license whose `side` is `integrated` or `client` is a **Solo** license while the backend sells Solo plans (`SOLO_PLANS`); every other is a server's. A Solo license serves one player: the first who asks on it takes it, by pseudonym, and anyone else gets `SOLO_PLAYER_TAKEN`.
 
 The status:
 
@@ -359,7 +362,9 @@ The status:
   "license_id": "k3f9a2…",
   "linked": true,                         // a Telegram account claimed it
   "active": true,
-  "plan": "month",                        // week | month | year; null before the first payment
+  "kind": "server",                       // since 6.12: server, or solo for one player
+  "bound": true,                          // solo only: a player has it
+  "plan": "month",                        // week | month | year | solo_week | solo_month | solo_year; null before the first payment
   "paid_until": "2026-11-14T10:00:00Z",   // null before the first payment
   "renews": true,                         // a Telegram Stars subscription renews it by itself
   "quota": { "used_percent": 62, "resets_at": "2026-11-14T10:00:00Z" },
@@ -381,6 +386,16 @@ The status:
 | `infinity` | not sold | 366 days | $1000 for the whole period (`PLAN_INFINITY_BUDGET`); since 6.9 an owner grants it in the admin panel |
 
 A payment while a period runs adds its budget at once and moves `paid_until` further.
+
+Since 6.12 a Solo license buys Solo plans instead, and a server's license never does. The bot sells them only while `SOLO_PLANS` is on (off until the mods ship), and its prices are drafts the owner settles before then:
+
+| Plan | Stars | Period | Budget |
+|---|---|---|---|
+| `solo_week` | 50 | 7 days | $0.25 |
+| `solo_month` | 150 | 30 days, renews by itself as a Stars subscription | $1.00 |
+| `solo_year` | 3000 | 365 days | $2.00 a month, refilled every 30 days |
+
+In `/status` the payer hands a Solo license to another player, once every `SOLO_RELEASE_DAYS` (30); an admin may in the panel any time.
 
 ## Admin panel setup
 

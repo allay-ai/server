@@ -171,7 +171,12 @@ export const LicensesPage = () => {
                       <TableCell>
                         <StatusBadge status={l.status} />
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell">{plan(l)}</TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <span className="flex items-center gap-2">
+                          {plan(l)}
+                          {l.kind === "solo" && <Badge variant="outline">{t("licenseKinds.solo")}</Badge>}
+                        </span>
+                      </TableCell>
                       <TableCell className="hidden lg:table-cell">{l.paid_until ? date(l.paid_until) : <span className="text-muted-foreground">{t("licenses.notPaid")}</span>}</TableCell>
                       <TableCell>{l.budget ? <BudgetCell spent={l.spent} budget={l.budget} /> : <span className="text-muted-foreground">{t("licenses.noBudget")}</span>}</TableCell>
                     </TableRow>
@@ -529,6 +534,24 @@ export const LicensePage = () => {
       showErrors(error);
     }
   };
+  const release = async () => {
+    try {
+      await post(`/licenses/${encodeURIComponent(id)}/release`);
+      toast.success(t("licenses.released"));
+      await refresh();
+    } catch (error) {
+      showErrors(error);
+    }
+  };
+  const changeKind = async (kind: License["kind"]) => {
+    try {
+      await api(`/licenses/${encodeURIComponent(id)}`, { method: "PATCH", body: { kind } });
+      toast.success(t("licenses.kindChanged"));
+      await refresh();
+    } catch (error) {
+      showErrors(error);
+    }
+  };
   const refund = async () => {
     try {
       const result = await post<{ stars: number }>(`/licenses/${encodeURIComponent(id)}/refund`);
@@ -598,6 +621,8 @@ export const LicensePage = () => {
                 columns={3}
                 items={[
                   [t("licenses.created"), dateTime(license.created_at)],
+                  [t("licenses.kind"), t(`licenseKinds.${license.kind}`)],
+                  license.kind === "solo" && [t("licenses.player"), license.bound_at ? t("licenses.playerSince", { date: dateTime(license.bound_at) }) : t("licenses.playerNone")],
                   [t("licenses.telegram"), license.telegram_user_id ? String(license.telegram_user_id) : t("licenses.unclaimed")],
                   [t("licenses.language"), license.language ?? t("licenses.noLanguage")],
                   [t("licenses.lastPayment"), lastPayment],
@@ -638,6 +663,19 @@ export const LicensePage = () => {
                       <Confirm label={t("licenses.unblock")} title={t("licenses.unblockTitle")} text={t("licenses.unblockText")} action={t("licenses.unblock")} onConfirm={() => toggleBlock(false)} />
                     ) : (
                       <Confirm label={t("licenses.block")} title={t("licenses.blockTitle")} text={t("licenses.blockText")} action={t("licenses.block")} destructive variant="outline" onConfirm={() => toggleBlock(true)} />
+                    )}
+                    {license.kind === "solo" && license.bound_at && (
+                      <Confirm label={t("licenses.release")} title={t("licenses.releaseTitle")} text={t("licenses.releaseText")} action={t("licenses.release")} variant="outline" onConfirm={release} />
+                    )}
+                    {can("owner") && (
+                      <Confirm
+                        label={t(license.kind === "solo" ? "licenses.makeServer" : "licenses.makeSolo")}
+                        title={t("licenses.kindTitle")}
+                        text={t(license.kind === "solo" ? "licenses.kindServerText" : "licenses.kindSoloText")}
+                        action={t(license.kind === "solo" ? "licenses.makeServer" : "licenses.makeSolo")}
+                        variant="outline"
+                        onConfirm={() => changeKind(license.kind === "solo" ? "server" : "solo")}
+                      />
                     )}
                     {data.payments.length > 0 && (
                       <Confirm

@@ -49,6 +49,11 @@ export interface LicenseStore {
   stoppedSince(from: Date): Promise<number>;
   /** Deletes a license and its budget windows; its payments stay as the record of money that moved. */
   remove(id: string): Promise<boolean>;
+  /**
+   * Ties a Solo license to [player] unless it has one: true when the license is that player's now, false when another
+   * player has it. Atomic, so two first questions at once can't both win.
+   */
+  bind(id: string, player: string, at: Date): Promise<boolean>;
 }
 
 const id = () => crypto.randomUUID().replace(/-/g, "");
@@ -147,6 +152,16 @@ export const mongoLicenses: LicenseStore = {
     await GrantModel.deleteMany({ license: licenseId });
     return deletedCount > 0;
   },
+  async bind(licenseId, player, at) {
+    const bound = await LicenseModel.findOneAndUpdate(
+      { id: licenseId, $or: [{ player: { $exists: false } }, { player }] },
+      { $set: { player } },
+      { returnDocument: "before" },
+    ).lean<LicenseRecord>();
+    if (!bound) return false;
+    if (!bound.player) await LicenseModel.updateOne({ id: licenseId }, { $set: { player_bound_at: at } });
+    return true;
+  },
 };
 
 /** For tests and local runs without MongoDB. */
@@ -228,6 +243,13 @@ export const memoryLicenses = (): LicenseStore => {
     async remove(licenseId) {
       for (let i = grants.length - 1; i >= 0; i--) if (grants[i].license === licenseId) grants.splice(i, 1);
       return licenses.delete(licenseId);
+    },
+    async bind(licenseId, player, at) {
+      const license = licenses.get(licenseId);
+      if (!license) return false;
+      if (license.player) return license.player === player;
+      licenses.set(licenseId, { ...license, player, player_bound_at: at });
+      return true;
     },
   };
 };

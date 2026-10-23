@@ -3,13 +3,18 @@ import { z } from "zod";
 import type { AllayDeps } from "../../agent/allay";
 import { jsonError } from "../../shared/lib/http";
 import { API_ERRORS, ApiFailure, apierror } from "../../shared/types/errors";
+import { LOADERS, SIDES } from "../../agent/agent.types";
 import { createLicense, refreshClaim, statusOf, verifyLicense } from "./billing";
+import { soloOn } from "./plans";
 import { clientAddress, rateKey } from "../../shared/lib/address";
 import { settings } from "../settings/settings";
 import { trustOf } from "../settings/trust";
 import { licenseTenant } from "../auth/caller";
 
-const bodySchema = z.object({ name: z.string().max(200).optional() }).catch({});
+// loader and side since 6.12: a license made in a player's own game is Solo while SOLO_PLANS is on.
+const bodySchema = z
+  .object({ name: z.string().max(200).optional(), loader: z.enum(LOADERS).optional().catch(undefined), side: z.enum(SIDES).optional().catch(undefined) })
+  .catch({});
 
 /** The MOTD the plugin sends, without formatting codes, in one line. */
 const nameOf = (name?: string) => name?.replace(/§./g, "").replace(/\s+/g, " ").trim().slice(0, 64) || undefined;
@@ -33,7 +38,8 @@ export const handleLicense = (deps: AllayDeps) => async (req: Request, server?: 
   }
 
   if (!billing.bot.username) return jsonError(apierror(API_ERRORS.BILLING_UNAVAILABLE));
-  const name = nameOf(bodySchema.parse(await req.json().catch(() => ({}))).name);
+  const body = bodySchema.parse(await req.json().catch(() => ({})));
+  const name = nameOf(body.name);
   if (header) {
     const license = await verifyLicense(billing, header);
     if (license instanceof ApiFailure) return jsonError(license.toApiError());
@@ -49,5 +55,6 @@ export const handleLicense = (deps: AllayDeps) => async (req: Request, server?: 
   const total = billing.limits.licensesTotal.take("all", now);
   if (!total.ok) return jsonError({ ...apierror(API_ERRORS.RATE_LIMITED), retry_after: total.retryAfter });
   total.release();
-  return Response.json(await createLicense(billing, name));
+  const solo = soloOn() && (body.side === "integrated" || body.side === "client");
+  return Response.json(await createLicense(billing, name, solo ? "solo" : "server"));
 };

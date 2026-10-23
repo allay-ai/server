@@ -4,6 +4,13 @@ import { Schema, model } from "mongoose";
 export interface LicenseDocument {
   id: string;
   secret_hash: string;
+  /** Since 6.12: `solo` for one player in their own game; absent for a server, as every license before. */
+  kind?: "solo";
+  /** A Solo license's player, by pseudonym on its tenant: the first who asked. Nobody else may ask on it. */
+  player?: string;
+  player_bound_at?: Date;
+  /** When the payer last handed the Solo license to another player in the bot, for SOLO_RELEASE_DAYS. */
+  released_at?: Date;
   /** The server's name as the plugin sent it, for the bot. */
   name?: string;
   created_at: Date;
@@ -27,6 +34,10 @@ export interface LicenseDocument {
 const licenseSchema = new Schema<LicenseDocument>({
   id: { type: String, required: true, unique: true },
   secret_hash: { type: String, required: true },
+  kind: { type: String, enum: ["solo"] },
+  player: String,
+  player_bound_at: Date,
+  released_at: Date,
   name: { type: String, maxlength: 64 },
   created_at: { type: Date, default: Date.now },
   claim_hash: { type: String, index: { sparse: true } },

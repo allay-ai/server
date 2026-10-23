@@ -6,7 +6,7 @@ import { logger } from "../../shared/logging/logger";
 import { API_ERRORS, ApiFailure, apierror } from "../../shared/types/errors";
 import type { Net } from "./byok";
 import { Limiter, byokLimiter, byokTotalLimiter, hostedLimiter, licenseLimiter, licenseTotalLimiter } from "./limits";
-import { type Quota, allocate, quotaOf } from "./plans";
+import { type LicenseKind, type Quota, allocate, kindOf, quotaOf } from "./plans";
 
 /** Everything billing needs; production builds it from the environment, tests from fakes. */
 export interface Billing {
@@ -57,12 +57,12 @@ const newClaim = async (billing: Billing, licenseId: string): Promise<Claim> => 
   return { claim_code: code, pay_url: `https://t.me/${billing.bot.username}?start=${code}`, claim_expires_at: expires.toISOString() };
 };
 
-/** A new license: `<id>.<secret>`, where only the secret's digest is kept. */
-export const createLicense = async (billing: Billing, name?: string): Promise<{ license: string; license_id: string } & Claim> => {
+/** A new license: `<id>.<secret>`, where only the secret's digest is kept. A Solo one serves one player. */
+export const createLicense = async (billing: Billing, name?: string, kind: LicenseKind = "server"): Promise<{ license: string; license_id: string } & Claim> => {
   const id = random(9).replace(/[-_]/g, "x");
   const secret = random(32);
-  await billing.licenses.create({ id, secret_hash: sha256(secret), name, created_at: billing.now(), renews: false });
-  logger.info(`License ${id} created`);
+  await billing.licenses.create({ id, secret_hash: sha256(secret), name, created_at: billing.now(), renews: false, ...(kind === "solo" ? { kind } : {}) });
+  logger.info(`${kind === "solo" ? "Solo license" : "License"} ${id} created`);
   return { license: `${id}.${secret}`, license_id: id, ...(await newClaim(billing, id)) };
 };
 
@@ -103,6 +103,9 @@ export const statusOf = async (billing: Billing, license: LicenseRecord) => {
   return {
     billing: true,
     license_id: license.id,
+    // Since 6.12: a Solo license answers one player, and says whether one has it yet.
+    kind: kindOf(license),
+    ...(kindOf(license) === "solo" ? { bound: license.player !== undefined } : {}),
     linked: license.telegram_user_id !== undefined,
     active: quota.active && !license.blocked_at,
     plan: license.plan ?? null,

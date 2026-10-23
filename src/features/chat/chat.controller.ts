@@ -6,6 +6,7 @@ import { API_ERRORS, ApiFailure, apierror } from "../../shared/types/errors";
 import { identify } from "../auth/caller";
 import { mayKeep } from "../auth/consent";
 import { admit, payer } from "../billing/gate";
+import { soloRefusal } from "../billing/solo";
 import { settings } from "../settings/settings";
 import { trustOf } from "../settings/trust";
 import { clientAddress } from "../../shared/lib/address";
@@ -25,6 +26,9 @@ export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Ser
   if (await deps.bans.has(caller.tenant, deps.pseudonyms.of(caller.tenant, parsed.context.userId))) return jsonError(apierror(API_ERRORS.PLAYER_BLOCKED));
   // So is a player who hasn't agreed, on a hosted backend: nothing runs, is traced, or is kept.
   if (!(await mayKeep(deps, caller.tenant, parsed.context.userId))) return jsonError(apierror(API_ERRORS.CONSENT_REQUIRED));
+  // A Solo license answers its own player only.
+  const solo = await soloRefusal(deps.billing, deps.pseudonyms, caller, parsed.context.userId);
+  if (solo) return jsonError(solo.toApiError());
   if (deps.bridge.active >= settings.get("MAX_ACTIVE_RUNS")) {
     return jsonError({ code: "QUEUE_ERROR", message: "Too many questions at once; try again in a minute", statusCode: 503 });
   }
@@ -44,6 +48,8 @@ export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Ser
         ...(info?.software ? { software: info.software } : {}),
         ...(info?.version ? { version: info.version } : {}),
         ...(info?.plugin_version ? { plugin_version: info.plugin_version } : {}),
+        ...(info?.loader ? { loader: info.loader } : {}),
+        ...(info?.side ? { side: info.side } : {}),
       },
       new Date(),
     )

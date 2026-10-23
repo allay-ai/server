@@ -1,7 +1,7 @@
 import type { LicenseRecord } from "../../infrastructure/billing/licenses";
 import { logger } from "../../shared/logging/logger";
 import { type Billing, quotaFor, serverName, sha256 } from "../billing/billing";
-import { type Plan, planOf, plans, windowsFor } from "../billing/plans";
+import { type Plan, kindOf, planOf, plans, soloOn, windowsFor } from "../billing/plans";
 import type { SuccessfulPayment, TelegramApi, TelegramUser, Update } from "./telegram.client";
 import { settings } from "../settings/settings";
 import { PLAN_NAMES, dateIn, fill, languageOf, textsOf } from "./telegram.texts";
@@ -14,22 +14,28 @@ type Button = { text: string; callback_data?: string; url?: string };
 const say = (api: TelegramApi, chat: number, text: string, buttons?: Button[][]) =>
   api.call("sendMessage", { chat_id: chat, text, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) });
 
+/** A license buys the plans of its kind; Solo ones only while SOLO_PLANS is on. */
+const forSale = (license: LicenseRecord): Plan[] => (kindOf(license) === "solo" && !soloOn() ? [] : plans(kindOf(license)));
+
+/** Whether [plan] may be paid for [license] now. */
+const sells = (license: LicenseRecord, plan: Plan) => forSale(license).some((p) => p.id === plan.id);
+
 const planButtons = (language: string, license: LicenseRecord): Button[][] =>
-  plans().map((plan) => [
+  forSale(license).map((plan) => [
     {
       text: fill(textsOf(language).plan_button, { plan: PLAN_NAMES[languageOf(language)][plan.id], stars: plan.stars }),
       callback_data: `buy:${plan.id}:${license.id}`,
     },
   ]);
 
-const planList = (language: string) => {
+const planList = (language: string, license: LicenseRecord) => {
   const t = textsOf(language);
   const contact = settings.get("SUPPORT_CONTACT")?.trim();
-  return [t.plans, "", ...plans().map((plan) => `• ${t.plan[plan.id]} — ${plan.stars} ⭐`), ...(contact ? ["", fill(t.more, { contact })] : [])].join("\n");
+  return [t.plans, "", ...forSale(license).map((plan) => `• ${t.plan[plan.id]} — ${plan.stars} ⭐`), ...(contact ? ["", fill(t.more, { contact })] : [])].join("\n");
 };
 
 const showPlans = (api: TelegramApi, chat: number, language: string, license: LicenseRecord) =>
-  say(api, chat, planList(language), planButtons(language, license));
+  forSale(license).length ? say(api, chat, planList(language, license), planButtons(language, license)) : say(api, chat, textsOf(language).unavailable);
 
 /** /start <claim code>: ties the server to this Telegram account and offers the plans. */
 const claim = async (billing: Billing, api: TelegramApi, chat: number, from: TelegramUser, code: string) => {
@@ -66,7 +72,9 @@ const status = async (billing: Billing, api: TelegramApi, chat: number, from: Te
       );
       if (license.renews) lines.push(t.status_renews);
     }
+    if (kindOf(license) === "solo") lines.push(license.player ? t.status_solo_bound : t.status_solo_free);
     buttons.push([{ text: fill(t.renew_button, { server }), callback_data: `plans:${license.id}` }]);
+    if (kindOf(license) === "solo" && license.player) buttons.push([{ text: fill(t.release_button, { server }), callback_data: `release:${license.id}` }]);
     if (license.subscription_charge_id && quota.active) {
       buttons.push([
         license.renews
@@ -106,10 +114,11 @@ const callback = async (billing: Billing, api: TelegramApi, query: NonNullable<U
   if (action === "plans") return showPlans(api, chat, language, license);
   if (action === "buy") {
     const plan = planOf(a);
-    if (!plan) return say(api, chat, t.unavailable);
+    if (!plan || !sells(license, plan)) return say(api, chat, t.unavailable);
     const link = await invoice(api, language, license, plan);
     return say(api, chat, t.invoice_ready, [[{ text: fill(t.pay_button, { stars: plan.stars }), url: link }]]);
   }
+  if (action === "release") return release(billing, api, chat, language, license);
   if (action === "stop" || action === "resume") {
     const payment = license.subscription_charge_id ? await billing.licenses.payment(license.subscription_charge_id) : null;
     if (!payment) return say(api, chat, t.unavailable);
@@ -125,6 +134,22 @@ const callback = async (billing: Billing, api: TelegramApi, query: NonNullable<U
   }
 };
 
+/**
+ * The payer hands a Solo license to another player: the next who asks takes it. Once every SOLO_RELEASE_DAYS, so one
+ * Solo license doesn't serve a whole server in turns; the panel may do it any time.
+ */
+const release = async (billing: Billing, api: TelegramApi, chat: number, language: string, license: LicenseRecord) => {
+  const t = textsOf(language);
+  const server = serverName(license);
+  if (kindOf(license) !== "solo" || !license.player) return say(api, chat, fill(t.released, { server }));
+  const days = settings.get("SOLO_RELEASE_DAYS");
+  const next = license.released_at ? new Date(license.released_at.getTime() + days * 86_400_000) : null;
+  if (next && next > billing.now()) return say(api, chat, fill(t.release_wait, { date: dateIn(language, next) }));
+  await billing.licenses.update(license.id, { player: undefined, player_bound_at: undefined, released_at: billing.now() });
+  logger.info(`Solo license ${license.id} handed to its next player in the bot`);
+  return say(api, chat, fill(t.released, { server }));
+};
+
 const parsePayload = (payload: string) => {
   const [plan, license] = payload.split(":");
   return { plan: planOf(plan), license };
@@ -134,7 +159,7 @@ const parsePayload = (payload: string) => {
 const preCheckout = async (billing: Billing, api: TelegramApi, query: NonNullable<Update["pre_checkout_query"]>) => {
   const { plan, license } = parsePayload(query.invoice_payload);
   const known = license ? await billing.licenses.get(license) : null;
-  const ok = !!plan && !!known && !known.blocked_at && !known.revoked_at && query.currency === "XTR" && query.total_amount === plan.stars;
+  const ok = !!plan && !!known && sells(known, plan) && !known.blocked_at && !known.revoked_at && query.currency === "XTR" && query.total_amount === plan.stars;
   await api.call("answerPreCheckoutQuery", {
     pre_checkout_query_id: query.id,
     ok,
