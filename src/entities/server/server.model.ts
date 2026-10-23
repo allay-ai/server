@@ -23,6 +23,9 @@ export interface ServerDocument {
   software?: string;
   version?: string;
   plugin_version?: string;
+  /** Since 6.12: what Allay runs on (`spigot`, `fabric`, `neoforge`) and where (`server`, `integrated`, `client`). */
+  loader?: string;
+  side?: string;
   first_seen: Date;
   last_seen: Date;
 }
@@ -40,6 +43,8 @@ const schema = new Schema<ServerDocument>(
     software: String,
     version: String,
     plugin_version: String,
+    loader: String,
+    side: String,
     first_seen: { type: Date, required: true },
     last_seen: { type: Date, required: true },
   },

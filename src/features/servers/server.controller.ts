@@ -5,6 +5,7 @@ import { clientAddress } from "../../shared/lib/address";
 import { jsonError, readJson } from "../../shared/lib/http";
 import { logger } from "../../shared/logging/logger";
 import { API_ERRORS, ApiFailure, apierror } from "../../shared/types/errors";
+import { LOADERS, SIDES } from "../../agent/agent.types";
 import { identify } from "../auth/caller";
 import { settings } from "../settings/settings";
 import { trustOf } from "../settings/trust";
@@ -27,6 +28,9 @@ const ServerBody = z.object({
   plugin_version: optional(64),
   address: z.string().trim().regex(/^[A-Za-z0-9.:[\]-]{1,255}$/).optional().catch(undefined),
   port: z.number().int().min(1).max(65_535).optional().catch(undefined),
+  // Since 6.12, as in a question.
+  loader: z.enum(LOADERS).optional().catch(undefined),
+  side: z.enum(SIDES).optional().catch(undefined),
 });
 
 /**

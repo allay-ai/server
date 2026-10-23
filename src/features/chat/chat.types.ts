@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DIMENSIONS, type RunContext, TASK_KINDS, TASK_STATES } from "../../agent/agent.types";
+import { DIMENSIONS, LOADERS, type RunContext, SIDES, TASK_KINDS, TASK_STATES } from "../../agent/agent.types";
 import type { ProviderBlock } from "../billing/gate";
 import { API_ERRORS, type ApiError, apierror } from "../../shared/types/errors";
 import { USER_ID } from "../../shared/types/owner";
@@ -43,6 +43,9 @@ export const chatRequestSchema = z.object({
       plugin_version: text(64),
       address: z.string().trim().regex(/^[A-Za-z0-9.:\[\]-]{1,255}$/).optional().catch(undefined),
       port: z.number().int().min(1).max(65_535).optional().catch(undefined),
+      // Since 6.12; one this backend doesn't know is dropped, not refused.
+      loader: z.enum(LOADERS).optional().catch(undefined),
+      side: z.enum(SIDES).optional().catch(undefined),
     })
     .optional(),
   tools: z.array(z.string().max(64)).max(256).default([]),

@@ -44,14 +44,27 @@ export const ServerIp = ({ server }: { server: ServerSummary }) => {
   );
 };
 
-/** What the server runs: the game's software and version, and the plugin's version under it. */
+/**
+ * What the server runs: the game's software and version, and Allay's version under it, with the mod and where it runs
+ * once a mod reports them; the plugin on a server says nothing more.
+ */
 export const ServerRuntime = ({ server }: { server: ServerSummary }) => {
   const { t } = useTranslation();
   if (!server.software && !server.plugin_version) return <span className="text-muted-foreground">{t("servers.noRuntime")}</span>;
   return (
     <span className="flex flex-col">
       {server.software && <span>{[server.software, server.version].filter(Boolean).join(" ")}</span>}
-      {server.plugin_version && <span className="text-xs text-muted-foreground">{t("servers.plugin", { version: server.plugin_version })}</span>}
+      {server.plugin_version && (
+        <span className="text-xs text-muted-foreground">
+          {[
+            t("servers.plugin", { version: server.plugin_version }),
+            server.loader && server.loader !== "spigot" ? t(`servers.loaders.${server.loader}`, { defaultValue: server.loader }) : null,
+            server.side && server.side !== "server" ? t(`servers.sides.${server.side}`, { defaultValue: server.side }) : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
+      )}
     </span>
   );
 };

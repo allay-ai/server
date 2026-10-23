@@ -38,7 +38,22 @@ export interface ServerInfo {
   /** Since 6.6: the address players join with, when the server's owner set one in the plugin, and the game port. */
   address?: string;
   port?: number;
+  /** Since 6.12: what Allay runs on, and where; see `LOADERS` and `SIDES`. */
+  loader?: Loader;
+  side?: Side;
 }
+
+/** What Allay runs on: the plugin for Bukkit, Spigot, Paper, and their forks, or a mod for Fabric or NeoForge. */
+export const LOADERS = ["spigot", "fabric", "neoforge"] as const;
+export type Loader = (typeof LOADERS)[number];
+
+/**
+ * Where Allay runs: on a dedicated `server`, on the `integrated` server of a player's own game (a singleplayer world, or
+ * one opened to LAN), or in the player's game as a `client` mod on a server that runs no Allay. A plugin that says
+ * nothing runs on a server.
+ */
+export const SIDES = ["server", "integrated", "client"] as const;
+export type Side = (typeof SIDES)[number];
 
 export const TASK_KINDS = ["chests", "furnaces", "brewing", "crafting"] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];

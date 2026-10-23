@@ -32,6 +32,8 @@ const plain = (doc: ServerDocument): KnownServer => ({
   ...(doc.software ? { software: doc.software } : {}),
   ...(doc.version ? { version: doc.version } : {}),
   ...(doc.plugin_version ? { plugin_version: doc.plugin_version } : {}),
+  ...(doc.loader ? { loader: doc.loader } : {}),
+  ...(doc.side ? { side: doc.side } : {}),
   first_seen: doc.first_seen,
   last_seen: doc.last_seen,
 });
@@ -47,7 +49,7 @@ const fields = (server: RegisteredServer, keys: Array<keyof RegisteredServer>) =
   return { set, unset };
 };
 
-const SEEN = ["address", "port", "software", "version", "plugin_version"] as const;
+const SEEN = ["address", "port", "software", "version", "plugin_version", "loader", "side"] as const;
 const REGISTERED = [...SEEN, "name", "motd"] as const;
 
 /** Mongo's answer to a second document with the same unique key. */

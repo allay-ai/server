@@ -143,6 +143,8 @@ export const serversView = async (ctx: Context, asked: ServerSummary[], tenant?:
       software: entry?.software ?? null,
       version: entry?.version ?? null,
       plugin_version: entry?.plugin_version ?? null,
+      loader: entry?.loader ?? null,
+      side: entry?.side ?? null,
       ip: admins ? (entry?.ip ?? null) : null,
       internal: entry ? inRanges(entry.ip, INTERNAL) : null,
       // When the server first registered or asked, as the directory knows it.

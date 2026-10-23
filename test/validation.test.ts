@@ -35,6 +35,15 @@ describe("v2 request validation", () => {
     expect(dimension(undefined)).toBe("none");
   });
 
+  test("the loader and the side come through, and ones this backend doesn't know are dropped instead of refused", () => {
+    const server = (value: object) => {
+      const parsed = parseChatRequest({ ...base, server: { id: "srv-1", ...value } }, "self");
+      return parsed.ok ? { loader: parsed.context.server?.loader, side: parsed.context.server?.side } : "refused";
+    };
+    expect(server({ loader: "fabric", side: "client" })).toEqual({ loader: "fabric", side: "client" });
+    expect(server({ loader: "quilt", side: "browser" })).toEqual({ loader: undefined, side: undefined });
+  });
+
   test("questions are private unless the plugin says otherwise, and askx always is", () => {
     const visibility = (body: object) => {
       const parsed = parseChatRequest({ ...base, ...body }, "self");

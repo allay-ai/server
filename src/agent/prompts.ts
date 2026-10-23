@@ -25,6 +25,12 @@ const trimmed = (prompt: string, tools: string[]): string =>
     })
     .join("\n");
 
+/** Where Allay runs, when it isn't a dedicated server (since 6.12). */
+const WHERE: Record<string, string | undefined> = {
+  integrated: "the player's own world (singleplayer, or opened to LAN); the player is its host",
+  client: "a mod in the player's game on a server that runs no Allay: only what the player's own game sees and does is in reach",
+};
+
 const yesNo = (value: boolean | undefined) => (value ? "yes" : "no");
 
 const runningTask = (task: RunningTask) =>
@@ -66,6 +72,10 @@ export const systemPrompt = (context: RunContext, recall: Recall = {}): string =
   }
   if (context.server) {
     lines.push(`- Server: ${context.server.software ?? "unknown"} ${context.server.version ?? ""}`.trimEnd());
+    const where = WHERE[context.server.side ?? "server"];
+    if (where) lines.push(`- Where: ${where}`);
+    // A modded game has blocks, items, and recipes the vanilla game doesn't.
+    if (context.server.loader === "fabric" || context.server.loader === "neoforge") lines.push(`- Mods: a ${context.server.loader} game; other mods may add blocks, items, and recipes`);
   } else if (context.platform === "minecraft") {
     lines.push("- Server: version unknown; assume the latest Java Edition release");
   }

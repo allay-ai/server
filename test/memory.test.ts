@@ -62,6 +62,13 @@ describe("system prompt", () => {
     expect(systemPrompt({ ...context, player })).toContain("- Player: Steve (operator: no)");
   });
 
+  test("the model learns where a mod runs: the player's own world or their game on someone else's server", () => {
+    const server = { software: "Fabric", version: "26.3" };
+    expect(systemPrompt({ ...context, server: { ...server, loader: "fabric", side: "integrated" } })).toContain("- Where: the player's own world");
+    expect(systemPrompt({ ...context, server: { ...server, loader: "neoforge", side: "client" } })).toContain("- Mods: a neoforge game");
+    expect(systemPrompt({ ...context, server: { software: "Paper", version: "26.3", loader: "spigot", side: "server" } })).not.toContain("- Where:");
+  });
+
   test("a public question says everyone reads the answer", () => {
     expect(systemPrompt({ ...context, visibility: "public" })).toContain("- Visibility: public");
     expect(systemPrompt(context)).not.toContain("- Visibility: public");
