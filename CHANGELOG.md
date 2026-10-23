@@ -2,6 +2,14 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.11.0
+
+Buttons move into the answer. **Allay for Minecraft 6.9.0 or newer is needed for buttons:** older plugins keep working, but show the tags as plain text.
+
+- 🔘 **Buttons right in the text.** The model writes `<button action="…" …>Label</button>` anywhere in its answer, and the plugin turns each into a clickable `[Label]` in that place: mid-sentence, at the end of a line, or on a line of its own, up to 8 in an answer. The `add_buttons` tool is gone, with no fallback. `ask`, `point`, `copy`, `note`, `recipe`, `brewing`, `anvil`, `enchants`, and `villagers` work as before; docs/protocol-v2.md lists the attributes.
+- ⌨️ **A command at a click.** A `command` button runs a command as the player who clicks, such as `/home` when they ask to go home; the plugin's `blocked_commands` still apply. Never an operator command, never in a public answer.
+- 💬 **Say it for me.** Asked to write something to the other players («попроси вежливо в чате одолжить 12 алмазов», in Spanish if they want), Allay writes the message, shows it, and adds a `say` button that sends it to the public chat as the player. Nothing goes out until they click. Private answers only.
+
 ## 6.10.0
 
 Allay Room, tidier, and licenses named after their servers. Nothing changes for the plugin's protocol.

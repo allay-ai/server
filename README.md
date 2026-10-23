@@ -9,7 +9,7 @@
 ## What you get
 
 - **Answers about your world.** The agent reads the asker's inventory, surroundings, recipes, and the server's plugins before it answers.
-- **Help in the world.** Trails to a spot, ghost blocks to build into, glowing chests that hold what you need, buttons under every answer.
+- **Help in the world.** Trails to a spot, ghost blocks to build into, glowing chests that hold what you need, buttons right in every answer.
 - **Agents that do the chores.** Sorting chests, smelting, brewing, and crafting run as automation agents that report back.
 - **Fresh facts and exact math.** Web search when a question needs it, and calculations at 64 significant digits.
 - **A memory per player.** A session for follow-ups, plus up to 30 lasting facts the player controls.
