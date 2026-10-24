@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import type { Mode, TaskKind, Visibility } from "../../agent/agent.types";
+import { toMinecraft } from "../../agent/chat-text";
 import type { ToolAnswer, ToolBridge } from "../chat/chat.bridge";
 import { forModel } from "./schema";
 import { type DeathHistory, historyPage } from "./deaths";
@@ -833,6 +834,12 @@ export interface GameToolsOptions {
 }
 
 /** Mastra tools for the client tools in this run; pass names through offeredTools first. */
+/** The words of these tools reach the player's chat as they are, so Markdown in them goes to & codes like an answer's. */
+const SPOKEN: Partial<Record<GameToolName, string>> = { say: "text", finish: "summary" };
+
+const spoken = (args: Record<string, unknown>, field?: string) =>
+  field && typeof args[field] === "string" ? { ...args, [field]: toMinecraft(args[field]) } : args;
+
 export const gameTools = (names: GameToolName[], runId: string, bridge: ToolBridge, options: GameToolsOptions = {}) => {
   const offered = options.offered ?? PLUGIN_TOOLS;
   const known = new Set(offered);
@@ -846,7 +853,7 @@ export const gameTools = (names: GameToolName[], runId: string, bridge: ToolBrid
         inputSchema: forModel(definition.input),
         strict: false,
         execute: async (input, context) => {
-          const args = (input ?? {}) as Record<string, unknown>;
+          const args = spoken((input ?? {}) as Record<string, unknown>, SPOKEN[name]);
           const call: Call = (tool, toolArgs) =>
             known.has(tool)
               ? bridge.call(runId, tool, toolArgs, context?.abortSignal)

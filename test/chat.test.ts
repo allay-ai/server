@@ -83,7 +83,8 @@ describe("POST /api/v2/chat", () => {
     const events = await readSse(response, answerTools(base, { get_inventory: { main: [{ id: "diamond_sword", count: 1 }] } }));
 
     expect(events.map((e) => e.event)).toEqual([
-      "start", "reasoning", "tool_status", "tool_call", "tool_status", "usage", "text", "text", "usage", "usage", "done",
+      // A Minecraft answer goes out by lines, so a line split over deltas arrives in one piece.
+      "start", "reasoning", "tool_status", "tool_call", "tool_status", "usage", "text", "usage", "usage", "done",
     ]);
     // Each step reports the totals so far; the last one before done is final.
     expect(events.filter((e) => e.event === "usage").map((e) => e.data.input_tokens)).toEqual([12, 24, 24]);
@@ -94,6 +95,25 @@ describe("POST /api/v2/chat", () => {
     expect(JSON.stringify(prompts[1])).toContain("diamond_sword");
     // Only the tools the plugin offered, plus web search, reach the model.
     expect(deps.bridge.active).toBe(0);
+  });
+
+  test("Markdown in an answer reaches the plugin and the session as & codes, even split over deltas", async () => {
+    const { model, prompts } = scripted([
+      [...text("Depth Strider ставят на *", "*ботинки*", "*, а не на поножи.\n", "2*3*4 и `/home`"), finish()],
+      [...text("Да."), finish()],
+    ]);
+    const deps = testDeps(model);
+    const base = start(deps);
+    const events = await readSse(await chat(base, { message: "можно на поножи подводную ходьбу?" }));
+    const answer = "Depth Strider ставят на &lботинки&r, а не на поножи.\n2*3*4 и /home";
+    expect(events.at(-1)!.data.answer).toBe(answer);
+    expect(events.filter((e) => e.event === "text").map((e) => e.data.delta).join("")).toBe(answer);
+    const kept = await deps.history.load(thread("player-1"));
+    expect(kept.messages.at(-1)!.content).toBe(answer);
+    // The next question shows the model its own answer in codes, so it doesn't learn the stars from itself.
+    await readSse(await chat(base, { message: "а на шлем?" }));
+    expect(JSON.stringify(prompts[1])).toContain("&lботинки&r");
+    expect(JSON.stringify(prompts[1])).not.toContain("**ботинки");
   });
 
   test("inspect_item reaches the plugin with its arguments and its result reaches the model", async () => {

@@ -29,6 +29,7 @@ import { type ByokProvider, type ModelFactory, costOf } from "../infrastructure/
 import { redact } from "../shared/lib/redact";
 import { logger } from "../shared/logging/logger";
 import { API_ERRORS, ApiFailure, apierror } from "../shared/types/errors";
+import { ChatText, toMinecraft } from "./chat-text";
 import type { CommandsResult, RunContext, RunResult, Usage } from "./agent.types";
 import { commandsFromText, commandsSchema, validateCommands } from "./commands";
 import { systemPrompt } from "./prompts";
@@ -337,6 +338,15 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
 
     let text = "";
     const exchange = new Exchange();
+    // Minecraft chat shows Markdown as raw stars, so a Minecraft answer goes out in & codes; askx text is JSON.
+    const chat = context.platform === "minecraft" && context.mode !== "askx" ? new ChatText() : undefined;
+    const write = (piece: string) => {
+      if (!piece) return;
+      text += piece;
+      exchange.text(piece);
+      // askx text is the JSON result, not something to show; a task's is its note, which the plugin keeps to itself.
+      if (context.mode !== "askx") emit({ event: "text", data: { delta: piece } });
+    };
     // Per-step usage, summed, so the plugin's counter moves while the agent works.
     const consume = async (stream: AgentStream) => {
       for await (const chunk of stream.fullStream) {
@@ -346,19 +356,15 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
             if (typeof payload.text === "string" && payload.text) emit({ event: "reasoning", data: { delta: payload.text } });
             break;
           case "text-delta":
-            if (typeof payload.text === "string") {
-              text += payload.text;
-              exchange.text(payload.text);
-              // askx text is the JSON result, not something to show; a task's is its note, which the plugin keeps to itself.
-              if (context.mode !== "askx") emit({ event: "text", data: { delta: payload.text } });
-            }
+            if (typeof payload.text === "string") write(chat ? chat.push(payload.text) : payload.text);
             break;
           case "tool-call":
+            if (chat) write(chat.flush());
             exchange.call(payload);
             called.set(String(payload.toolCallId), { name: String(payload.toolName), ok: true });
             if (context.mode === "task" && context.task && payload.toolName === "finish") {
               const summary = (payload.args as { summary?: unknown } | undefined)?.summary;
-              if (typeof summary === "string" && summary.trim()) finishing.set(String(payload.toolCallId), summary);
+              if (typeof summary === "string" && summary.trim()) finishing.set(String(payload.toolCallId), toMinecraft(summary));
             }
             break;
           case "tool-result": {
@@ -379,6 +385,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
             break;
           }
           case "step-finish": {
+            if (chat) write(chat.flush());
             steps++;
             exchange.endStep();
             spend(costOf((payload.metadata as { providerMetadata?: unknown } | undefined)?.providerMetadata));
@@ -394,6 +401,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
             throw payload.error ?? new Error("The model stream failed");
         }
       }
+      if (chat) write(chat.flush());
       if (signal?.aborted) throw new ApiFailure(apierror(API_ERRORS.CANCELLED));
       return stream.usage;
     };

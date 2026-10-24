@@ -274,6 +274,17 @@ describe("task runs", () => {
     expect((await deps.history.load(thread("player-1"))).messages).toEqual([]);
   });
 
+  test("what say and finish tell the player goes as & codes, not Markdown", async () => {
+    const { model } = scripted([
+      [toolCall("say", { text: "Нужен **верстак** рядом" }, "c1"), toolCall("finish", { summary: "**Готово:** 2 наковальни" }, "c2"), finish("tool-calls")],
+    ]);
+    const url = start(testDeps(model));
+    const events = await readSse(await chat(url, { mode: "task", task, message: "Craft 2 anvils. Russian.", tools: ["say", "finish"] }), answerAll(url));
+    const args = Object.fromEntries(events.filter((e) => e.event === "tool_call").map((e) => [e.data.name, e.data.args]));
+    expect(args.say).toEqual({ text: "Нужен &lверстак&r рядом" });
+    expect(args.finish).toEqual({ summary: "&lГотово:&r 2 наковальни" });
+  });
+
   test("the chat hears how a task finished with the player's next question, once", async () => {
     const { model, prompts } = scripted([
       [toolCall("finish", { summary: "Не скрафтил: рядом нет верстака." }, "c1"), finish("tool-calls")],
