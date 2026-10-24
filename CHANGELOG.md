@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.18.3
+
+Allay 6.18 brings what these lines describe; with an older plugin the model asks for it and hears a refusal, as before.
+
+- 🥫 **Crafting plugins' items and water bottles.** The crafting agent's `craft` tool now says that it makes a plugin's, mod's, or data pack's item by its id, such as Red Bull's empty can (`redbull:empty_can`), and fills water bottles from glass bottles at water or a cauldron, glass bottles crafted from glass on the way. `brew` says that water bottles alone need no stand. The prompts tell Allay and its agents so: an agent asked for an empty can or three water bottles gave up, though the recipe, the copper, the glass, and a cauldron were all there.
+
 ## 6.18.2
 
 Plugins need nothing new: answers just stop carrying Markdown.
