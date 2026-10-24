@@ -132,7 +132,7 @@ export const DEFINITIONS = {
     type: "bool",
     group: "billing",
     default: false,
-    description: "Sell Solo plans, for one player in their own game, and make new licenses from a player's game Solo. Off until the mods ship",
+    description: "Sell Solo plans, for one player in their own game, and make new licenses from a player's game Solo",
   },
   PLAN_SOLO_WEEK_STARS: { type: "int", group: "billing", default: 50, min: 1, max: 10_000, description: "Price of a Solo week in Stars" },
   PLAN_SOLO_WEEK_BUDGET: { type: "number", group: "billing", default: 0.25, min: 0, max: 1_000, description: "What a Solo week's runs may cost, in US dollars" },
