@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.18.2
+
+Plugins need nothing new: answers just stop carrying Markdown.
+
+- ✨ **No more stars in the chat.** Now and then the model wrote Markdown, and the player saw «ставят на \*\*ботинки\*\*» with the stars. The backend now turns it into the game's codes before the answer leaves, in every plugin version: bold becomes &l, italics &o, a heading a bold line, and code marks go. Products like 2\*3\*4, wildcards like `allay.*`, ids like `redbull:winter_apple`, names like `_Steve_`, and button tags stay as written. The same goes for what an automation agent says and its final line. The prompts no longer use Markdown themselves and name &l for bold.
+
 ## 6.18.1
 
 Nothing changes for the plugin's protocol.
