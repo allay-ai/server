@@ -2,6 +2,15 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.16.0
+
+A leaner tool set and a sharper `/askx`. Nothing changes for current plugins; plugins before Allay for Minecraft 6.7 lose their notes tool.
+
+- 🧹 **Fewer tools to choose from.** `get_surroundings` takes `about`: `dark_spots` for where mobs spawn and `farm` for crops and animals, which were two tools of their own. The model sees two tools fewer on every step, and the plugin still runs its own three.
+- 🗑️ **Old names gone.** The `notes` tool of plugins before 6.7 (places are memories since 6.9) and MCBuddy's `get_buddy_guide` and `buddy_settings` (plugins before 4.0) are no longer offered.
+- 🗺️ **`/askx` knows your places.** “Take me to my base” finds the remembered place with `memories`, which `/askx` may read but never change. The prompt also lets it use plugins' commands (`home`, `warp`) it knows from `get_server`, and writes text inside commands in the player's language.
+- ✍️ **A tidier prompt.** The language rule stands once, the version comes from the conversation instead of a tool call, and memories now come before other plugins' tools, so every server shares the same cached prefix of Allay's own.
+
 ## 6.15.0
 
 Allay looks up several things in one step. Plugins before Allay for Minecraft 6.13 keep working: the backend asks them one name at a time, side by side.
