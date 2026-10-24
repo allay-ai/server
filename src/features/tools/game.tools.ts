@@ -81,18 +81,26 @@ const definitions = {
   },
   get_recipes: {
     description:
-      "How this server makes an item, from its own recipes, mods', data packs', and plugins' included: crafting grids, smelting, stonecutting, smithing (up to 5, more_recipes when there are more), or for a potion or a plugin's brewed bottle every brewing step from a water bottle and the fuel. Always use it instead of recalling a recipe. An item's name in any language works, and so does a mod's or plugin's id like redbull:original. No recipe means the item is mined, dropped, or traded here; an error names what this server has under close names.",
+      "How this server makes items, from its own recipes, mods', data packs', and plugins' included: crafting grids, smelting, stonecutting, smithing (up to 5 for one item, 3 each for several, more_recipes when there are more), or for a potion or a plugin's brewed bottle every brewing step from a water bottle and the fuel. Always use it instead of recalling a recipe. Put every item you need into one call (a beacon and what its parts take): results has one answer per item, with its query, in the order asked. An item's name in any language works, and so does a mod's or plugin's id like redbull:original. No recipe means the item is mined, dropped, or traded here; an error names what this server has under close names.",
     input: z.object({
-      item: z.string().min(1).max(64).describe("Item id like beacon or mymod:wrench, a potion's id like night_vision or infested, or a name like «зелье заражения»"),
-      form: potionForm.optional().describe("For a potion: the bottle; potion by default"),
+      items: z
+        .array(z.string().min(1).max(64))
+        .min(1)
+        .max(5)
+        .describe("Item ids like beacon or mymod:wrench, potions' ids like night_vision or infested, or names like «зелье заражения»"),
+      form: potionForm.optional().describe("For potions: the bottle; potion by default"),
     }),
   },
   search_items: {
     description:
-      "Looks up items and potions on this server by name in any language or by id, the game's, mods', data packs', and plugins' alike: id (what other tools take), kind (item, potion, or custom: a plugin's or data pack's item built on a game item, base), its name in the player's language and in English, source (minecraft, a mod, a plugin, a data pack), and made (crafting, smelting, stonecutting, smithing, brewing). Call it before you say something doesn't exist or can't be made, and whenever the player names a thing you don't know.",
+      "Looks up items and potions on this server by name in any language or by id, the game's, mods', data packs', and plugins' alike: id (what other tools take), kind (item, potion, or custom: a plugin's or data pack's item built on a game item, base), its name in the player's language and in English, source (minecraft, a mod, a plugin, a data pack), and made (crafting, smelting, stonecutting, smithing, brewing). Call it before you say something doesn't exist or can't be made, and whenever the player names a thing you don't know. Put every name into one call, and other spellings or the English name beside it when you're unsure: results has the matches for each query, in the order asked.",
     input: z.object({
-      query: z.string().min(1).max(64).describe("A name or id, like «зелье заражения», Potion of Infestation, red bull, mymod:wrench"),
-      limit: z.number().int().min(1).max(20).optional().describe("8 by default"),
+      queries: z
+        .array(z.string().min(1).max(64))
+        .min(1)
+        .max(8)
+        .describe("Names or ids, like «зелье заражения», Potion of Infestation, red bull, mymod:wrench"),
+      limit: z.number().int().min(1).max(20).optional().describe("Matches per name: 8 for one name, 5 each for several by default"),
     }),
   },
   locate: {
@@ -382,6 +390,28 @@ const without = (input: Record<string, unknown>, ...keys: string[]) =>
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
+/**
+ * One plugin call for several names: since plugin 6.13 a lookup takes a list ([many]) and answers each in results, in
+ * order, an error among them. An older plugin reads only the first name ([one] of it) and answers that alone; the rest
+ * then go out side by side.
+ */
+const each = async (names: string[], call: Call, tool: string, one: (name: string) => object, many: object): Promise<ToolAnswer[]> => {
+  const first = await call(tool, { ...one(names[0]), ...many });
+  const listed = first.ok && isObject(first.result) && Array.isArray(first.result.results) ? first.result.results : undefined;
+  if (listed?.length === names.length) {
+    return listed.map((result) =>
+      isObject(result) && typeof result.error === "string" ? { ok: false, error: result.error } : { ok: true, result: isObject(result) ? without(result, "query") : result },
+    );
+  }
+  return [first, ...(await Promise.all(names.slice(1).map((name) => call(tool, one(name)))))];
+};
+
+/** Each name's answer under its query, in the order asked. */
+const results = (names: string[], answers: ToolAnswer[]): ToolAnswer => ({
+  ok: true,
+  result: { results: answers.map((answer, at) => ({ query: names[at], ...(answer.ok ? (isObject(answer.result) ? answer.result : { result: answer.result }) : { error: answer.error }) })) },
+});
+
 const composites: Partial<Record<keyof typeof definitions, Composite>> = {
   get_player_status: {
     uses: ["get_player_status", "get_xp_info"],
@@ -401,15 +431,30 @@ const composites: Partial<Record<keyof typeof definitions, Composite>> = {
   get_recipes: {
     uses: ["get_recipes", "get_brewing_recipe"],
     run: async (input, call) => {
+      const items = input.items as string[];
       const brew = (potion: unknown) => call("get_brewing_recipe", { potion, ...(input.form ? { form: input.form } : {}) });
-      if (input.form) return brew(input.item);
-      const crafted = await call("get_recipes", { item: input.item });
-      // The plugin turns potions away from get_recipes; a name that isn't an item may still be one.
-      if (crafted.ok || !/potions are brewed|no item called/.test(crafted.error)) return crafted;
-      // Since plugin 6.12 the refusal names the potion's id (infested for “Potion of Infestation”).
-      const named = /call get_brewing_recipe with ([a-z0-9_.:/-]+)$/.exec(crafted.error)?.[1];
-      const brewed = await brew(named ?? input.item);
-      return brewed.ok ? brewed : crafted;
+      // A form names a bottle, so every item is a potion.
+      const crafted = input.form ? await Promise.all(items.map(brew)) : await each(items, call, "get_recipes", (item) => ({ item }), { items });
+      const answers = await Promise.all(
+        crafted.map(async (answer, at) => {
+          // The plugin turns potions away from get_recipes; a name that isn't an item may still be one.
+          if (input.form || answer.ok || !/potions are brewed|no item called/.test(answer.error)) return answer;
+          // Since plugin 6.12 the refusal names the potion's id (infested for “Potion of Infestation”).
+          const named = /call get_brewing_recipe with ([a-z0-9_.:/-]+)$/.exec(answer.error)?.[1];
+          const brewed = await brew(named ?? items[at]);
+          return brewed.ok ? brewed : answer;
+        }),
+      );
+      return results(items, answers);
+    },
+  },
+  search_items: {
+    uses: ["search_items"],
+    run: async (input, call) => {
+      const queries = input.queries as string[];
+      // Fewer matches each when there are several names, so the answer stays short.
+      const limit = input.limit ?? (queries.length > 1 ? 5 : undefined);
+      return results(queries, await each(queries, call, "search_items", (query) => ({ query, ...(limit ? { limit } : {}) }), { queries }));
     },
   },
   locate: {

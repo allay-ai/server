@@ -118,8 +118,8 @@ describe("merged tools", () => {
       get_brewing_recipe: { ok: true, result: { steps: [] } },
     });
     const tools = gameTools(["get_recipes"], "run", bridge);
-    expect(await run(tools.get_recipes, { item: "night_vision" })).toEqual({ steps: [] });
-    await run(tools.get_recipes, { item: "healing", form: "splash_potion" });
+    expect(await run(tools.get_recipes, { items: ["night_vision"] })).toEqual({ results: [{ query: "night_vision", steps: [] }] });
+    await run(tools.get_recipes, { items: ["healing"], form: "splash_potion" });
     expect(calls.map((c) => c.name)).toEqual(["get_recipes", "get_brewing_recipe", "get_brewing_recipe"]);
     expect(calls[2].args).toEqual({ potion: "healing", form: "splash_potion" });
   });
@@ -129,7 +129,9 @@ describe("merged tools", () => {
       get_recipes: { ok: false, error: "potions are brewed: call get_brewing_recipe with infested" },
       get_brewing_recipe: { ok: true, result: { potion: "infested", steps: [] } },
     });
-    expect(await run(gameTools(["get_recipes"], "run", bridge).get_recipes, { item: "Potion of Infestation" })).toEqual({ potion: "infested", steps: [] });
+    expect(await run(gameTools(["get_recipes"], "run", bridge).get_recipes, { items: ["Potion of Infestation"] })).toEqual({
+      results: [{ query: "Potion of Infestation", potion: "infested", steps: [] }],
+    });
     expect(calls[1]).toEqual({ name: "get_brewing_recipe", args: { potion: "infested" } });
   });
 
@@ -138,7 +140,65 @@ describe("merged tools", () => {
       get_recipes: { ok: false, error: "no item called pizza" },
       get_brewing_recipe: { ok: false, error: "no potion called pizza" },
     });
-    expect(await run(gameTools(["get_recipes"], "run", bridge).get_recipes, { item: "pizza" })).toEqual({ error: "no item called pizza" });
+    expect(await run(gameTools(["get_recipes"], "run", bridge).get_recipes, { items: ["pizza"] })).toEqual({ results: [{ query: "pizza", error: "no item called pizza" }] });
+  });
+
+  test("several items go to a plugin in one call, and a potion among them is brewed", async () => {
+    const { bridge, calls } = fakeBridge({
+      get_recipes: {
+        ok: true,
+        result: {
+          results: [
+            { query: "beacon", item: "beacon", recipes: [{ type: "crafting_shaped" }] },
+            { query: "зелье заражения", error: "potions are brewed: call get_brewing_recipe with infested" },
+          ],
+        },
+      },
+      get_brewing_recipe: { ok: true, result: { potion: "infested", steps: [] } },
+    });
+    expect(await run(gameTools(["get_recipes"], "run", bridge).get_recipes, { items: ["beacon", "зелье заражения"] })).toEqual({
+      results: [
+        { query: "beacon", item: "beacon", recipes: [{ type: "crafting_shaped" }] },
+        { query: "зелье заражения", potion: "infested", steps: [] },
+      ],
+    });
+    expect(calls).toEqual([
+      { name: "get_recipes", args: { item: "beacon", items: ["beacon", "зелье заражения"] } },
+      { name: "get_brewing_recipe", args: { potion: "infested" } },
+    ]);
+  });
+
+  test("a plugin before 6.13 gets one name a call, side by side", async () => {
+    const calls: { name: string; args: Record<string, unknown> }[] = [];
+    const bridge = {
+      call: async (_run: string, name: string, args: Record<string, unknown>) => {
+        calls.push({ name, args });
+        return { ok: true, result: { query: args.query, matches: [{ id: String(args.query) }] } };
+      },
+    } as unknown as ToolBridge;
+    expect(await run(gameTools(["search_items"], "run", bridge).search_items, { queries: ["ruby", "red bull"] })).toEqual({
+      results: [
+        { query: "ruby", matches: [{ id: "ruby" }] },
+        { query: "red bull", matches: [{ id: "red bull" }] },
+      ],
+    });
+    expect(calls).toEqual([
+      { name: "search_items", args: { query: "ruby", limit: 5, queries: ["ruby", "red bull"] } },
+      { name: "search_items", args: { query: "red bull", limit: 5 } },
+    ]);
+  });
+
+  test("a plugin since 6.13 answers every name in one call", async () => {
+    const { bridge, calls } = fakeBridge({
+      search_items: { ok: true, result: { results: [{ query: "ruby", matches: [] }, { query: "infestation", matches: [{ id: "infested" }] }] } },
+    });
+    expect(await run(gameTools(["search_items"], "run", bridge).search_items, { queries: ["ruby", "infestation"], limit: 3 })).toEqual({
+      results: [
+        { query: "ruby", matches: [] },
+        { query: "infestation", matches: [{ id: "infested" }] },
+      ],
+    });
+    expect(calls).toHaveLength(1);
   });
 
   test("get_locations tells what lies at the death point", async () => {
@@ -318,8 +378,9 @@ describe("anvil and brewing arguments", () => {
   });
 
   test("a potion needs a name, and the bottle is one of three", () => {
-    expect(input("get_recipes").safeParse({ item: "night_vision", form: "splash_potion" }).success).toBe(true);
+    expect(input("get_recipes").safeParse({ items: ["night_vision"], form: "splash_potion" }).success).toBe(true);
     expect(input("get_recipes").safeParse({ form: "potion" }).success).toBe(false);
-    expect(input("get_recipes").safeParse({ item: "night_vision", form: "tipped_arrow" }).success).toBe(false);
+    expect(input("get_recipes").safeParse({ items: ["night_vision"], form: "tipped_arrow" }).success).toBe(false);
+    expect(input("get_recipes").safeParse({ items: ["a", "b", "c", "d", "e", "f"] }).success).toBe(false);
   });
 });
