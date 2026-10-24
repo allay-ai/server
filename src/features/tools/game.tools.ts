@@ -54,8 +54,11 @@ const definitions = {
   },
   get_surroundings: {
     description:
-      "What is around the asking player: the most common blocks within radius, notable blocks (ores, chests, spawners, portals) with x, y, z, distance, and direction, and mobs within 32 blocks by type with counts, nearest distance, and whether they are hostile. Other players appear only as a count.",
-    input: z.object({ radius: z.number().int().min(1).max(16).optional().describe("1–16; 8 by default") }),
+      "What is around the asking player, within radius. about overview (default): the most common blocks, notable blocks (ores, chests, spawners, portals) with x, y, z, distance, and direction, and mobs within 32 blocks by type with counts, nearest distance, and whether they are hostile; other players appear only as a count. dark_spots: where hostile mobs can spawn (block light 0 on a solid top), the count and the nearest ten with x, y, z, distance, and direction, for where to put torches. farm: crops by type with ripe counts and stages, hydrated and dry farmland, composters, hoppers, spawners by mob, and animals by type; raw facts for estimating a rate, so say it's an estimate.",
+    input: z.object({
+      about: z.enum(["overview", "dark_spots", "farm"]).optional(),
+      radius: z.number().int().min(1).max(16).optional().describe("1–16; 8 by default"),
+    }),
   },
   look_at: {
     description:
@@ -105,7 +108,7 @@ const definitions = {
   },
   locate: {
     description:
-      "The nearest structure (village, stronghold, ancient_city, trial_chambers…) or biome (cherry_grove, mushroom_fields; a part of a name works) to the asking player, with x, z (and y for a biome), distance, and direction. Pass one of the two.",
+      "The nearest structure (village, stronghold, ancient_city, trial_chambers…) or biome (cherry_grove, mushroom_fields; a part of a name works) to the asking player, with x, z (and y for a biome), distance, and direction. Pass one, or both for one of each.",
     input: z.object({ structure: z.string().min(1).max(64).optional(), biome: z.string().min(1).max(64).optional() }),
   },
   get_server: {
@@ -129,9 +132,9 @@ const definitions = {
     description:
       "Villagers and wandering traders around the asking player, nearest first: profession, level, x, y, z, distance, direction, and trades (buy, sell with stored_enchantments for books, left, max_uses). item keeps only those who trade it, such as enchanted_book; profession filters by job.",
     input: z.object({
-      item: z.string().max(64).optional(),
+      item: z.string().max(64).optional().describe("An item id they buy or sell, like enchanted_book or emerald"),
       profession: z.string().max(32).optional().describe("librarian, armorer, fletcher…"),
-      radius: z.number().int().min(4).max(64).optional(),
+      radius: z.number().int().min(4).max(64).optional().describe("32 by default"),
     }),
   },
   scan_nearby_containers: {
@@ -185,16 +188,6 @@ const definitions = {
       radius: z.number().int().min(1).max(10).optional().describe("6 by default"),
       around: z.enum(["look", "player"]).optional().describe("look (default): the block under the crosshair; player: where they stand"),
     }),
-  },
-  get_light_spawn_check: {
-    description:
-      "Spots around the asking player where hostile mobs can spawn (block light 0 on a solid top): the count and the nearest ten with x, y, z, distance, and direction, for where to put torches.",
-    input: z.object({ radius: z.number().int().min(1).max(16).optional() }),
-  },
-  scan_farm: {
-    description:
-      "The farm around the asking player: crops by type with ripe counts and stages, hydrated and dry farmland, composters, hoppers, spawners by mob, and animals by type. Raw facts for estimating a rate; say it's an estimate.",
-    input: z.object({ radius: z.number().int().min(1).max(16).optional() }),
   },
   point_to: {
     description:
@@ -338,22 +331,6 @@ const definitions = {
       all: z.boolean().optional(),
     }),
   },
-  notes: {
-    description:
-      "The notebook of places an older Allay plugin (before 6.7) keeps on this server; new places go to memories. find (default) here when memories find has no such place; add only when memories is unavailable. action add: writes text tied to where they stand, or to x, y, z. find: notes with id, text, x, y, z, dimension, and distance and direction in their dimension; query filters by words, so match by meaning yourself; near sorts by distance. delete: one by id.",
-    input: z.object({
-      action: z.enum(["add", "find", "delete"]).optional(),
-      text: z.string().min(1).max(200).optional().describe("add: what is there"),
-      x: z.number().int().optional().describe("add: only for a place other than where the player stands"),
-      y: z.number().int().optional(),
-      z: z.number().int().optional(),
-      dimension: dimension.optional().describe("add: only when the player names another dimension («в аду», “in the End”) or the place exists only there (a bastion is the_nether)"),
-      query: z.string().max(100).optional(),
-      near: z.boolean().optional(),
-      limit: z.number().int().min(1).max(50).optional(),
-      id: z.string().min(1).max(32).optional().describe("delete: the note's id"),
-    }),
-  },
   write_book: {
     description:
       "Writes a long answer into a book the player can open or take for free; buttons for both appear under your answer. Only when the player explicitly asks for detail. Plain text with line breaks; & color codes work.",
@@ -380,8 +357,6 @@ type Call = (tool: string, args: object) => Promise<ToolAnswer>;
  */
 interface Composite {
   uses: readonly string[];
-  /** Whether a call only reads the game, for askx; a whole tool that only reads needs none. */
-  reads?: (input: Record<string, unknown>) => boolean;
   run: (input: Record<string, unknown>, call: Call, options: GameToolsOptions) => Promise<ToolAnswer>;
 }
 
@@ -457,6 +432,13 @@ const composites: Partial<Record<keyof typeof definitions, Composite>> = {
       return results(queries, await each(queries, call, "search_items", (query) => ({ query, ...(limit ? { limit } : {}) }), { queries }));
     },
   },
+  get_surroundings: {
+    uses: ["get_surroundings", "get_light_spawn_check", "scan_farm"],
+    run: (input, call) => {
+      const tool = { dark_spots: "get_light_spawn_check", farm: "scan_farm" }[input.about as string] ?? "get_surroundings";
+      return call(tool, without(input, "about"));
+    },
+  },
   locate: {
     uses: ["locate_structure", "locate_biome"],
     run: async (input, call) => {
@@ -487,21 +469,6 @@ const composites: Partial<Record<keyof typeof definitions, Composite>> = {
       // get_death_info repeats the place under its own key; the rest goes next to the death point.
       const live = death.ok && isObject(death.result) ? without(death.result, "place", ...(own ? ["history"] : [])) : {};
       return { ok: true, result: { ...places.result, last_death: { ...last, ...live, ...(own ? { history: own } : {}) } } };
-    },
-  },
-  notes: {
-    uses: ["add_note", "find_notes", "delete_note"],
-    reads: (input) => (input.action ?? "find") === "find",
-    run: (input, call) => {
-      if (input.action === "add") {
-        if (!input.text) return Promise.resolve({ ok: false, error: "add needs text" });
-        const placed = input.x !== undefined && input.z !== undefined;
-        return call("add_note", { ...without(input, "action", "query", "near", "limit", "id"), ...(placed ? {} : { here: true }) });
-      }
-      if (input.action === "delete") {
-        return input.id ? call("delete_note", { id: input.id }) : Promise.resolve({ ok: false, error: "delete needs the note's id" });
-      }
-      return call("find_notes", without(input, "action", "text", "x", "y", "z", "dimension", "id"));
     },
   },
   allay_settings: {
@@ -825,7 +792,7 @@ export const offeredTools = (
   depth = 0,
   kind?: TaskKind,
 ): GameToolName[] => {
-  const offered = new Set(names.map(canonical));
+  const offered = new Set(names);
   return (Object.keys(allDefinitions) as GameToolName[]).filter(
     (name) =>
       usesOf(name).some((tool) => offered.has(tool)) &&
@@ -834,15 +801,6 @@ export const offeredTools = (
       (visibility === "private" || !PRIVATE_TOOLS.has(name)),
   );
 };
-
-/** Names plugins before 4.0 (MCBuddy) offer and run these tools under; the model only ever sees the new ones. */
-const LEGACY_NAMES: Readonly<Record<string, string>> = { get_buddy_guide: "get_allay_guide", buddy_settings: "allay_settings" };
-
-const canonical = (name: string) => LEGACY_NAMES[name] ?? name;
-
-/** The name the plugin runs a tool under: an old plugin still knows the old one. */
-export const pluginName = (name: string, offered: string[]): string =>
-  offered.includes(name) ? name : (Object.keys(LEGACY_NAMES).find((old) => LEGACY_NAMES[old] === name && offered.includes(old)) ?? name);
 
 // Big inventories and chunk scans shouldn't flood the model's context.
 const MAX_RESULT_CHARS = 12_000;
@@ -856,8 +814,6 @@ const trimmed = (result: unknown): unknown => {
 export interface GameToolsOptions {
   /** The tool names the plugin offered, as it sent them; every tool's plugin tools by default. */
   offered?: string[];
-  /** askx: a tool that reads and writes, like notes, may only read. */
-  readOnly?: boolean;
   /** Since 6.9: the asking player's deaths as the backend keeps them, for get_locations. */
   deaths?: DeathHistory;
 }
@@ -865,7 +821,7 @@ export interface GameToolsOptions {
 /** Mastra tools for the client tools in this run; pass names through offeredTools first. */
 export const gameTools = (names: GameToolName[], runId: string, bridge: ToolBridge, options: GameToolsOptions = {}) => {
   const offered = options.offered ?? PLUGIN_TOOLS;
-  const known = new Set(offered.map(canonical));
+  const known = new Set(offered);
   return Object.fromEntries(
     names.map((name) => {
       const definition = allDefinitions[name];
@@ -879,11 +835,8 @@ export const gameTools = (names: GameToolName[], runId: string, bridge: ToolBrid
           const args = (input ?? {}) as Record<string, unknown>;
           const call: Call = (tool, toolArgs) =>
             known.has(tool)
-              ? bridge.call(runId, pluginName(tool, offered), toolArgs, context?.abortSignal)
+              ? bridge.call(runId, tool, toolArgs, context?.abortSignal)
               : Promise.resolve({ ok: false, error: `${tool} isn't available on this server` });
-          if (composite && options.readOnly && composite.reads && !composite.reads(args)) {
-            return { error: "Only reading here: this request turns into commands" };
-          }
           const answer = composite ? await composite.run(args, call, options) : await call(name, args);
           return answer.ok ? trimmed(answer.result) : { error: answer.error };
         },

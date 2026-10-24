@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ToolBridge } from "../src/features/chat/chat.bridge";
 import type { ToolAnswer } from "../src/features/chat/chat.bridge";
-import { GAME_TOOLS, gameTools, OPERATOR_TOOLS, offeredTools, pluginName } from "../src/features/tools/game.tools";
+import { GAME_TOOLS, gameTools, OPERATOR_TOOLS, offeredTools } from "../src/features/tools/game.tools";
 
 describe("offered game tools", () => {
   test("operators get the operator tools the plugin offers", () => {
@@ -28,10 +28,8 @@ describe("offered game tools", () => {
 
   test("askx can't change settings", () => {
     expect(offeredTools(["get_allay_guide", "allay_settings"], false, "askx")).toEqual(["get_allay_guide"]);
-    // Plugins before 4.0 offer the old names; the model sees the new ones, and the plugin is called by its own.
-    expect(offeredTools(["get_buddy_guide", "buddy_settings"], false)).toEqual(["get_allay_guide", "allay_settings"]);
-    expect(pluginName("get_allay_guide", ["get_buddy_guide"])).toBe("get_buddy_guide");
-    expect(pluginName("get_allay_guide", ["get_allay_guide"])).toBe("get_allay_guide");
+    // MCBuddy's names (plugins before 4.0) are gone since 6.16.
+    expect(offeredTools(["get_buddy_guide", "buddy_settings"], false)).toEqual([]);
   });
 
   test("a question everyone sees goes without a book", () => {
@@ -46,21 +44,21 @@ describe("offered game tools", () => {
     expect(offeredTools(["get_nearby_players"], false, "askx")).toEqual(["get_nearby_players"]);
   });
 
-  // What a 5.7 plugin offers; the model sees fewer tools, and each call still reaches the plugin by its own name.
+  // What a 6.7 plugin offers; the model sees fewer tools, and each call still reaches the plugin by its own name.
   const plugin = [
     "get_player_status", "get_inventory", "get_surroundings", "look_at", "get_world", "get_statistics", "get_advancements", "get_recipes",
     "locate_structure", "locate_biome", "get_server", "get_locations", "get_nearby_players", "get_death_info", "find_villagers", "scan_nearby_containers", "find_item",
     "inspect_item", "get_item_durability", "get_xp_info", "get_food_options", "get_anvil_plan", "get_light_spawn_check", "get_brewing_items", "get_brewing_recipe",
-    "scan_farm", "point_to", "show_marks", "show_draft", "inspect_redstone", "ping_me", "sort_inventory", "reminders", "goals", "add_note", "find_notes", "delete_note",
+    "scan_farm", "point_to", "show_marks", "show_draft", "inspect_redstone", "ping_me", "sort_inventory", "reminders", "goals",
     "write_book", "get_allay_guide", "allay_settings", "set_timezone",
   ];
 
-  test("the 5.5 tool set", () => {
+  test("the 6.16 tool set", () => {
     expect([...GAME_TOOLS].sort() as string[]).toEqual(
       [
         "get_player_status", "inventory", "get_surroundings", "look_at", "get_world", "get_statistics", "get_advancements", "get_recipes", "search_items", "locate", "get_server",
         "get_nearby_players", "get_locations", "find_villagers", "scan_nearby_containers", "find_item", "inspect_item", "get_anvil_plan", "inspect_redstone",
-        "get_light_spawn_check", "scan_farm", "point_to", "show_marks", "show_draft", "ping_me", "sort_inventory", "reminders", "goals", "notes",
+        "point_to", "show_marks", "show_draft", "ping_me", "sort_inventory", "reminders", "goals",
         "write_book", "get_allay_guide", "allay_settings",
       ].sort(),
     );
@@ -72,7 +70,9 @@ describe("offered game tools", () => {
   });
 
   test("a merged tool comes with any of its plugin tools", () => {
-    expect(offeredTools(["find_notes"], false)).toEqual(["notes"]);
+    expect(offeredTools(["scan_farm"], false)).toEqual(["get_surroundings"]);
+    // Plugins before 6.7 kept notes; since 6.16 places are only memories.
+    expect(offeredTools(["find_notes"], false)).toEqual([]);
     expect(offeredTools(["get_food_options"], false)).toEqual(["inventory"]);
     expect(offeredTools(["locate_biome", "set_timezone"], false)).toEqual(["locate", "allay_settings"]);
   });
@@ -93,23 +93,21 @@ const fakeBridge = (answers: Record<string, ToolAnswer>) => {
 const run = (tool: { execute?: unknown }, input: object) => (tool.execute as (input: object, context: object) => Promise<unknown>)(input, {});
 
 describe("merged tools", () => {
-  test("notes add pins to where the player stands unless given coordinates", async () => {
-    const { bridge, calls } = fakeBridge({ add_note: { ok: true, result: { id: "a1" } } });
-    const tools = gameTools(["notes"], "run", bridge);
-    expect(await run(tools.notes, { action: "add", text: "iron farm" })).toEqual({ id: "a1" });
-    await run(tools.notes, { action: "add", text: "bastion", x: 10, y: 70, z: -5, dimension: "the_nether" });
+  test("get_surroundings reaches dark spots and farms by about", async () => {
+    const { bridge, calls } = fakeBridge({
+      get_surroundings: { ok: true, result: { blocks: {} } },
+      get_light_spawn_check: { ok: true, result: { count: 3 } },
+      scan_farm: { ok: true, result: { crops: {} } },
+    });
+    const tools = gameTools(["get_surroundings"], "run", bridge);
+    expect(await run(tools.get_surroundings, { radius: 6 })).toEqual({ blocks: {} });
+    expect(await run(tools.get_surroundings, { about: "dark_spots", radius: 12 })).toEqual({ count: 3 });
+    expect(await run(tools.get_surroundings, { about: "farm" })).toEqual({ crops: {} });
     expect(calls).toEqual([
-      { name: "add_note", args: { text: "iron farm", here: true } },
-      { name: "add_note", args: { text: "bastion", x: 10, y: 70, z: -5, dimension: "the_nether" } },
+      { name: "get_surroundings", args: { radius: 6 } },
+      { name: "get_light_spawn_check", args: { radius: 12 } },
+      { name: "scan_farm", args: {} },
     ]);
-  });
-
-  test("notes find by default, and askx may only find", async () => {
-    const { bridge, calls } = fakeBridge({ find_notes: { ok: true, result: { notes: [] } } });
-    const tools = gameTools(["notes"], "run", bridge, { readOnly: true });
-    expect(await run(tools.notes, { query: "arrows" })).toEqual({ notes: [] });
-    expect(await run(tools.notes, { action: "delete", id: "a1" })).toMatchObject({ error: expect.stringContaining("Only reading") });
-    expect(calls).toEqual([{ name: "find_notes", args: { query: "arrows" } }]);
   });
 
   test("get_recipes brews a potion the plugin turns away", async () => {
@@ -275,12 +273,12 @@ describe("merged tools", () => {
     expect(calls.map((c) => c.name)).toEqual(["get_player_status", "get_xp_info", "set_timezone"]);
   });
 
-  test("a plugin tool the server didn't offer isn't called, and old plugins get their old names", async () => {
-    const { bridge, calls } = fakeBridge({ get_player_status: { ok: true, result: { health: 20 } }, buddy_settings: { ok: true, result: {} } });
-    const tools = gameTools(["get_player_status", "allay_settings"], "run", bridge, { offered: ["get_player_status", "buddy_settings"] });
+  test("a plugin tool the server didn't offer isn't called", async () => {
+    const { bridge, calls } = fakeBridge({ get_player_status: { ok: true, result: { health: 20 } }, allay_settings: { ok: true, result: {} } });
+    const tools = gameTools(["get_player_status", "allay_settings"], "run", bridge, { offered: ["get_player_status"] });
     expect(await run(tools.get_player_status, {})).toEqual({ health: 20 });
-    await run(tools.allay_settings, { hints: false });
-    expect(calls.map((c) => c.name)).toEqual(["get_player_status", "buddy_settings"]);
+    expect(await run(tools.allay_settings, { hints: false })).toMatchObject({ error: expect.stringContaining("isn't available") });
+    expect(calls.map((c) => c.name)).toEqual(["get_player_status"]);
   });
 });
 
