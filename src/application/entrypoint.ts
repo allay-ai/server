@@ -25,7 +25,9 @@ import { mongoRuns } from "../infrastructure/runs/runs";
 import { selfHosted } from "../features/billing/billing";
 import { productionDeps } from "./deps";
 import { routes } from "./routes";
+import { guardAborts } from "./aborts";
 
+guardAborts();
 logger.info("Allay Server is starting...");
 
 await mongoConnect();
