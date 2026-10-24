@@ -30,7 +30,7 @@ The backend of Allay, an AI helper for Minecraft players and a Telegram bot. A M
 | `src/infrastructure/database/migrations.ts`, `src/application/migrate.ts`, `reveal.ts` | What runs on every start (`prepareDatabase` syncs every model's indexes; no data is rewritten), the `migrate` command (`status`, `retag --from self --to license:<id>`, `purge-untagged`, `players <name>=<uuid> …`), and `reveal <run id>`, which opens one run's trace for the owner and writes it to the audit log |
 | `docs/protocol-v2.md` | The contract with the plugin. Change it additively, unless security needs a break (as 6.0 did); change the plugin (allay-ai/minecraft) to match |
 
-The tool bridge keeps pending calls in memory, so the backend runs as one instance.
+The tool bridge keeps pending calls in memory, so the backend runs as one instance. A cancelled run can leave an aborted call nobody awaits inside the model's stream; `src/application/aborts.ts` lets an abort go with a warning instead of stopping the process (it did, with two questions of one player cancelled at once), and anything else still stops it.
 
 Sessions and panel sessions expire exactly by `expires_at`: every read asks for a time after now, a read that misses deletes an expired document, and a write onto an expired session starts it over. The TTL indexes only collect garbage, since MongoDB's monitor runs about once a minute. Since 6.8 there's no Redis; 6.8.0 alone moved the old sessions over. A data change since 6.9 needs no migration code: a one-off script does it, and the code reads both the old and the new shape until the old expires.
 
@@ -50,6 +50,7 @@ The owner settled these on 2026-10-20 for 6.0, before allay.chat serves the publ
 - **The privacy policy's revision** is `POLICY_REVISION` in `src/shared/policy.ts`. Bump it whenever allay.chat's privacy policy changes: the plugin hashes it into the notice, so every player agrees again.
 - **Client addresses** come from `clientAddress` with `TRUSTED_PROXIES`; never read a forwarding header directly.
 - **Least privilege:** viewers read numbers; admins change and erase; owners manage accounts. Telegram ids show to admins only.
+- **Other plugins' tools and words** (since 6.14, `src/features/tools/expansion.tools.ts`): a request's `expansion_tools` and `expansions` come from someone else's code on the server. The model gets them as `x_<expansion>_<tool>` after Allay's own tools, each description framed as the plugin's, each schema cut to the keywords that describe arguments; the prompt frames their lines as advice under Allay's rules. Operator tools only for operators, only reading ones in askx, none and no prompt lines for automation agents. The plugin checks the asker's rights again before running one.
 
 ## Billing
 

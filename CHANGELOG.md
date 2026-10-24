@@ -2,6 +2,16 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.14.0
+
+Allay answers from what the server really has, and other plugins and mods can extend it. Plugins before Allay for Minecraft 6.12 keep working as before.
+
+- 🔎 **Nothing “doesn't exist” unchecked.** The model looks a thing up before it says there's no such item, potion, or recipe: the new `search_items` finds items and potions by name in any language or by id, mods', data packs', and plugins' included, and `get_recipes` takes names too («зелье заражения» brews as `infested`). The prompt says what tools return beats what the model remembers, and that “nothing here” isn't “doesn't exist”.
+- 🧩 **Expansions.** A request may carry other plugins' and mods' tools (`expansion_tools`) and a few lines from each (`expansions`), as plugin 6.12 sends them from Allay's expansion API. The model calls them as `x_<expansion>_<tool>`, framed as the plugin's, with their schemas cut to what describes arguments; operator tools only for operators, reading ones only in `/askx`, none for automation agents. Each plugin's lines go under “## Name's plugin prompt”, behind Allay's own rules. docs/protocol-v2.md has the fields.
+- ⚒️ **The anvil finds the item.** `get_anvil_plan` takes `item` or `slot` for an item anywhere in the inventory, worn, or in the offhand, and with neither picks the one the player's books improve, or asks which. The model no longer asks the player to take it in hand.
+- 📦 **Data packs and mods.** `get_server` says which data packs the world runs, and on a mod server lists mods as mods.
+- 🛡️ **No crash on dropped questions.** Two questions of one player cancelled at once (a server stopping mid-answer) left an aborted call nobody waited for, and it stopped the whole backend; an abort now ends only its own run.
+
 ## 6.13.0
 
 @AllayChatBot talks like a guide. Nothing changes for the plugin's protocol.
