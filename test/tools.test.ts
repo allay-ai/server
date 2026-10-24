@@ -58,15 +58,17 @@ describe("offered game tools", () => {
   test("the 5.5 tool set", () => {
     expect([...GAME_TOOLS].sort() as string[]).toEqual(
       [
-        "get_player_status", "inventory", "get_surroundings", "look_at", "get_world", "get_statistics", "get_advancements", "get_recipes", "locate", "get_server",
+        "get_player_status", "inventory", "get_surroundings", "look_at", "get_world", "get_statistics", "get_advancements", "get_recipes", "search_items", "locate", "get_server",
         "get_nearby_players", "get_locations", "find_villagers", "scan_nearby_containers", "find_item", "inspect_item", "get_anvil_plan", "inspect_redstone",
         "get_light_spawn_check", "scan_farm", "point_to", "show_marks", "show_draft", "ping_me", "sort_inventory", "reminders", "goals", "notes",
         "write_book", "get_allay_guide", "allay_settings",
       ].sort(),
     );
-    expect(offeredTools(plugin, false)).toEqual([...GAME_TOOLS]);
+    // search_items came with plugin 6.12; an older plugin gets everything else.
+    expect(offeredTools(plugin, false)).toEqual(GAME_TOOLS.filter((name) => name !== "search_items"));
+    expect(offeredTools([...plugin, "search_items"], false)).toEqual([...GAME_TOOLS]);
     // The order is the backend's, so the provider's prompt cache holds whatever order a plugin sends.
-    expect(offeredTools([...plugin].reverse(), false)).toEqual([...GAME_TOOLS]);
+    expect(offeredTools(["search_items", ...plugin].reverse(), false)).toEqual([...GAME_TOOLS]);
   });
 
   test("a merged tool comes with any of its plugin tools", () => {
@@ -120,6 +122,15 @@ describe("merged tools", () => {
     await run(tools.get_recipes, { item: "healing", form: "splash_potion" });
     expect(calls.map((c) => c.name)).toEqual(["get_recipes", "get_brewing_recipe", "get_brewing_recipe"]);
     expect(calls[2].args).toEqual({ potion: "healing", form: "splash_potion" });
+  });
+
+  test("get_recipes brews the potion the plugin named by its id", async () => {
+    const { bridge, calls } = fakeBridge({
+      get_recipes: { ok: false, error: "potions are brewed: call get_brewing_recipe with infested" },
+      get_brewing_recipe: { ok: true, result: { potion: "infested", steps: [] } },
+    });
+    expect(await run(gameTools(["get_recipes"], "run", bridge).get_recipes, { item: "Potion of Infestation" })).toEqual({ potion: "infested", steps: [] });
+    expect(calls[1]).toEqual({ name: "get_brewing_recipe", args: { potion: "infested" } });
   });
 
   test("get_recipes keeps the plugin's own error for an unknown item", async () => {
@@ -298,7 +309,12 @@ describe("anvil and brewing arguments", () => {
   test("the anvil plan works from the inventory without enchantments", () => {
     expect(input("get_anvil_plan").safeParse({}).success).toBe(true);
     expect(input("get_anvil_plan").safeParse({ slots: [3, 12] }).success).toBe(true);
-    expect(input("get_anvil_plan").safeParse({ slots: [36] }).success).toBe(false);
+    // Since plugin 6.12 the item and the pieces may lie anywhere: worn (36–39) and the offhand (40) too.
+    expect(input("get_anvil_plan").safeParse({ slots: [36, 40] }).success).toBe(true);
+    expect(input("get_anvil_plan").safeParse({ slots: [41] }).success).toBe(false);
+    expect(input("get_anvil_plan").safeParse({ item: "diamond_sword" }).success).toBe(true);
+    expect(input("get_anvil_plan").safeParse({ slot: 38 }).success).toBe(true);
+    expect(input("get_anvil_plan").safeParse({ slot: 41 }).success).toBe(false);
   });
 
   test("a potion needs a name, and the bottle is one of three", () => {

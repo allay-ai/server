@@ -81,10 +81,18 @@ const definitions = {
   },
   get_recipes: {
     description:
-      "How this server makes an item, from its own recipes: crafting grids, smelting, stonecutting, smithing (up to 5, more_recipes when there are more), or for a potion every brewing step from a water bottle and the fuel. Always use it instead of recalling a recipe. No recipe means the item is mined, dropped, or traded.",
+      "How this server makes an item, from its own recipes, mods', data packs', and plugins' included: crafting grids, smelting, stonecutting, smithing (up to 5, more_recipes when there are more), or for a potion or a plugin's brewed bottle every brewing step from a water bottle and the fuel. Always use it instead of recalling a recipe. An item's name in any language works, and so does a mod's or plugin's id like redbull:original. No recipe means the item is mined, dropped, or traded here; an error names what this server has under close names.",
     input: z.object({
-      item: z.string().min(1).max(64).describe("Item id like beacon, or a potion's id like night_vision, long_swiftness, strong_healing"),
+      item: z.string().min(1).max(64).describe("Item id like beacon or mymod:wrench, a potion's id like night_vision or infested, or a name like «зелье заражения»"),
       form: potionForm.optional().describe("For a potion: the bottle; potion by default"),
+    }),
+  },
+  search_items: {
+    description:
+      "Looks up items and potions on this server by name in any language or by id, the game's, mods', data packs', and plugins' alike: id (what other tools take), kind (item, potion, or custom: a plugin's or data pack's item built on a game item, base), its name in the player's language and in English, source (minecraft, a mod, a plugin, a data pack), and made (crafting, smelting, stonecutting, smithing, brewing). Call it before you say something doesn't exist or can't be made, and whenever the player names a thing you don't know.",
+    input: z.object({
+      query: z.string().min(1).max(64).describe("A name or id, like «зелье заражения», Potion of Infestation, red bull, mymod:wrench"),
+      limit: z.number().int().min(1).max(20).optional().describe("8 by default"),
     }),
   },
   locate: {
@@ -94,7 +102,7 @@ const definitions = {
   },
   get_server: {
     description:
-      "This server: software, Minecraft version, players online and max, the Allay plugin version, and every enabled plugin with version and a short description. Call it when a question may touch something a plugin changes (graves, claims, AFK, maps, chat, a command you don't know) and answer for that plugin and version. Difficulty is in get_world.",
+      "This server: software, Minecraft version, players online and max, the Allay plugin version, every enabled plugin (mods on a Fabric or NeoForge server, as mods) with version and a short description, the data packs the world runs (datapacks), and the game's experiments turned on. Call it when a question may touch something a plugin, mod, or data pack changes (graves, claims, AFK, maps, chat, new items or recipes, a command you don't know) and answer for that one and version. Difficulty is in get_world.",
     input: z.object({}),
   },
   get_nearby_players: {
@@ -151,13 +159,15 @@ const definitions = {
   },
   get_anvil_plan: {
     description:
-      "The anvil order for the item in the asking player's hand. Without enchantments: plans with the books and same-kind items the player really has (or only the given slots), priced as the game does. Returns pieces (where, slot, enchantments, repair_cost), steps (left, right, levels, gives), result, total_levels, too_expensive (40+ per step), and unused. With enchantments: the cheapest order for ideal books they don't have yet.",
+      "The anvil order for one of the asking player's items, wherever it lies: in hand, in the inventory, worn, or in the offhand. Pass item when they name one («мой меч», the bow) or slot from an earlier result; leave both out and it picks the item their books improve, the one in hand first. When several could be meant it returns choose (slot, where, item, gain): ask which with a button each, then call again with that slot. Without enchantments: plans with the books and same-kind items the player really has (or only the given slots), priced as the game does; returns target and slot of the item, pieces (where, slot, enchantments, repair_cost), steps (left, right, levels, gives), result, total_levels, too_expensive (40+ per step), and unused. With enchantments: the cheapest order for ideal books they don't have yet.",
     input: z.object({
+      item: z.string().min(1).max(64).optional().describe("The item to enchant by id or name, like diamond_sword or bow; hand for the one in hand"),
+      slot: z.number().int().min(0).max(40).optional().describe("The item's slot: 0–35 the inventory (0–8 the hotbar), 36–39 boots to helmet, 40 the offhand"),
       enchantments: z
         .record(z.string().max(64), z.number().int().min(1).max(10))
         .optional()
         .describe("Only for books the player doesn't have: id to level, such as { sharpness: 5, mending: 1 }"),
-      slots: z.array(z.number().int().min(0).max(35)).max(8).optional().describe("Inventory slots to use; all fitting ones when left out"),
+      slots: z.array(z.number().int().min(0).max(40)).max(8).optional().describe("Slots of the books and items to use; all fitting ones when left out"),
     }),
   },
   inspect_redstone: {
@@ -391,12 +401,14 @@ const composites: Partial<Record<keyof typeof definitions, Composite>> = {
   get_recipes: {
     uses: ["get_recipes", "get_brewing_recipe"],
     run: async (input, call) => {
-      const brew = () => call("get_brewing_recipe", { potion: input.item, ...(input.form ? { form: input.form } : {}) });
-      if (input.form) return brew();
+      const brew = (potion: unknown) => call("get_brewing_recipe", { potion, ...(input.form ? { form: input.form } : {}) });
+      if (input.form) return brew(input.item);
       const crafted = await call("get_recipes", { item: input.item });
       // The plugin turns potions away from get_recipes; a name that isn't an item may still be one.
       if (crafted.ok || !/potions are brewed|no item called/.test(crafted.error)) return crafted;
-      const brewed = await brew();
+      // Since plugin 6.12 the refusal names the potion's id (infested for “Potion of Infestation”).
+      const named = /call get_brewing_recipe with ([a-z0-9_.:/-]+)$/.exec(crafted.error)?.[1];
+      const brewed = await brew(named ?? input.item);
       return brewed.ok ? brewed : crafted;
     },
   },
@@ -722,7 +734,7 @@ const SUB_AGENT_TOOLS: ReadonlySet<string> = new Set(["start_task", "message_tas
  * schema in tokens on every step and tempt it off the brief.
  */
 const TASK_READS: ReadonlySet<string> = new Set([
-  "get_player_status", "inventory", "get_surroundings", "look_at", "get_recipes", "scan_nearby_containers", "find_item", "inspect_item", "get_anvil_plan",
+  "get_player_status", "inventory", "get_surroundings", "look_at", "get_recipes", "search_items", "scan_nearby_containers", "find_item", "inspect_item", "get_anvil_plan",
   "point_to", "show_marks", "start_task",
 ]);
 
