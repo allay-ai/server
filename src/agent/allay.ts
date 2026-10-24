@@ -120,6 +120,28 @@ interface AgentStream {
   object: Promise<unknown>;
 }
 
+/**
+ * The askx lines the server says won't run, as “/line: why”: unknown here, not the player's, blocked, or arguments the
+ * game can't parse (plugin 6.16's search_commands with check). None when the plugin couldn't check.
+ */
+export const uncheckable = async (bridge: ToolBridge, runId: string, commands: string[], signal?: AbortSignal): Promise<string[]> => {
+  const answer = await bridge.call(runId, "search_commands", { check: commands }, signal);
+  if (!answer.ok || typeof answer.result !== "object" || answer.result === null) return [];
+  const checks = (answer.result as { checks?: unknown }).checks;
+  if (!Array.isArray(checks)) return [];
+  return checks
+    .filter((check): check is { command: unknown; ok: false; error?: unknown; usage?: unknown } => typeof check === "object" && check !== null && check.ok === false)
+    .map((check) => `/${String(check.command)}: ${String(check.error ?? "won't run")}${typeof check.usage === "string" ? ` (usage: ${check.usage})` : ""}`);
+};
+
+/** What the model reads when its commands failed the server's check: the server's words are data, the rules stay. */
+export const recheck = (problems: string[]) =>
+  [
+    "The server checked your commands before running any of them, and these won't run:",
+    ...problems.map((problem) => `- ${problem}`),
+    "Fix them with the commands this server really has (search_commands lists them with their usage), or refuse with error. Reply with the structured result again.",
+  ].join("\n");
+
 /** A provider's refusal of the server's own key or model, in codes the plugin explains to operators. */
 const byokFailure = (error: APICallError, text: string): ApiFailure | undefined => {
   const status = error.statusCode ?? 0;
@@ -316,77 +338,91 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     let text = "";
     const exchange = new Exchange();
     // Per-step usage, summed, so the plugin's counter moves while the agent works.
-    for await (const chunk of stream.fullStream) {
-      const payload = chunk.payload ?? {};
-      switch (chunk.type) {
-        case "reasoning-delta":
-          if (typeof payload.text === "string" && payload.text) emit({ event: "reasoning", data: { delta: payload.text } });
-          break;
-        case "text-delta":
-          if (typeof payload.text === "string") {
-            text += payload.text;
-            exchange.text(payload.text);
-            // askx text is the JSON result, not something to show; a task's is its note, which the plugin keeps to itself.
-            if (context.mode !== "askx") emit({ event: "text", data: { delta: payload.text } });
+    const consume = async (stream: AgentStream) => {
+      for await (const chunk of stream.fullStream) {
+        const payload = chunk.payload ?? {};
+        switch (chunk.type) {
+          case "reasoning-delta":
+            if (typeof payload.text === "string" && payload.text) emit({ event: "reasoning", data: { delta: payload.text } });
+            break;
+          case "text-delta":
+            if (typeof payload.text === "string") {
+              text += payload.text;
+              exchange.text(payload.text);
+              // askx text is the JSON result, not something to show; a task's is its note, which the plugin keeps to itself.
+              if (context.mode !== "askx") emit({ event: "text", data: { delta: payload.text } });
+            }
+            break;
+          case "tool-call":
+            exchange.call(payload);
+            called.set(String(payload.toolCallId), { name: String(payload.toolName), ok: true });
+            if (context.mode === "task" && context.task && payload.toolName === "finish") {
+              const summary = (payload.args as { summary?: unknown } | undefined)?.summary;
+              if (typeof summary === "string" && summary.trim()) finishing.set(String(payload.toolCallId), summary);
+            }
+            break;
+          case "tool-result": {
+            exchange.result(payload);
+            // Game tools answer a failure as { error }, server tools too; it counts as failed either way.
+            const result = payload.result as { error?: unknown } | null | undefined;
+            const call = called.get(String(payload.toolCallId));
+            if (call && result && typeof result === "object" && "error" in result) call.ok = false;
+            // The plugin ended the task: its chat hears how with the player's next question.
+            const summary = finishing.get(String(payload.toolCallId));
+            if (summary && call?.ok) await deps.history.noteOutcome(ownerOf(context), outcomeOf(context, summary));
+            break;
           }
-          break;
-        case "tool-call":
-          exchange.call(payload);
-          called.set(String(payload.toolCallId), { name: String(payload.toolName), ok: true });
-          if (context.mode === "task" && context.task && payload.toolName === "finish") {
-            const summary = (payload.args as { summary?: unknown } | undefined)?.summary;
-            if (typeof summary === "string" && summary.trim()) finishing.set(String(payload.toolCallId), summary);
+          case "tool-error": {
+            exchange.error(payload);
+            const call = called.get(String(payload.toolCallId));
+            if (call) call.ok = false;
+            break;
           }
-          break;
-        case "tool-result": {
-          exchange.result(payload);
-          // Game tools answer a failure as { error }, server tools too; it counts as failed either way.
-          const result = payload.result as { error?: unknown } | null | undefined;
-          const call = called.get(String(payload.toolCallId));
-          if (call && result && typeof result === "object" && "error" in result) call.ok = false;
-          // The plugin ended the task: its chat hears how with the player's next question.
-          const summary = finishing.get(String(payload.toolCallId));
-          if (summary && call?.ok) await deps.history.noteOutcome(ownerOf(context), outcomeOf(context, summary));
-          break;
+          case "step-finish": {
+            steps++;
+            exchange.endStep();
+            spend(costOf((payload.metadata as { providerMetadata?: unknown } | undefined)?.providerMetadata));
+            const step = (payload.output as { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } | undefined)?.usage;
+            sofar.input_tokens += step?.inputTokens ?? 0;
+            sofar.output_tokens += step?.outputTokens ?? 0;
+            sofar.reasoning_tokens += step?.reasoningTokens ?? 0;
+            sofar.cost = Math.round(cost * 1_000_000) / 1_000_000;
+            emit({ event: "usage", data: { ...sofar } });
+            break;
+          }
+          case "error":
+            throw payload.error ?? new Error("The model stream failed");
         }
-        case "tool-error": {
-          exchange.error(payload);
-          const call = called.get(String(payload.toolCallId));
-          if (call) call.ok = false;
-          break;
-        }
-        case "step-finish": {
-          steps++;
-          exchange.endStep();
-          spend(costOf((payload.metadata as { providerMetadata?: unknown } | undefined)?.providerMetadata));
-          const step = (payload.output as { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } | undefined)?.usage;
-          sofar.input_tokens += step?.inputTokens ?? 0;
-          sofar.output_tokens += step?.outputTokens ?? 0;
-          sofar.reasoning_tokens += step?.reasoningTokens ?? 0;
-          sofar.cost = Math.round(cost * 1_000_000) / 1_000_000;
-          emit({ event: "usage", data: { ...sofar } });
-          break;
-        }
-        case "error":
-          throw payload.error ?? new Error("The model stream failed");
       }
-    }
-    if (signal?.aborted) throw new ApiFailure(apierror(API_ERRORS.CANCELLED));
-
-    const totals = await stream.usage;
-    const usage: Usage = {
-      input_tokens: totals?.inputTokens ?? 0,
-      output_tokens: totals?.outputTokens ?? 0,
-      reasoning_tokens: totals?.reasoningTokens ?? 0,
-      cost: Math.round(cost * 1_000_000) / 1_000_000,
+      if (signal?.aborted) throw new ApiFailure(apierror(API_ERRORS.CANCELLED));
+      return stream.usage;
     };
+    const totals = [await consume(stream)];
+    const usage = (): Usage => ({
+      input_tokens: totals.reduce((sum, t) => sum + (t?.inputTokens ?? 0), 0),
+      output_tokens: totals.reduce((sum, t) => sum + (t?.outputTokens ?? 0), 0),
+      reasoning_tokens: totals.reduce((sum, t) => sum + (t?.reasoningTokens ?? 0), 0),
+      cost: Math.round(cost * 1_000_000) / 1_000_000,
+    });
 
     let result: RunResult;
     if (context.mode === "askx") {
-      const object = (await stream.object.catch(() => undefined)) ?? commandsFromText(text);
+      let object = (await stream.object.catch(() => undefined)) ?? commandsFromText(text);
       let commands: CommandsResult;
       try {
         commands = validateCommands(object);
+        // Since plugin 6.16 the server checks the lines before they're final; what won't run goes back to the model once.
+        const problems = context.tools.includes("search_commands") ? await uncheckable(deps.bridge, runId, commands.commands, signal) : [];
+        if (problems.length) {
+          text = "";
+          const again = (await agent.stream(
+            [...messages, { role: "assistant", content: JSON.stringify(object) }, { role: "user", content: recheck(problems) }],
+            { ...common, structuredOutput: { schema: commandsSchema } },
+          )) as unknown as AgentStream;
+          totals.push(await consume(again));
+          object = (await again.object.catch(() => undefined)) ?? commandsFromText(text);
+          commands = validateCommands(object);
+        }
       } catch (error) {
         if (error instanceof ApiFailure && error.code === API_ERRORS.AI_ERROR.code) {
           await record(context, deps, asked, [{ role: "assistant", content: `Refused: ${error.message.replace(/^AI returned an error: /, "")}` }]);
@@ -395,7 +431,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       }
       await record(context, deps, asked, [{ role: "assistant", content: `Commands: ${commands.commands.join("; ")}` }]);
       emit({ event: "commands", data: commands });
-      result = { answer: "", commands, usage, durationMs: Date.now() - started };
+      result = { answer: "", commands, usage: usage(), durationMs: Date.now() - started };
     } else {
       const answer = text.trim();
       // A wake may end with wait or finish and no words; that's done, not a failure.
@@ -404,18 +440,19 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       // server's public thread: there they'd hand the asker's inventory and places to whoever asks next.
       const said = context.visibility === "public" ? (answer ? [{ role: "assistant" as const, content: answer }] : []) : exchange.messages();
       await record(context, deps, asked, answer ? said : [...said, { role: "assistant", content: TASK_WAITING }]);
-      result = { answer, usage, durationMs: Date.now() - started };
+      result = { answer, usage: usage(), durationMs: Date.now() - started };
     }
-    emit({ event: "usage", data: usage });
+    const { usage: used } = result;
+    emit({ event: "usage", data: used });
     emit({ event: "done", data: { answer: result.answer, duration_ms: result.durationMs } });
-    logger.info(`Run ${runId} (${context.mode}/${context.platform}) done in ${result.durationMs} ms, ${usage.output_tokens} tokens`);
+    logger.info(`Run ${runId} (${context.mode}/${context.platform}) done in ${result.durationMs} ms, ${used.output_tokens} tokens`);
     report(deps, context, options, {
       at: new Date(started),
       model: modelId,
-      input_tokens: usage.input_tokens,
-      output_tokens: usage.output_tokens,
-      reasoning_tokens: usage.reasoning_tokens,
-      cost: usage.cost,
+      input_tokens: used.input_tokens,
+      output_tokens: used.output_tokens,
+      reasoning_tokens: used.reasoning_tokens,
+      cost: used.cost,
       steps,
       tools: [...called.values()],
       searches: [...called.values()].filter((t) => t.name === "search_web").length,

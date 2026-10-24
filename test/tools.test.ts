@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ToolBridge } from "../src/features/chat/chat.bridge";
 import type { ToolAnswer } from "../src/features/chat/chat.bridge";
 import { GAME_TOOLS, gameTools, OPERATOR_TOOLS, offeredTools } from "../src/features/tools/game.tools";
+import { recheck, uncheckable } from "../src/agent/allay";
 
 describe("offered game tools", () => {
   test("operators get the operator tools the plugin offers", () => {
@@ -107,6 +108,15 @@ describe("search_commands", () => {
       results: [{ query: "home", commands: [{ name: "home", source: "Homes", may_run: true }] }],
     });
     expect(calls).toEqual([{ name: "search_commands", args: { queries: ["home"], plugin: "Homes" } }]);
+  });
+
+  test("the askx check names what won't run, and says nothing when the plugin couldn't check", async () => {
+    const { bridge } = fakeBridge({
+      search_commands: { ok: true, result: { checks: [{ command: "home", ok: true }, { command: "fly", ok: false, error: "this player may not run /fly" }, { command: "give @s x", ok: false, error: "/give doesn't parse", usage: "/give <targets> <item>" }] } },
+    });
+    expect(await uncheckable(bridge, "run", ["home", "fly", "give @s x"])).toEqual(["/fly: this player may not run /fly", "/give @s x: /give doesn't parse (usage: /give <targets> <item>)"]);
+    expect(await uncheckable(fakeBridge({}).bridge, "run", ["home"])).toEqual([]);
+    expect(recheck(["/fly: no"])).toContain("- /fly: no");
   });
 });
 

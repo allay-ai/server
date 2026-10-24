@@ -232,6 +232,39 @@ describe("POST /api/v2/chat", () => {
     expect(events.at(-1)).toEqual({ event: "error", data: { code: "AI_ERROR", message: "AI returned an error: Не буду банить" } });
   });
 
+  test("askx commands the server says won't run go back to the model once, with the reason", async () => {
+    const { model, prompts } = scripted([
+      [...text('{"is_sequence":false,"commands":["/sethome base"],"error":null}'), finish()],
+      [...text('{"is_sequence":false,"commands":["/homes set base"],"error":null}'), finish()],
+    ]);
+    const base = start(testDeps(model));
+    const checked: unknown[] = [];
+    const answer = answerTools(base, {
+      search_commands: { checks: [{ command: "sethome base", ok: false, error: "no command /sethome on this server; close: /homes" }] },
+    });
+    const events = await readSse(await chat(base, { mode: "askx", message: "поставь дом здесь", tools: ["search_commands", "get_player_status"] }), async (event) => {
+      if (event.event === "tool_call") checked.push(event.data.args);
+      await answer(event);
+    });
+    // One check of the first answer; the second goes out as the model wrote it, and the plugin checks it again as it runs.
+    expect(checked).toEqual([{ check: ["sethome base"] }]);
+    expect(JSON.stringify(prompts[1])).toContain("no command /sethome on this server; close: /homes");
+    expect(events.find((e) => e.event === "commands")!.data).toEqual({ is_sequence: false, commands: ["homes set base"] });
+    // Both model calls count.
+    expect(events.at(-2)!.data.output_tokens).toBe(14);
+  });
+
+  test("askx commands that pass the check go out as they are", async () => {
+    const { model, prompts } = scripted([[...text('{"is_sequence":false,"commands":["home"],"error":null}'), finish()]]);
+    const base = start(testDeps(model));
+    const events = await readSse(
+      await chat(base, { mode: "askx", message: "домой", tools: ["search_commands"] }),
+      answerTools(base, { search_commands: { checks: [{ command: "home", ok: true, source: "Homes" }] } }),
+    );
+    expect(prompts).toHaveLength(1);
+    expect(events.find((e) => e.event === "commands")!.data).toEqual({ is_sequence: false, commands: ["home"] });
+  });
+
   test("a model failure ends the stream with an error event", async () => {
     const { model } = scripted([[{ type: "error", error: new Error("upstream exploded") }]]);
     const base = start(testDeps(model));
