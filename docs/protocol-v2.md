@@ -236,10 +236,10 @@ Since backend 6.14 and plugin 6.12. Other plugins and mods add tools, items, rec
 
 ```json
 "expansion_tools": [
-  { "name": "x_redbull_caffeine", "description": "The asking player's caffeine…", "parameters": { "type": "object", "properties": {}, "required": [] }, "access": "read", "expansion": "redbull" }
+  { "name": "x_mana_status", "description": "The asking player's mana…", "parameters": { "type": "object", "properties": {}, "required": [] }, "access": "read", "expansion": "mana" }
 ],
 "expansions": [
-  { "id": "redbull", "name": "Red Bull", "version": "1.4.0", "prompt": "Red Bull adds 26 cans…" }
+  { "id": "mana", "name": "Mana", "version": "1.0.0", "prompt": "Mana adds spells cast with a wand…" }
 ]
 ```
 
