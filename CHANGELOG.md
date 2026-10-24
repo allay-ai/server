@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.18.0
+
+Allay knows this server's commands. Plugins before Allay for Minecraft 6.16 don't offer the new tool, and nothing changes for them.
+
+- ⌨️ **The server's commands.** `search_commands` reads the commands the asking player may run, the game's, plugins', and mods' alike, each with the plugin or mod it comes from, its aliases, description, and usage. “What commands do the plugins have?”, “what can Essentials do?”, and “how do I set a home?” get an answer from this server, with a command button when the player may run it. Allay's own commands still come from `get_allay_guide`.
+- 🎯 **`/askx` writes commands that exist.** A plugin's command comes only from `search_commands`, as its usage says, never from memory or the web. Before the commands go to the plugin, the plugin checks each one: when one doesn't exist here, isn't the player's, or doesn't parse, the model hears why once and fixes it or refuses. docs/protocol-v2.md has the fields.
+
 ## 6.17.0
 
 Nothing changes for the plugin's protocol.
