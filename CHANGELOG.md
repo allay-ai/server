@@ -2,6 +2,14 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.13.0
+
+@AllayChatBot talks like a guide. Nothing changes for the plugin's protocol.
+
+- 👋 **Onboarding.** Someone who opens the bot before linking a server, with `/start` or any message, gets three steps with emoji: install the plugin or the mod, run `/allay link` in the game, tap the link to come back and pay. Buttons lead to the site's install section, in Russian or Spanish where the site has it, and to the setup guide.
+- 📋 **Many servers.** `/status` opens one server straight as its card: state, limit, renewal, Solo, and buttons to pay, stop or resume renewal, or hand a Solo license on. Several servers are a list, one button each; a card opens in the same message and goes back to the list.
+- 🤖 **No more silence.** A message from an account with servers gets a short answer: questions for Allay go in the game with `/ask`, with buttons to the servers and to linking another. Messages carry emoji, and a payment ends with a button to the servers.
+
 ## 6.12.0
 
 Ready for Allay as a Fabric and NeoForge mod, on a server and in a player's own game. Nothing changes for servers that run the plugin.

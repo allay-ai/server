@@ -6,7 +6,15 @@ type Texts = {
   short_about: string;
   command_status: string;
   command_start: string;
+  /** The onboarding: what Allay is and the three steps to a linked server; /start, and any message from an account without one. */
   welcome: string;
+  download_button: string;
+  guide_button: string;
+  servers_button: string;
+  howto_button: string;
+  back_button: string;
+  /** Any other message from an account with servers. */
+  chatter: string;
   claimed: string;
   claim_failed: string;
   plans: string;
@@ -20,7 +28,6 @@ type Texts = {
   invoice_ready: string;
   paid: string;
   renewed: string;
-  status_none: string;
   status_title: string;
   status_active: string;
   status_inactive: string;
@@ -43,17 +50,22 @@ type Texts = {
   unavailable: string;
   refunded: string;
   revoked: string;
-  help: string;
 };
 
 const en: Texts = {
   about:
-    "Allay is an AI helper for Minecraft servers: players ask in chat, and it answers with what it sees in the game.\n\nI take payments for it in Telegram Stars. Run /allay link on your server as an operator, open the link it shows, and pick a plan: a week, a month that renews by itself, or a year.",
+    "Allay is an AI helper for Minecraft servers: players ask in chat, and it answers with what it sees in the game.\n\nI take payments for it in Telegram Stars. Run /allay link on your server as an operator, or in your own world with the mod, open the link it shows, and pick a plan: a week, a month that renews by itself, or a year.",
   short_about: "Payments for Allay, the AI helper for Minecraft servers, in Telegram Stars.",
   command_status: "Your servers, their limits, and payment",
   command_start: "How to link a server",
   welcome:
-    "Hi! I take payments for Allay, the AI helper for Minecraft servers.\n\nTo link a server, run /allay link on it as an operator and open the link it shows you.",
+    "👋 Hi! Here you pay for Allay, the AI helper for Minecraft, with Telegram Stars.\n\nHow to start:\n1️⃣ Install Allay: the plugin on Paper or Spigot, or the mod on Fabric or NeoForge.\n2️⃣ In the game, run /allay link: as an operator, or in your own world.\n3️⃣ Tap the link Allay shows. It brings you back here: pick a plan, pay, and Allay answers right away.\n\n🔑 With your own AI key, Allay costs nothing here.",
+  download_button: "📥 Download Allay",
+  guide_button: "📖 Setup guide",
+  servers_button: "📋 My servers",
+  howto_button: "➕ Link another server",
+  back_button: "⬅️ All servers",
+  chatter: "🤖 I handle payments and servers here. To ask Allay something, write /ask in the game.",
   claimed: "Server {server} is linked to your Telegram account.",
   claim_failed: "This link has expired or was already used. Run /allay link on the server again.",
   plans: "Pick a plan. A payment while a plan runs adds to it: the limit grows at once, and the end date moves.",
@@ -80,38 +92,43 @@ const en: Texts = {
   invoice_ready: "Here's your invoice:",
   paid: "Thank you! Allay is active on server {server} until {date}.",
   renewed: "Your subscription renewed: Allay is active on server {server} until {date}.",
-  status_none: "No servers are linked to this account yet. Run /allay link on your server as an operator.",
-  status_title: "Your servers:",
-  status_active: "{server}: active until {date}",
-  status_inactive: "{server}: not paid",
+  status_title: "📋 Your servers. Tap one for details:",
+  status_active: "Active until {date}",
+  status_inactive: "Not paid",
   status_quota: "{percent}% of the limit used, refills {date}",
-  status_quota_spent: "the limit is used up",
-  status_renews: "renews by itself",
+  status_quota_spent: "The limit is used up",
+  status_renews: "Renews by itself",
   status_solo_bound: "Solo: answers one player, who has it now",
   status_solo_free: "Solo: the first player who asks takes it",
-  release_button: "Hand {server} to another player",
+  release_button: "🔄 Hand to another player",
   released: "Done: the next player who asks on {server} takes it.",
   release_wait: "You can hand it to another player again on {date}.",
   stop_button: "Stop renewal",
   resume_button: "Resume renewal",
-  renew_button: "Pay for {server}",
+  renew_button: "💳 Pay or extend",
   stopped: "Renewal stopped. Allay stays active until {date}.",
   resumed: "Renewal is back on.",
   not_yours: "This server is linked to another Telegram account.",
   unavailable: "This plan can't be paid right now. Try again from /status.",
   refunded: "Refunded {stars} ⭐ for {server}.",
   revoked: "Your payments for {server} were refunded: {stars} ⭐ are back on your balance, and its Allay license is revoked. To use Allay there again, an operator deletes plugins/Allay/license.key and runs /allay link.",
-  help: "/status: your servers, their limits, and buttons to pay\n/start: how to link a server",
+
 };
 
 const ru: Texts = {
   about:
-    "Allay — ИИ-помощник для серверов Minecraft: игроки спрашивают в чате, а он отвечает, видя, что происходит в игре.\n\nЯ принимаю оплату за него звёздами Telegram. Выполните /allay link на своём сервере от имени оператора, откройте ссылку и выберите тариф: неделя, месяц с автопродлением или год.",
+    "Allay — ИИ-помощник для серверов Minecraft: игроки спрашивают в чате, а он отвечает, видя, что происходит в игре.\n\nЯ принимаю оплату за него звёздами Telegram. Выполните /allay link на своём сервере от имени оператора или в своём мире с модом, откройте ссылку и выберите тариф: неделя, месяц с автопродлением или год.",
   short_about: "Оплата Allay, ИИ-помощника для серверов Minecraft, звёздами Telegram.",
   command_status: "Ваши серверы, их лимиты и оплата",
   command_start: "Как привязать сервер",
   welcome:
-    "Привет! Я принимаю оплату за Allay — ИИ-помощника для серверов Minecraft.\n\nЧтобы привязать сервер, выполните на нём /allay link от имени оператора и откройте ссылку, которую он покажет.",
+    "👋 Привет! Здесь оплачивают Allay — ИИ-помощника для Minecraft — звёздами Telegram.\n\nКак начать:\n1️⃣ Установите Allay: плагин на Paper или Spigot либо мод на Fabric или NeoForge.\n2️⃣ В игре выполните /allay link — от имени оператора или в своём мире.\n3️⃣ Нажмите на ссылку, которую покажет Allay. Она вернёт вас сюда: выберите тариф, оплатите, и Allay сразу начнёт отвечать.\n\n🔑 Со своим ключом ИИ Allay здесь бесплатен.",
+  download_button: "📥 Скачать Allay",
+  guide_button: "📖 Инструкция",
+  servers_button: "📋 Мои серверы",
+  howto_button: "➕ Привязать ещё сервер",
+  back_button: "⬅️ Все серверы",
+  chatter: "🤖 Здесь я занимаюсь оплатой и серверами. Чтобы спросить Allay, напишите /ask в игре.",
   claimed: "Сервер {server} привязан к вашему аккаунту Telegram.",
   claim_failed: "Ссылка устарела или уже использована. Выполните /allay link на сервере ещё раз.",
   plans: "Выберите тариф. Оплата во время действующего тарифа добавляется к нему: лимит растёт сразу, а срок сдвигается.",
@@ -138,38 +155,43 @@ const ru: Texts = {
   invoice_ready: "Ваш счёт:",
   paid: "Спасибо! Allay работает на сервере {server} до {date}.",
   renewed: "Подписка продлена: Allay работает на сервере {server} до {date}.",
-  status_none: "К этому аккаунту пока не привязан ни один сервер. Выполните /allay link на своём сервере от имени оператора.",
-  status_title: "Ваши серверы:",
-  status_active: "{server}: работает до {date}",
-  status_inactive: "{server}: не оплачен",
+  status_title: "📋 Ваши серверы. Нажмите на сервер, чтобы открыть его:",
+  status_active: "Работает до {date}",
+  status_inactive: "Не оплачен",
   status_quota: "израсходовано {percent}% лимита, пополнение {date}",
-  status_quota_spent: "лимит исчерпан",
-  status_renews: "продлевается сам",
+  status_quota_spent: "Лимит исчерпан",
+  status_renews: "Продлевается сам",
   status_solo_bound: "Solo: отвечает одному игроку, он уже выбран",
   status_solo_free: "Solo: достанется первому игроку, который спросит",
-  release_button: "Передать {server} другому игроку",
+  release_button: "🔄 Передать другому игроку",
   released: "Готово: {server} достанется следующему игроку, который спросит.",
   release_wait: "Передать другому игроку снова можно {date}.",
   stop_button: "Отключить продление",
   resume_button: "Включить продление",
-  renew_button: "Оплатить {server}",
+  renew_button: "💳 Оплатить или продлить",
   stopped: "Продление отключено. Allay работает до {date}.",
   resumed: "Продление снова включено.",
   not_yours: "Этот сервер привязан к другому аккаунту Telegram.",
   unavailable: "Этот тариф сейчас нельзя оплатить. Попробуйте ещё раз из /status.",
   refunded: "Возвращено {stars} ⭐ за {server}.",
   revoked: "Платежи за {server} возвращены: {stars} ⭐ снова на вашем балансе, а лицензия Allay этого сервера аннулирована. Чтобы Allay снова работал там, оператор удаляет plugins/Allay/license.key и выполняет /allay link.",
-  help: "/status — ваши серверы, их лимиты и кнопки оплаты\n/start — как привязать сервер",
+
 };
 
 const es: Texts = {
   about:
-    "Allay es un asistente de IA para servidores de Minecraft: los jugadores preguntan en el chat y responde con lo que ve en el juego.\n\nAquí se paga en Telegram Stars. Ejecuta /allay link en tu servidor como operador, abre el enlace y elige un plan: una semana, un mes que se renueva solo o un año.",
+    "Allay es un asistente de IA para servidores de Minecraft: los jugadores preguntan en el chat y responde con lo que ve en el juego.\n\nAquí se paga en Telegram Stars. Ejecuta /allay link en tu servidor como operador, o en tu propio mundo con el mod, abre el enlace y elige un plan: una semana, un mes que se renueva solo o un año.",
   short_about: "Pagos de Allay, el asistente de IA para servidores de Minecraft, en Telegram Stars.",
   command_status: "Tus servidores, sus límites y el pago",
   command_start: "Cómo vincular un servidor",
   welcome:
-    "¡Hola! Recibo los pagos de Allay, el asistente de IA para servidores de Minecraft.\n\nPara vincular un servidor, ejecuta /allay link en él como operador y abre el enlace que te muestre.",
+    "👋 ¡Hola! Aquí se paga Allay, el asistente de IA para Minecraft, con Telegram Stars.\n\nCómo empezar:\n1️⃣ Instala Allay: el plugin en Paper o Spigot, o el mod en Fabric o NeoForge.\n2️⃣ En el juego, ejecuta /allay link: como operador o en tu propio mundo.\n3️⃣ Toca el enlace que muestra Allay. Te trae de vuelta aquí: elige un plan, paga y Allay responde al momento.\n\n🔑 Con tu propia clave de IA, Allay aquí no cuesta nada.",
+  download_button: "📥 Descargar Allay",
+  guide_button: "📖 Guía de instalación",
+  servers_button: "📋 Mis servidores",
+  howto_button: "➕ Vincular otro servidor",
+  back_button: "⬅️ Todos los servidores",
+  chatter: "🤖 Aquí me ocupo de los pagos y los servidores. Para preguntarle algo a Allay, escribe /ask en el juego.",
   claimed: "El servidor {server} está vinculado a tu cuenta de Telegram.",
   claim_failed: "Este enlace caducó o ya se usó. Vuelve a ejecutar /allay link en el servidor.",
   plans: "Elige un plan. Si pagas mientras un plan sigue activo, se suma: el límite crece al momento y la fecha final se aplaza.",
@@ -196,38 +218,43 @@ const es: Texts = {
   invoice_ready: "Aquí tienes tu factura:",
   paid: "¡Gracias! Allay está activo en el servidor {server} hasta el {date}.",
   renewed: "Tu suscripción se renovó: Allay está activo en el servidor {server} hasta el {date}.",
-  status_none: "Todavía no hay servidores vinculados a esta cuenta. Ejecuta /allay link en tu servidor como operador.",
-  status_title: "Tus servidores:",
-  status_active: "{server}: activo hasta el {date}",
-  status_inactive: "{server}: sin pagar",
+  status_title: "📋 Tus servidores. Toca uno para ver los detalles:",
+  status_active: "Activo hasta el {date}",
+  status_inactive: "Sin pagar",
   status_quota: "{percent}% del límite usado, se recarga el {date}",
-  status_quota_spent: "el límite está agotado",
-  status_renews: "se renueva solo",
+  status_quota_spent: "El límite está agotado",
+  status_renews: "Se renueva solo",
   status_solo_bound: "Solo: responde a un jugador, que ya lo tiene",
   status_solo_free: "Solo: será del primer jugador que pregunte",
-  release_button: "Pasar {server} a otro jugador",
+  release_button: "🔄 Pasar a otro jugador",
   released: "Listo: {server} será del próximo jugador que pregunte.",
   release_wait: "Podrás pasarlo a otro jugador otra vez el {date}.",
   stop_button: "Detener la renovación",
   resume_button: "Reanudar la renovación",
-  renew_button: "Pagar {server}",
+  renew_button: "💳 Pagar o ampliar",
   stopped: "Renovación detenida. Allay sigue activo hasta el {date}.",
   resumed: "La renovación vuelve a estar activa.",
   not_yours: "Este servidor está vinculado a otra cuenta de Telegram.",
   unavailable: "Ahora no se puede pagar este plan. Inténtalo otra vez desde /status.",
   refunded: "Se devolvieron {stars} ⭐ por {server}.",
   revoked: "Te devolvimos los pagos de {server}: {stars} ⭐ vuelven a tu saldo y su licencia de Allay queda revocada. Para usar Allay allí otra vez, un operador borra plugins/Allay/license.key y ejecuta /allay link.",
-  help: "/status: tus servidores, sus límites y botones para pagar\n/start: cómo vincular un servidor",
+
 };
 
 const pt: Texts = {
   about:
-    "Allay é um assistente de IA para servidores de Minecraft: os jogadores perguntam no chat, e ele responde com o que vê no jogo.\n\nAqui você paga com Telegram Stars. Execute /allay link no seu servidor como operador, abra o link e escolha um plano: uma semana, um mês que renova sozinho ou um ano.",
+    "Allay é um assistente de IA para servidores de Minecraft: os jogadores perguntam no chat, e ele responde com o que vê no jogo.\n\nAqui você paga com Telegram Stars. Execute /allay link no seu servidor como operador, ou no seu próprio mundo com o mod, abra o link e escolha um plano: uma semana, um mês que renova sozinho ou um ano.",
   short_about: "Pagamentos do Allay, o assistente de IA para servidores de Minecraft, em Telegram Stars.",
   command_status: "Seus servidores, os limites e o pagamento",
   command_start: "Como vincular um servidor",
   welcome:
-    "Olá! Eu recebo os pagamentos do Allay, o assistente de IA para servidores de Minecraft.\n\nPara vincular um servidor, execute /allay link nele como operador e abra o link que ele mostrar.",
+    "👋 Olá! Aqui você paga o Allay, o assistente de IA para Minecraft, com Telegram Stars.\n\nComo começar:\n1️⃣ Instale o Allay: o plugin no Paper ou Spigot, ou o mod no Fabric ou NeoForge.\n2️⃣ No jogo, execute /allay link: como operador ou no seu próprio mundo.\n3️⃣ Toque no link que o Allay mostrar. Ele traz você de volta aqui: escolha um plano, pague e o Allay responde na hora.\n\n🔑 Com a sua própria chave de IA, o Allay não custa nada aqui.",
+  download_button: "📥 Baixar o Allay",
+  guide_button: "📖 Guia de instalação",
+  servers_button: "📋 Meus servidores",
+  howto_button: "➕ Vincular outro servidor",
+  back_button: "⬅️ Todos os servidores",
+  chatter: "🤖 Aqui eu cuido dos pagamentos e dos servidores. Para perguntar algo ao Allay, escreva /ask no jogo.",
   claimed: "O servidor {server} está vinculado à sua conta do Telegram.",
   claim_failed: "Este link expirou ou já foi usado. Execute /allay link no servidor de novo.",
   plans: "Escolha um plano. Um pagamento com um plano ainda ativo se soma a ele: o limite cresce na hora e a data final avança.",
@@ -254,38 +281,43 @@ const pt: Texts = {
   invoice_ready: "Aqui está a sua fatura:",
   paid: "Obrigado! O Allay está ativo no servidor {server} até {date}.",
   renewed: "Sua assinatura foi renovada: o Allay está ativo no servidor {server} até {date}.",
-  status_none: "Ainda não há servidores vinculados a esta conta. Execute /allay link no seu servidor como operador.",
-  status_title: "Seus servidores:",
-  status_active: "{server}: ativo até {date}",
-  status_inactive: "{server}: não pago",
+  status_title: "📋 Seus servidores. Toque em um para ver os detalhes:",
+  status_active: "Ativo até {date}",
+  status_inactive: "Não pago",
   status_quota: "{percent}% do limite usado, recarrega em {date}",
-  status_quota_spent: "o limite acabou",
-  status_renews: "renova sozinho",
+  status_quota_spent: "O limite acabou",
+  status_renews: "Renova sozinho",
   status_solo_bound: "Solo: responde a um jogador, que já o tem",
   status_solo_free: "Solo: fica com o primeiro jogador que perguntar",
-  release_button: "Passar {server} para outro jogador",
+  release_button: "🔄 Passar para outro jogador",
   released: "Pronto: {server} fica com o próximo jogador que perguntar.",
   release_wait: "Você pode passar para outro jogador de novo em {date}.",
   stop_button: "Parar a renovação",
   resume_button: "Retomar a renovação",
-  renew_button: "Pagar {server}",
+  renew_button: "💳 Pagar ou estender",
   stopped: "Renovação parada. O Allay continua ativo até {date}.",
   resumed: "A renovação voltou a funcionar.",
   not_yours: "Este servidor está vinculado a outra conta do Telegram.",
   unavailable: "Não dá para pagar este plano agora. Tente de novo pelo /status.",
   refunded: "Foram devolvidas {stars} ⭐ por {server}.",
   revoked: "Os pagamentos de {server} foram devolvidos: {stars} ⭐ voltaram para o seu saldo, e a licença do Allay desse servidor foi revogada. Para usar o Allay lá de novo, um operador apaga plugins/Allay/license.key e executa /allay link.",
-  help: "/status: seus servidores, os limites e botões para pagar\n/start: como vincular um servidor",
+
 };
 
 const de: Texts = {
   about:
-    "Allay ist ein KI-Helfer für Minecraft-Server: Spieler fragen im Chat, und er antwortet mit dem, was er im Spiel sieht.\n\nHier bezahlst du ihn mit Telegram Stars. Führ /allay link als Operator auf deinem Server aus, öffne den Link und wähl einen Tarif: eine Woche, einen Monat, der sich selbst verlängert, oder ein Jahr.",
+    "Allay ist ein KI-Helfer für Minecraft-Server: Spieler fragen im Chat, und er antwortet mit dem, was er im Spiel sieht.\n\nHier bezahlst du ihn mit Telegram Stars. Führ /allay link als Operator auf deinem Server oder mit dem Mod in deiner eigenen Welt aus, öffne den Link und wähl einen Tarif: eine Woche, einen Monat, der sich selbst verlängert, oder ein Jahr.",
   short_about: "Zahlungen für Allay, den KI-Helfer für Minecraft-Server, in Telegram Stars.",
   command_status: "Deine Server, ihre Limits und Bezahlen",
   command_start: "Wie du einen Server verknüpfst",
   welcome:
-    "Hi! Ich nehme Zahlungen für Allay an, den KI-Helfer für Minecraft-Server.\n\nUm einen Server zu verknüpfen, führ dort als Operator /allay link aus und öffne den Link, den er dir zeigt.",
+    "👋 Hi! Hier bezahlst du Allay, den KI-Helfer für Minecraft, mit Telegram Stars.\n\nSo fängst du an:\n1️⃣ Installier Allay: das Plugin auf Paper oder Spigot oder den Mod auf Fabric oder NeoForge.\n2️⃣ Führ im Spiel /allay link aus – als Operator oder in deiner eigenen Welt.\n3️⃣ Tipp auf den Link, den Allay zeigt. Er bringt dich hierher zurück: Tarif wählen, bezahlen, und Allay antwortet sofort.\n\n🔑 Mit deinem eigenen KI-Schlüssel kostet Allay hier nichts.",
+  download_button: "📥 Allay herunterladen",
+  guide_button: "📖 Anleitung",
+  servers_button: "📋 Meine Server",
+  howto_button: "➕ Weiteren Server verknüpfen",
+  back_button: "⬅️ Alle Server",
+  chatter: "🤖 Hier kümmere ich mich um Zahlungen und Server. Um Allay etwas zu fragen, schreib im Spiel /ask.",
   claimed: "Server {server} ist mit deinem Telegram-Konto verknüpft.",
   claim_failed: "Dieser Link ist abgelaufen oder wurde schon benutzt. Führ /allay link auf dem Server noch einmal aus.",
   plans: "Wähl einen Tarif. Zahlst du, während ein Tarif läuft, kommt er obendrauf: Das Limit wächst sofort, und das Enddatum rückt nach hinten.",
@@ -312,28 +344,27 @@ const de: Texts = {
   invoice_ready: "Hier ist deine Rechnung:",
   paid: "Danke! Allay läuft auf Server {server} bis zum {date}.",
   renewed: "Dein Abo wurde verlängert: Allay läuft auf Server {server} bis zum {date}.",
-  status_none: "Mit diesem Konto ist noch kein Server verknüpft. Führ /allay link als Operator auf deinem Server aus.",
-  status_title: "Deine Server:",
-  status_active: "{server}: läuft bis zum {date}",
-  status_inactive: "{server}: nicht bezahlt",
+  status_title: "📋 Deine Server. Tipp auf einen für Details:",
+  status_active: "Aktiv bis {date}",
+  status_inactive: "Nicht bezahlt",
   status_quota: "{percent} % des Limits verbraucht, füllt sich am {date} auf",
-  status_quota_spent: "das Limit ist aufgebraucht",
-  status_renews: "verlängert sich von selbst",
+  status_quota_spent: "Das Limit ist aufgebraucht",
+  status_renews: "Verlängert sich von selbst",
   status_solo_bound: "Solo: antwortet einem Spieler, der es schon hat",
   status_solo_free: "Solo: gehört dem ersten Spieler, der fragt",
-  release_button: "{server} an einen anderen Spieler geben",
+  release_button: "🔄 An anderen Spieler geben",
   released: "Erledigt: {server} gehört dem nächsten Spieler, der fragt.",
   release_wait: "An einen anderen Spieler geben kannst du es wieder am {date}.",
   stop_button: "Verlängerung stoppen",
   resume_button: "Verlängerung fortsetzen",
-  renew_button: "{server} bezahlen",
+  renew_button: "💳 Bezahlen oder verlängern",
   stopped: "Verlängerung gestoppt. Allay läuft noch bis zum {date}.",
   resumed: "Die Verlängerung ist wieder an.",
   not_yours: "Dieser Server ist mit einem anderen Telegram-Konto verknüpft.",
   unavailable: "Dieser Tarif lässt sich gerade nicht bezahlen. Versuch es über /status noch einmal.",
   refunded: "{stars} ⭐ für {server} zurückerstattet.",
   revoked: "Deine Zahlungen für {server} sind zurückerstattet: {stars} ⭐ liegen wieder auf deinem Guthaben, und die Allay-Lizenz des Servers ist widerrufen. Damit Allay dort wieder läuft, löscht ein Operator plugins/Allay/license.key und führt /allay link aus.",
-  help: "/status: deine Server, ihre Limits und Knöpfe zum Bezahlen\n/start: wie du einen Server verknüpfst",
+
 };
 
 const LANGUAGES: Record<string, Texts> = { en, ru, es, pt, de };

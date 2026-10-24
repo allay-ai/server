@@ -56,7 +56,7 @@ export interface Update {
   callback_query?: {
     id: string;
     from: TelegramUser;
-    message?: { chat: { id: number } };
+    message?: { message_id?: number; chat: { id: number } };
     data?: string;
   };
   pre_checkout_query?: {

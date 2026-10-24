@@ -585,7 +585,9 @@ describe("the Telegram bot", () => {
     await handleUpdate(h.billing, h.telegram.api, message(`/start ${h.code}`) as any);
     await h.pay("week", "charge-1");
     await handleUpdate(h.billing, h.telegram.api, message("/status") as any);
-    expect(h.telegram.last("sendMessage").text).toContain("Moonlands SMP: active until");
+    // One server opens as its card.
+    expect(h.telegram.last("sendMessage").text).toContain("🖥 Moonlands SMP");
+    expect(h.telegram.last("sendMessage").text).toContain("🟢 Active until");
 
     await handleUpdate(h.billing, h.telegram.api, message("/refund charge-1") as any);
     expect(h.telegram.last("refundStarPayment")).toBeUndefined();
@@ -625,6 +627,49 @@ describe("the Telegram bot", () => {
       });
     expect((await post("wrong")).status).toBe(401);
     expect((await post("s3cret")).status).toBe(200);
-    expect(h.telegram.last("sendMessage").text).toContain("/status");
+    expect(h.telegram.last("sendMessage").text).toContain("/allay link");
+  });
+
+  test("someone who comes to the bot first gets the steps and the download, and any message gets an answer", async () => {
+    const h = await hosted();
+    await handleUpdate(h.billing, h.telegram.api, message("/start") as any);
+    const welcome = h.telegram.last("sendMessage");
+    expect(welcome.text).toContain("1️⃣");
+    expect(welcome.reply_markup.inline_keyboard[0].map((b: any) => b.url)).toEqual(["https://allay.chat/#install", "https://allay.chat/wiki/plugin/installation/"]);
+    await handleUpdate(h.billing, h.telegram.api, message("hello?", user(7, "ru")) as any);
+    expect(h.telegram.last("sendMessage").text).toContain("Как начать");
+    expect(h.telegram.last("sendMessage").reply_markup.inline_keyboard[0][0].url).toBe("https://allay.chat/ru/#install");
+
+    // With a server, a stray message points to it instead.
+    await handleUpdate(h.billing, h.telegram.api, message(`/start ${h.code}`) as any);
+    await handleUpdate(h.billing, h.telegram.api, message("hello?") as any);
+    expect(h.telegram.last("sendMessage").text).toContain("/ask");
+    expect(h.telegram.last("sendMessage").reply_markup.inline_keyboard.flat().map((b: any) => b.callback_data)).toEqual(["list", "howto"]);
+  });
+
+  test("several servers are a list; each opens as a card in the same message and goes back", async () => {
+    const h = await hosted();
+    await handleUpdate(h.billing, h.telegram.api, message(`/start ${h.code}`) as any);
+    await h.pay("week", "charge-1");
+    const second = await body(fetch(`${h.base}/api/v2/license`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Creative" }) }));
+    const code = new URL(second.pay_url).searchParams.get("start")!;
+    await handleUpdate(h.billing, h.telegram.api, message(`/start ${code}`) as any);
+
+    await handleUpdate(h.billing, h.telegram.api, message("/status") as any);
+    const list = h.telegram.last("sendMessage");
+    expect(list.text).toContain("🟢 Moonlands SMP");
+    expect(list.text).toContain("⚪️ Creative");
+    const buttons = list.reply_markup.inline_keyboard.flat().map((b: any) => b.callback_data);
+    expect(buttons).toEqual([`server:${h.created.license_id}`, `server:${second.license_id}`, "howto"]);
+
+    const press = (data: string) =>
+      handleUpdate(h.billing, h.telegram.api, { update_id: 3, callback_query: { id: "cb", from: user(), message: { message_id: 50, chat: { id: 7 } }, data } } as any);
+    await press(`server:${second.license_id}`);
+    const card = h.telegram.last("editMessageText");
+    expect(card).toMatchObject({ chat_id: 7, message_id: 50 });
+    expect(card.text).toContain("⚪️ Not paid");
+    expect(card.reply_markup.inline_keyboard.flat().map((b: any) => b.callback_data)).toEqual([`plans:${second.license_id}`, "list"]);
+    await press("list");
+    expect(h.telegram.last("editMessageText").text).toContain("Your servers");
   });
 });

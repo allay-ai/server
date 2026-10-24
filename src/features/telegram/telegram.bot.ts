@@ -14,6 +14,25 @@ type Button = { text: string; callback_data?: string; url?: string };
 const say = (api: TelegramApi, chat: number, text: string, buttons?: Button[][]) =>
   api.call("sendMessage", { chat_id: chat, text, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) });
 
+/** Puts [text] in place of the message a button sat on, so going between the list and a server keeps one message. */
+const show = (api: TelegramApi, chat: number, message: number | undefined, text: string, buttons: Button[][]) =>
+  message === undefined
+    ? say(api, chat, text, buttons)
+    : api.call("editMessageText", { chat_id: chat, message_id: message, text, reply_markup: { inline_keyboard: buttons } });
+
+/** The site's install section and the guide, in the visitor's language where the site has it. */
+const SITE_LOCALES = ["ru", "es"];
+const installUrl = (language: string) => `https://allay.chat/${SITE_LOCALES.includes(language) ? `${language}/` : ""}#install`;
+const GUIDE_URL = "https://allay.chat/wiki/plugin/installation/";
+
+/** What Allay is and how to link a server, with the way to the download; and to this account's servers when it has some. */
+const onboarding = (api: TelegramApi, chat: number, language: string, hasServers: boolean) => {
+  const t = textsOf(language);
+  const buttons: Button[][] = [[{ text: t.download_button, url: installUrl(language) }, { text: t.guide_button, url: GUIDE_URL }]];
+  if (hasServers) buttons.push([{ text: t.servers_button, callback_data: "list" }]);
+  return say(api, chat, t.welcome, buttons);
+};
+
 /** A license buys the plans of its kind; Solo ones only while SOLO_PLANS is on. */
 const forSale = (license: LicenseRecord): Plan[] => (kindOf(license) === "solo" && !soloOn() ? [] : plans(kindOf(license)));
 
@@ -35,55 +54,81 @@ const planList = (language: string, license: LicenseRecord) => {
 };
 
 const showPlans = (api: TelegramApi, chat: number, language: string, license: LicenseRecord) =>
-  forSale(license).length ? say(api, chat, planList(language, license), planButtons(language, license)) : say(api, chat, textsOf(language).unavailable);
+  forSale(license).length ? say(api, chat, `💳 ${planList(language, license)}`, planButtons(language, license)) : say(api, chat, `⚠️ ${textsOf(language).unavailable}`);
 
 /** /start <claim code>: ties the server to this Telegram account and offers the plans. */
 const claim = async (billing: Billing, api: TelegramApi, chat: number, from: TelegramUser, code: string) => {
   const language = languageOf(from.language_code);
   const t = textsOf(language);
   const license = await billing.licenses.claim(sha256(code), billing.now());
-  if (!license || license.revoked_at) return say(api, chat, t.claim_failed);
+  if (!license || license.revoked_at) return say(api, chat, `⌛ ${t.claim_failed}`);
   // The code came from an operator's /allay link, so whoever opens it may take the server over.
   await billing.licenses.update(license.id, { telegram_user_id: from.id, telegram_chat_id: chat, language });
   logger.info(`License ${license.id} claimed in Telegram`);
-  await say(api, chat, fill(t.claimed, { server: serverName(license) }));
+  await say(api, chat, `✅ ${fill(t.claimed, { server: serverName(license) })}`);
   return showPlans(api, chat, language, license);
 };
 
-/** /status: every server of this account, its period and limit, with buttons to pay or stop renewal. */
-const status = async (billing: Billing, api: TelegramApi, chat: number, from: TelegramUser) => {
+type Card = { license: LicenseRecord; quota: Awaited<ReturnType<typeof quotaFor>> };
+
+const cardsOf = async (billing: Billing, from: TelegramUser): Promise<Card[]> => {
+  const licenses = (await billing.licenses.ofTelegram(from.id)).filter((l) => !l.revoked_at);
+  return Promise.all(licenses.map(async (license) => ({ license, quota: await quotaFor(billing, license) })));
+};
+
+/** 🟢 paid with limit left, 🔴 paid but spent, ⚪️ not paid. */
+const mark = ({ quota }: Card) => (!quota.active || !quota.paidUntil ? "⚪️" : quota.remaining > 0 ? "🟢" : "🔴");
+
+/** One server: its state, its limit, and what can be done with it. */
+const card = (language: string, { license, quota }: Card, back: boolean) => {
+  const t = textsOf(language);
+  const lines = [`🖥 ${serverName(license)}`, ""];
+  if (!quota.active || !quota.paidUntil) {
+    lines.push(`⚪️ ${t.status_inactive}`);
+  } else {
+    lines.push(`🟢 ${fill(t.status_active, { date: dateIn(language, quota.paidUntil) })}`);
+    lines.push(
+      quota.remaining > 0 && quota.resetsAt
+        ? `📊 ${fill(t.status_quota, { percent: quota.usedPercent, date: dateIn(language, quota.resetsAt) })}`
+        : `🔴 ${t.status_quota_spent}`,
+    );
+    if (license.renews) lines.push(`🔁 ${t.status_renews}`);
+  }
+  if (kindOf(license) === "solo") lines.push(`👤 ${license.player ? t.status_solo_bound : t.status_solo_free}`);
+  const buttons: Button[][] = [[{ text: t.renew_button, callback_data: `plans:${license.id}` }]];
+  if (license.subscription_charge_id && quota.active) {
+    buttons.push([
+      license.renews
+        ? { text: `⏸ ${t.stop_button}`, callback_data: `stop:${license.id}` }
+        : { text: `▶️ ${t.resume_button}`, callback_data: `resume:${license.id}` },
+    ]);
+  }
+  if (kindOf(license) === "solo" && license.player) buttons.push([{ text: t.release_button, callback_data: `release:${license.id}` }]);
+  buttons.push(back ? [{ text: t.back_button, callback_data: "list" }] : [{ text: t.howto_button, callback_data: "howto" }]);
+  return { text: lines.join("\n"), buttons };
+};
+
+/**
+ * /status and the list button: one server opens as its card; several are a list of buttons, each opening its card in
+ * the same message. An account without servers gets the onboarding.
+ */
+const status = async (billing: Billing, api: TelegramApi, chat: number, from: TelegramUser, message?: number) => {
   const language = languageOf(from.language_code);
   const t = textsOf(language);
-  const licenses = (await billing.licenses.ofTelegram(from.id)).filter((l) => !l.revoked_at);
-  if (!licenses.length) return say(api, chat, t.status_none);
-  const lines = [t.status_title];
-  const buttons: Button[][] = [];
-  for (const license of licenses) {
-    const server = serverName(license);
-    const quota = await quotaFor(billing, license);
-    if (!quota.active || !quota.paidUntil) {
-      lines.push("", fill(t.status_inactive, { server }));
-    } else {
-      lines.push("", fill(t.status_active, { server, date: dateIn(language, quota.paidUntil) }));
-      lines.push(
-        quota.remaining > 0 && quota.resetsAt
-          ? fill(t.status_quota, { percent: quota.usedPercent, date: dateIn(language, quota.resetsAt) })
-          : t.status_quota_spent,
-      );
-      if (license.renews) lines.push(t.status_renews);
-    }
-    if (kindOf(license) === "solo") lines.push(license.player ? t.status_solo_bound : t.status_solo_free);
-    buttons.push([{ text: fill(t.renew_button, { server }), callback_data: `plans:${license.id}` }]);
-    if (kindOf(license) === "solo" && license.player) buttons.push([{ text: fill(t.release_button, { server }), callback_data: `release:${license.id}` }]);
-    if (license.subscription_charge_id && quota.active) {
-      buttons.push([
-        license.renews
-          ? { text: t.stop_button, callback_data: `stop:${license.id}` }
-          : { text: t.resume_button, callback_data: `resume:${license.id}` },
-      ]);
-    }
+  const cards = await cardsOf(billing, from);
+  if (!cards.length) return onboarding(api, chat, language, false);
+  if (cards.length === 1) {
+    const one = card(language, cards[0], false);
+    return show(api, chat, message, one.text, one.buttons);
   }
-  return say(api, chat, lines.join("\n"), buttons);
+  const lines = [t.status_title, ""];
+  for (const each of cards) {
+    const state = !each.quota.active || !each.quota.paidUntil ? t.status_inactive : each.quota.remaining > 0 ? fill(t.status_active, { date: dateIn(language, each.quota.paidUntil) }) : t.status_quota_spent;
+    lines.push(`${mark(each)} ${serverName(each.license)} · ${state}`);
+  }
+  const buttons: Button[][] = cards.map((each) => [{ text: `${mark(each)} ${serverName(each.license)}`, callback_data: `server:${each.license.id}` }]);
+  buttons.push([{ text: t.howto_button, callback_data: "howto" }]);
+  return show(api, chat, message, lines.join("\n"), buttons);
 };
 
 const invoice = async (api: TelegramApi, language: string, license: LicenseRecord, plan: Plan) => {
@@ -104,33 +149,43 @@ const callback = async (billing: Billing, api: TelegramApi, query: NonNullable<U
   const t = textsOf(language);
   const chat = query.message?.chat.id ?? query.from.id;
   const [action, a, b] = (query.data ?? "").split(":");
+  // Buttons that belong to no one license: the list of servers and the way to link one.
+  if (action === "list" || action === "howto") {
+    await api.call("answerCallbackQuery", { callback_query_id: query.id });
+    if (action === "list") return status(billing, api, chat, query.from, query.message?.message_id);
+    return onboarding(api, chat, language, true);
+  }
   const licenseId = action === "buy" ? b : a;
   const license = licenseId ? await billing.licenses.get(licenseId) : null;
   if (!license || license.revoked_at || license.telegram_user_id !== query.from.id) {
-    return api.call("answerCallbackQuery", { callback_query_id: query.id, text: t.not_yours, show_alert: true });
+    return api.call("answerCallbackQuery", { callback_query_id: query.id, text: `🔒 ${t.not_yours}`, show_alert: true });
   }
   await api.call("answerCallbackQuery", { callback_query_id: query.id });
 
+  if (action === "server") {
+    const one = card(language, { license, quota: await quotaFor(billing, license) }, true);
+    return show(api, chat, query.message?.message_id, one.text, one.buttons);
+  }
   if (action === "plans") return showPlans(api, chat, language, license);
   if (action === "buy") {
     const plan = planOf(a);
-    if (!plan || !sells(license, plan)) return say(api, chat, t.unavailable);
+    if (!plan || !sells(license, plan)) return say(api, chat, `⚠️ ${t.unavailable}`);
     const link = await invoice(api, language, license, plan);
-    return say(api, chat, t.invoice_ready, [[{ text: fill(t.pay_button, { stars: plan.stars }), url: link }]]);
+    return say(api, chat, `🧾 ${t.invoice_ready}`, [[{ text: fill(t.pay_button, { stars: plan.stars }), url: link }]]);
   }
   if (action === "release") return release(billing, api, chat, language, license);
   if (action === "stop" || action === "resume") {
     const payment = license.subscription_charge_id ? await billing.licenses.payment(license.subscription_charge_id) : null;
-    if (!payment) return say(api, chat, t.unavailable);
+    if (!payment) return say(api, chat, `⚠️ ${t.unavailable}`);
     await api.call("editUserStarSubscription", {
       user_id: payment.telegram_user_id,
       telegram_payment_charge_id: payment.charge_id,
       is_canceled: action === "stop",
     });
     await billing.licenses.update(license.id, action === "resume" ? { renews: true, stopped_at: undefined } : { renews: false, stopped_at: billing.now() });
-    if (action === "resume") return say(api, chat, t.resumed);
+    if (action === "resume") return say(api, chat, `▶️ ${t.resumed}`);
     const quota = await quotaFor(billing, license);
-    return say(api, chat, fill(t.stopped, { date: quota.paidUntil ? dateIn(language, quota.paidUntil) : "—" }));
+    return say(api, chat, `⏸ ${fill(t.stopped, { date: quota.paidUntil ? dateIn(language, quota.paidUntil) : "—" })}`);
   }
 };
 
@@ -141,13 +196,13 @@ const callback = async (billing: Billing, api: TelegramApi, query: NonNullable<U
 const release = async (billing: Billing, api: TelegramApi, chat: number, language: string, license: LicenseRecord) => {
   const t = textsOf(language);
   const server = serverName(license);
-  if (kindOf(license) !== "solo" || !license.player) return say(api, chat, fill(t.released, { server }));
+  if (kindOf(license) !== "solo" || !license.player) return say(api, chat, `🔄 ${fill(t.released, { server })}`);
   const days = settings.get("SOLO_RELEASE_DAYS");
   const next = license.released_at ? new Date(license.released_at.getTime() + days * 86_400_000) : null;
-  if (next && next > billing.now()) return say(api, chat, fill(t.release_wait, { date: dateIn(language, next) }));
+  if (next && next > billing.now()) return say(api, chat, `⏳ ${fill(t.release_wait, { date: dateIn(language, next) })}`);
   await billing.licenses.update(license.id, { player: undefined, player_bound_at: undefined, released_at: billing.now() });
   logger.info(`Solo license ${license.id} handed to its next player in the bot`);
-  return say(api, chat, fill(t.released, { server }));
+  return say(api, chat, `🔄 ${fill(t.released, { server })}`);
 };
 
 const parsePayload = (payload: string) => {
@@ -202,7 +257,9 @@ const paid = async (billing: Billing, api: TelegramApi, chat: number, from: Tele
   const language = license.language ?? languageOf(from.language_code);
   const t = textsOf(language);
   const renewal = recurring && !payment.is_first_recurring;
-  await say(api, chat, fill(renewal ? t.renewed : t.paid, { server: serverName(license), date: dateIn(language, after.paidUntil ?? now) }));
+  await say(api, chat, `${renewal ? "🔁" : "🎉"} ${fill(renewal ? t.renewed : t.paid, { server: serverName(license), date: dateIn(language, after.paidUntil ?? now) })}`, [
+    [{ text: t.servers_button, callback_data: "list" }],
+  ]);
 };
 
 /** Takes a payment back from the books: a refund we made, or one Telegram reports. */
@@ -277,7 +334,7 @@ export const refundLicense = async (billing: Billing, api: TelegramApi, license:
   logger.info(`License ${license.id} revoked after refunding ${refunded} payments`);
   if (stars > 0 && license.telegram_chat_id !== undefined) {
     const language = license.language ?? "en";
-    await say(api, license.telegram_chat_id, fill(textsOf(language).revoked, { stars, server: serverName(license) })).catch(() => undefined);
+    await say(api, license.telegram_chat_id, `↩️ ${fill(textsOf(language).revoked, { stars, server: serverName(license) })}`).catch(() => undefined);
   }
   return { stars, payments: refunded };
 };
@@ -303,19 +360,24 @@ export const handleUpdate = async (billing: Billing, api: TelegramApi, update: U
   // Payments and claims belong to one person, so the bot works in private chats only.
   if (message.chat.type !== "private" || !message.text) return;
   const command = message.text.match(/^\/(\w+)(?:@\w+)?(?:\s+(\S+))?/);
-  const t = textsOf(languageOf(message.from.language_code));
+  const language = languageOf(message.from.language_code);
+  const t = textsOf(language);
+  const hasServers = async () => (await billing.licenses.ofTelegram(message.from!.id)).some((l) => !l.revoked_at);
   switch (command?.[1]) {
     case "start":
       if (command[2]) return void (await claim(billing, api, chat, message.from, command[2]));
-      await say(api, chat, t.welcome);
-      if (!(await billing.licenses.ofTelegram(message.from.id)).length) return;
-      return void (await status(billing, api, chat, message.from));
+      return void (await onboarding(api, chat, language, await hasServers()));
     case "status":
       return void (await status(billing, api, chat, message.from));
     case "refund":
       if (command[2]) return void (await refund(billing, api, chat, message.from, command[2]));
       return;
     default:
-      return void (await say(api, chat, t.help));
+      // Anything else: the steps for someone who came here first, the way to their servers for the rest.
+      if (!(await hasServers())) return void (await onboarding(api, chat, language, false));
+      return void (await say(api, chat, t.chatter, [
+        [{ text: t.servers_button, callback_data: "list" }],
+        [{ text: t.howto_button, callback_data: "howto" }],
+      ]));
   }
 };
