@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.18.1
+
+Nothing changes for the plugin's protocol.
+
+- 🏷️ **Plugins' items by their own names.** The model writes a mod's or plugin's item as a tool names it, in the player's language, and looks up a name it lacks with `search_items` instead of translating the id itself: Red Bull's taurine is «Таурин», not a guess like «таврин». Allay for Minecraft 6.17 names such items in the language Allay answers in.
+
 ## 6.18.0
 
 Allay knows this server's commands. Plugins before Allay for Minecraft 6.16 don't offer the new tool, and nothing changes for them.
