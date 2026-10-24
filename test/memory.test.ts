@@ -51,7 +51,7 @@ describe("system prompt", () => {
   });
 
   test("tells the model to answer in the question's language", () => {
-    expect(systemPrompt(context)).toContain("Answer in the language the player wrote this question in");
+    expect(systemPrompt(context)).toContain("reply in the language of the player's latest message");
     expect(systemPrompt({ ...context, mode: "askx" })).toContain("Write `error` in the language the player wrote the request in");
     expect(systemPrompt({ ...context, platform: "telegram" })).toContain("Answer in the language the player wrote this message in");
   });
