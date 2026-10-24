@@ -7,7 +7,7 @@ The “Release” workflow takes the notes for a version from its section here, 
 Ready for Allay as a Fabric and NeoForge mod, on a server and in a player's own game. Nothing changes for servers that run the plugin.
 
 - 🧩 **Where Allay runs.** A question, `PUT /api/v2/server`, and `POST /api/v2/license` may say what Allay runs on (`loader`: `spigot`, `fabric`, `neoforge`) and where (`side`: `server`, `integrated` for a player's own world, `client` for a mod on a server without Allay). The model hears where it is and that a modded game has more blocks and items; the admin panel's Servers page shows both.
-- 👤 **Solo licenses.** A license made in a player's own game becomes Solo while `SOLO_PLANS` is on: it answers its first player only, kept by pseudonym, and anyone else gets `SOLO_PLAYER_TAKEN`. The bot sells it Solo plans (week, month, year, as settings `PLAN_SOLO_*`), and its payer hands it to another player in `/status` once every `SOLO_RELEASE_DAYS`. In the panel an owner makes a license Solo or a server's, and an admin hands a Solo license to the next player. `SOLO_PLANS` is off: nothing is sold until the mods ship.
+- 👤 **Solo licenses.** A license made in a player's own game becomes Solo while `SOLO_PLANS` is on: it answers its first player only, kept by pseudonym, and anyone else gets `SOLO_PLAYER_TAKEN`. The bot sells it Solo plans (week, month, year, as settings `PLAN_SOLO_*`), and its payer hands it to another player in `/status` once every `SOLO_RELEASE_DAYS`. In the panel an owner makes a license Solo or a server's, and an admin hands a Solo license to the next player. `SOLO_PLANS` is off: nothing is sold until it's turned on in the panel.
 
 ## 6.11.0
 
