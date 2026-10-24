@@ -1,3 +1,4 @@
+import type { ExpansionInfo, ExpansionTool } from "../features/tools/expansion.tools";
 import type { ByokProvider } from "../infrastructure/providers/openrouter/openrouter.client";
 
 /** ask answers a question, askx turns a request into commands, task is one wake of an automation agent (since 5.5). */
@@ -101,6 +102,10 @@ export interface RunContext {
   task?: TaskInfo;
   /** Ask mode: the asker's running automations, so answers to them can be passed on. */
   tasks?: RunningTask[];
+  /** Since 6.14: tools other plugins and mods add, as the plugin offers them to this asker. */
+  expansionTools?: ExpansionTool[];
+  /** Since 6.14: the expansions on the server, with the lines each adds to the prompt. */
+  expansions?: ExpansionInfo[];
 }
 
 export interface Usage {

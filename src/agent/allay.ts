@@ -8,6 +8,7 @@ import type { Emit } from "../features/chat/chat.events";
 import { settings } from "../features/settings/settings";
 import { exactCalculationsTool } from "../features/tools/exact-calculations.tool";
 import { gameTools, offeredTools } from "../features/tools/game.tools";
+import { expansionTools, offeredExpansionTools, promptName } from "../features/tools/expansion.tools";
 import { DEATHS_PER_PAGE } from "../features/tools/deaths";
 import { memoryTools } from "../features/tools/memory.tools";
 import { type PerplexitySearch, searchWebTool } from "../features/tools/search-web.tool";
@@ -258,6 +259,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
     modelId = model.modelId;
     const offered = offeredTools(context.tools, context.player?.op === true, context.mode, context.visibility, context.task?.depth ?? 0, context.task?.kind);
+    const expansions = offeredExpansionTools(context.expansionTools ?? [], context.player?.op === true, context.mode);
     const memories = await loadMemories(deps, context);
     // askx turns one request into commands; earlier chat would only confuse it, as in v1. A task reads its own thread.
     let session = context.mode === "askx" ? { messages: [] } : await deps.history.load(thread(context));
@@ -266,7 +268,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       await compact(context, deps, spend, maxTokens(), options);
       session = await deps.history.load(thread(context));
     }
-    const instructions = systemPrompt({ ...context, tools: offered }, { memories, summary: session.summary });
+    const instructions = systemPrompt({ ...context, tools: offered, expansionTools: expansions }, { memories, summary: session.summary });
     const agent = new Agent({ id: "allay", name: "Allay", instructions, model });
     if (deps.mastra) agent.__registerMastra(deps.mastra);
     if (hearsOutcomes(context)) outcomes = await deps.history.takeOutcomes(ownerOf(context));
@@ -296,6 +298,10 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
           ? {}
           : { web: { search_web: searchWebTool(deps.models, { provider: context.provider, platform: context.platform, emit, spend, perplexity: deps.perplexity }) } }),
         math: { exact_calculations: exactCalculationsTool({ emit }) },
+        // After Allay's own tools, so their fixed order keeps the provider's prompt cache.
+        ...(expansions.length
+          ? { expansions: expansionTools(expansions, runId, deps.bridge, Object.fromEntries((context.expansions ?? []).map((e) => [e.id, promptName(e.name)]))) }
+          : {}),
         ...(context.mode === "ask" && remembers(context.userId)
           ? { memory: memoryTools(deps.memories, { owner: ownerOf(context), emit, position: context.player?.position }) }
           : {}),

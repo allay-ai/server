@@ -3,6 +3,7 @@ import { DIMENSIONS, LOADERS, type RunContext, SIDES, TASK_KINDS, TASK_STATES } 
 import type { ProviderBlock } from "../billing/gate";
 import { API_ERRORS, type ApiError, apierror } from "../../shared/types/errors";
 import { USER_ID } from "../../shared/types/owner";
+import { expansionSchema, expansionToolSchema, MAX_EXPANSION_PROMPT, MAX_EXPANSION_TOOLS, valid } from "../tools/expansion.tools";
 
 const text = (max: number) => z.string().max(max).optional();
 const taskId = z.string().regex(/^[a-z0-9]{1,16}$/);
@@ -60,6 +61,9 @@ export const chatRequestSchema = z.object({
     .array(z.object({ id: taskId, name: z.string().min(1).max(40), state: z.enum(TASK_STATES), question: text(200) }))
     .max(4)
     .optional(),
+  // Since 6.14, from plugin 6.12: other plugins' and mods' tools and prompt lines. A bad entry is dropped, not refused.
+  expansion_tools: z.array(z.unknown()).max(64).optional().catch(undefined),
+  expansions: z.array(z.unknown()).max(32).optional().catch(undefined),
 });
 
 export const toolAnswerSchema = z.union([
@@ -69,6 +73,18 @@ export const toolAnswerSchema = z.union([
 ]);
 
 const LIMITS = { ask: 1000, askx: 500, task: 2000 } as const;
+
+/** What expansions a request brings: none to an automation agent, which works from Allay's own tools only. */
+const expansionsOf = (request: z.infer<typeof chatRequestSchema>) => {
+  if (request.mode === "task") return {};
+  const tools = valid(expansionToolSchema, request.expansion_tools, MAX_EXPANSION_TOOLS);
+  const expansions = valid(expansionSchema, request.expansions, 16).map((e) => ({ ...e, prompt: e.prompt?.trim().slice(0, MAX_EXPANSION_PROMPT) || undefined }));
+  const names = new Set<string>();
+  return {
+    ...(tools.length ? { expansionTools: tools.filter((tool) => !names.has(tool.name) && names.add(tool.name)) } : {}),
+    ...(expansions.length ? { expansions } : {}),
+  };
+};
 
 /** Validates a v2 body into a run context, or explains what's wrong with it in v1 error codes. Who pays is decided later. */
 export const parseChatRequest = (
@@ -105,6 +121,7 @@ export const parseChatRequest = (
       tools: [...new Set(request.tools)],
       ...(request.mode === "task" ? { task: request.task } : {}),
       ...(request.mode !== "askx" && request.tasks?.length ? { tasks: request.tasks } : {}),
+      ...expansionsOf(request),
     },
     provider: request.provider,
   };
