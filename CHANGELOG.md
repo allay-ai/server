@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.15.0
+
+Allay looks up several things in one step. Plugins before Allay for Minecraft 6.13 keep working: the backend asks them one name at a time, side by side.
+
+- 🔎 **Several names at once.** `search_items` takes `queries`, up to 8 names, and `get_recipes` takes `items`, up to 5: a beacon and its parts, or a name with its other spellings, cost the model one step instead of one each. Each name's answer comes back under its query, in the order asked, a potion among the items brewed as before; with several, 5 matches and 3 recipes each keep the answer short. Plugin 6.13 answers the whole list in one call; docs/protocol-v2.md has the fields.
+
 ## 6.14.0
 
 Allay answers from what the server really has, and other plugins and mods can extend it. Plugins before Allay for Minecraft 6.12 keep working as before.
