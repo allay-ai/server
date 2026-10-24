@@ -395,3 +395,17 @@ describe("anvil and brewing arguments", () => {
     expect(input("get_recipes").safeParse({ items: ["a", "b", "c", "d", "e", "f"] }).success).toBe(false);
   });
 });
+
+describe("memories in askx", () => {
+  test("askx finds remembered places but never adds or deletes", async () => {
+    const { memoryTools } = await import("../src/features/tools/memory.tools");
+    const { memoryMemories } = await import("../src/infrastructure/memory/memory");
+    const store = memoryMemories();
+    const owner = { tenant: "self", userId: "p1" };
+    await store.add(owner, "my base", { x: 10, y: 64, z: -20, dimension: "overworld" });
+    const tools = memoryTools(store, { owner, emit: () => {}, readOnly: true });
+    expect(await run(tools.memories, { action: "find", query: "base" })).toMatchObject({ matched: 1, memories: [{ text: "my base", x: 10, z: -20 }] });
+    expect(await run(tools.memories, { action: "add", text: "a cave here", here: true })).toMatchObject({ error: expect.stringContaining("Only reading") });
+    expect((await store.list(owner)).length).toBe(1);
+  });
+});

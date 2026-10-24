@@ -288,7 +288,6 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       toolsets: {
         game: gameTools(offered, runId, deps.bridge, {
           offered: context.tools,
-          readOnly: context.mode === "askx",
           ...(remembers(context.userId)
             ? { deaths: { page: (page: number) => deps.deaths.page(ownerOf(context), page, DEATHS_PER_PAGE), timezone: context.timezone, position: context.player?.position } }
             : {}),
@@ -298,12 +297,13 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
           ? {}
           : { web: { search_web: searchWebTool(deps.models, { provider: context.provider, platform: context.platform, emit, spend, perplexity: deps.perplexity }) } }),
         math: { exact_calculations: exactCalculationsTool({ emit }) },
+        // askx only reads them: a remembered place is where “take me to my base” goes.
+        ...((context.mode === "ask" || context.mode === "askx") && remembers(context.userId)
+          ? { memory: memoryTools(deps.memories, { owner: ownerOf(context), emit, position: context.player?.position, readOnly: context.mode === "askx" }) }
+          : {}),
         // After Allay's own tools, so their fixed order keeps the provider's prompt cache.
         ...(expansions.length
           ? { expansions: expansionTools(expansions, runId, deps.bridge, Object.fromEntries((context.expansions ?? []).map((e) => [e.id, promptName(e.name)]))) }
-          : {}),
-        ...(context.mode === "ask" && remembers(context.userId)
-          ? { memory: memoryTools(deps.memories, { owner: ownerOf(context), emit, position: context.player?.position }) }
           : {}),
       },
     };

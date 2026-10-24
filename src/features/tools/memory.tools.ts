@@ -32,7 +32,7 @@ const distanceTo = (memory: Memory, position?: Position) => (memory.place ? (bea
  * memories: the agent keeps lasting facts about the asking player, and only them, and since 6.9 the places they
  * want kept too, what the plugin's notebook held before.
  */
-export const memoryTools = (memories: MemoryStore, options: { owner: Owner; emit: Emit; position?: Position }) => {
+export const memoryTools = (memories: MemoryStore, options: { owner: Owner; emit: Emit; position?: Position; readOnly?: boolean }) => {
   const status = (name: string, args: object) => {
     const callId = crypto.randomUUID();
     return (state: "started" | "finished" | "failed", summary?: Summary) =>
@@ -75,6 +75,7 @@ export const memoryTools = (memories: MemoryStore, options: { owner: Owner; emit
       strict: false,
       execute: async (input) => {
         const action = input.action ?? "find";
+        if (options.readOnly && action !== "find") return { error: "Only reading here: this request turns into commands" };
         const report = status("memories", input);
         report("started");
         try {
