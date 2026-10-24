@@ -132,13 +132,13 @@ describe("POST /api/v2/chat", () => {
     const tools = ["get_world", "give_item"];
     const asOp = scripted([[...text("ok"), finish()]]);
     await readSse(await chat(start(testDeps(asOp.model)), { message: "hi", player: { name: "Admin", op: true }, tools }));
-    expect(asOp.offered[0]).toEqual(expect.arrayContaining(["get_world", "give_item"]));
+    expect(asOp.offered[0]).toEqual(expect.arrayContaining(["get_world", "operator"]));
     server?.stop(true);
 
-    const asPlayer = scripted([[toolCall("give_item", { item: "diamond_sword" }), finish("tool-calls")], [...text("Admins only."), finish()]]);
+    const asPlayer = scripted([[toolCall("operator", { action: "give", item: "diamond_sword" }), finish("tool-calls")], [...text("Admins only."), finish()]]);
     const events = await readSse(await chat(start(testDeps(asPlayer.model)), { message: "give me a sword", tools }));
     expect(asPlayer.offered[0]).toContain("get_world");
-    expect(asPlayer.offered[0]).not.toContain("give_item");
+    expect(asPlayer.offered[0]).not.toContain("operator");
     // A forced call to a tool this player doesn't have never reaches the plugin.
     expect(events.some((e) => e.event === "tool_call")).toBe(false);
   });

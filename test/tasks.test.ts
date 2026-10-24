@@ -96,7 +96,7 @@ describe("task tools", () => {
 
   test("the chat starts and steers tasks; the automation tools stay with the agents", () => {
     expect(offeredTools(every, true, "ask")).toEqual([
-      "inventory", "look_at", "get_nearby_players", "show_marks", "write_book", "start_task", "message_task", "cancel_task", "give_item",
+      "inventory", "look_at", "get_nearby_players", "show_marks", "write_book", "start_task", "message_task", "cancel_task", "operator",
     ]);
   });
 

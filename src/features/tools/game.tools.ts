@@ -387,7 +387,7 @@ const results = (names: string[], answers: ToolAnswer[]): ToolAnswer => ({
   result: { results: answers.map((answer, at) => ({ query: names[at], ...(answer.ok ? (isObject(answer.result) ? answer.result : { result: answer.result }) : { error: answer.error }) })) },
 });
 
-const composites: Partial<Record<keyof typeof definitions, Composite>> = {
+const composites: Partial<Record<string, Composite>> = {
   get_player_status: {
     uses: ["get_player_status", "get_xp_info"],
     run: async (input, call) => {
@@ -658,52 +658,52 @@ const automationDefinitions = {
 
 /** Tools that change the game for the asker; only operators get them, and only when the admin enables them. */
 const operatorDefinitions = {
-  give_item: {
-    description: "Gives the asking operator an item, optionally enchanted; what doesn't fit drops at their feet.",
-    input: z.object({
-      item: z.string().min(1).max(64).describe("Item id, such as diamond_sword"),
-      count: z.number().int().min(1).max(576).optional(),
-      enchantments: z.record(z.string().max(64), z.number().int().min(1).max(255)).optional().describe("Enchantment id to level, such as { sharpness: 5 }"),
-    }),
-  },
-  teleport: {
+  operator: {
     description:
-      "Teleports the asking operator either to x, y, z (optionally in another dimension: overworld, the_nether, the_end) or to an online player by name.",
-    // Function parameters must be one flat object for OpenAI-style tool calling, so no union here.
+      "Changes the game for the asking operator, only when they explicitly ask. action give: item (an id like diamond_sword), count, and enchantments; what doesn't fit drops at their feet. teleport: to x, y, z (and dimension), or to an online player by name. gamemode: mode. heal: health, food, and saturation full, fire out. effect: a potion effect with seconds and level, or clear true to remove all. time: day, noon, night, midnight, or a tick 0–23999. weather: clear, rain, or thunder, for seconds. Returns what was done.",
+    // One flat object: tool parameters can't be a union.
     input: z.object({
-      x: z.number().optional(),
+      action: z.enum(["give", "teleport", "gamemode", "heal", "effect", "time", "weather"]),
+      item: z.string().min(1).max(64).optional().describe("give: the item id"),
+      count: z.number().int().min(1).max(576).optional().describe("give: how many"),
+      enchantments: z.record(z.string().max(64), z.number().int().min(1).max(255)).optional().describe("give: enchantment id to level, such as { sharpness: 5 }"),
+      x: z.number().optional().describe("teleport: with y and z, the spot"),
       y: z.number().optional(),
       z: z.number().optional(),
-      dimension: z.enum(["overworld", "the_nether", "the_end"]).optional(),
-      player: z.string().min(1).max(32).optional(),
+      dimension: dimension.optional().describe("teleport: only for another dimension"),
+      player: z.string().min(1).max(32).optional().describe("teleport: an online player's name, instead of x, y, z"),
+      mode: z.enum(["survival", "creative", "adventure", "spectator"]).optional().describe("gamemode"),
+      effect: z.string().min(1).max(64).optional().describe("effect: the effect id, such as night_vision"),
+      level: z.number().int().min(1).max(10).optional().describe("effect"),
+      clear: z.boolean().optional().describe("effect: remove all their effects"),
+      time: z.union([z.enum(["day", "noon", "night", "midnight"]), z.number().int().min(0).max(23999)]).optional().describe("time"),
+      weather: z.enum(["clear", "rain", "thunder"]).optional().describe("weather"),
+      seconds: z.number().int().min(1).max(86400).optional().describe("effect (at most 3600) and weather: how long"),
     }),
-  },
-  set_gamemode: {
-    description: "Changes the asking operator's game mode.",
-    input: z.object({ mode: z.enum(["survival", "creative", "adventure", "spectator"]) }),
-  },
-  heal: {
-    description: "Restores the asking operator's health, food, and saturation, and puts out fire.",
-    input: z.object({}),
-  },
-  apply_effect: {
-    description: "Gives the asking operator a potion effect, or clears all their effects when clear is true.",
-    input: z.object({
-      effect: z.string().min(1).max(64).optional().describe("Effect id, such as night_vision"),
-      seconds: z.number().int().min(1).max(3600).optional(),
-      level: z.number().int().min(1).max(10).optional(),
-      clear: z.boolean().optional(),
-    }),
-  },
-  set_time: {
-    description: "Sets the time in the asking operator's world.",
-    input: z.object({ time: z.union([z.enum(["day", "noon", "night", "midnight"]), z.number().int().min(0).max(23999)]) }),
-  },
-  set_weather: {
-    description: "Sets the weather in the asking operator's world.",
-    input: z.object({ weather: z.enum(["clear", "rain", "thunder"]), seconds: z.number().int().min(1).max(86400).optional() }),
   },
 } as const;
+
+/** What each action of operator runs in the plugin, and the arguments it takes there. */
+const OPERATOR_ACTIONS: Readonly<Record<string, { tool: string; args: readonly string[]; needs?: string }>> = {
+  give: { tool: "give_item", args: ["item", "count", "enchantments"], needs: "item" },
+  teleport: { tool: "teleport", args: ["x", "y", "z", "dimension", "player"] },
+  gamemode: { tool: "set_gamemode", args: ["mode"], needs: "mode" },
+  heal: { tool: "heal", args: [] },
+  effect: { tool: "apply_effect", args: ["effect", "seconds", "level", "clear"] },
+  time: { tool: "set_time", args: ["time"], needs: "time" },
+  weather: { tool: "set_weather", args: ["weather", "seconds"], needs: "weather" },
+};
+
+/** The plugin's seven operator tools as one the model sees only when the asker is an operator (since 6.17). */
+composites.operator = {
+  uses: Object.values(OPERATOR_ACTIONS).map((action) => action.tool),
+  run: (input, call) => {
+    const action = OPERATOR_ACTIONS[input.action as string];
+    if (!action) return Promise.resolve({ ok: false, error: "Unknown action" });
+    if (action.needs && input[action.needs] === undefined) return Promise.resolve({ ok: false, error: `${input.action} needs ${action.needs}` });
+    return call(action.tool, Object.fromEntries(action.args.filter((key) => input[key] !== undefined).map((key) => [key, input[key]])));
+  },
+};
 
 const allDefinitions = { ...definitions, ...automationDefinitions, ...operatorDefinitions };
 
@@ -713,7 +713,7 @@ export const AUTOMATION_TOOLS = Object.keys(automationDefinitions) as GameToolNa
 export const OPERATOR_TOOLS = Object.keys(operatorDefinitions) as GameToolName[];
 
 /** The plugin's tools behind a tool the model sees. */
-const usesOf = (name: GameToolName): readonly string[] => composites[name as keyof typeof definitions]?.uses ?? [name];
+const usesOf = (name: GameToolName): readonly string[] => composites[name]?.uses ?? [name];
 
 /** Every tool name a current plugin offers, for tests and docs. */
 export const PLUGIN_TOOLS: string[] = [...new Set((Object.keys(allDefinitions) as GameToolName[]).flatMap(usesOf))];
@@ -825,7 +825,7 @@ export const gameTools = (names: GameToolName[], runId: string, bridge: ToolBrid
   return Object.fromEntries(
     names.map((name) => {
       const definition = allDefinitions[name];
-      const composite = composites[name as keyof typeof definitions];
+      const composite = composites[name];
       const tool = createTool({
         id: name,
         description: definition.description,

@@ -5,7 +5,7 @@ import { GAME_TOOLS, gameTools, OPERATOR_TOOLS, offeredTools } from "../src/feat
 
 describe("offered game tools", () => {
   test("operators get the operator tools the plugin offers", () => {
-    expect(offeredTools(["get_world", "give_item", "heal"], true)).toEqual(["get_world", "give_item", "heal"]);
+    expect(offeredTools(["get_world", "give_item", "heal"], true)).toEqual(["get_world", "operator"]);
   });
 
   test("everyone else loses them, even when a plugin offers them", () => {
@@ -23,7 +23,7 @@ describe("offered game tools", () => {
 
   test("player and operator tools don't overlap", () => {
     expect(GAME_TOOLS.filter((name) => OPERATOR_TOOLS.includes(name))).toEqual([]);
-    expect(OPERATOR_TOOLS).toContain("give_item");
+    expect(OPERATOR_TOOLS).toEqual(["operator"]);
   });
 
   test("askx can't change settings", () => {
@@ -107,6 +107,20 @@ describe("merged tools", () => {
       { name: "get_surroundings", args: { radius: 6 } },
       { name: "get_light_spawn_check", args: { radius: 12 } },
       { name: "scan_farm", args: {} },
+    ]);
+  });
+
+  test("operator runs each action as the plugin's own tool, with only its arguments", async () => {
+    const { bridge, calls } = fakeBridge({ give_item: { ok: true, result: { given: 1 } }, set_time: { ok: true, result: {} }, heal: { ok: true, result: {} } });
+    const tools = gameTools(["operator"], "run", bridge);
+    expect(await run(tools.operator, { action: "give", item: "diamond_sword", count: 1, mode: "creative" })).toEqual({ given: 1 });
+    await run(tools.operator, { action: "time", time: "night" });
+    await run(tools.operator, { action: "heal" });
+    expect(await run(tools.operator, { action: "gamemode" })).toMatchObject({ error: "gamemode needs mode" });
+    expect(calls).toEqual([
+      { name: "give_item", args: { item: "diamond_sword", count: 1 } },
+      { name: "set_time", args: { time: "night" } },
+      { name: "heal", args: {} },
     ]);
   });
 
