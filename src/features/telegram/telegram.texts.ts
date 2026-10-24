@@ -59,7 +59,7 @@ const en: Texts = {
   command_status: "Your servers, their limits, and payment",
   command_start: "How to link a server",
   welcome:
-    "👋 Hi! Here you pay for Allay, the AI helper for Minecraft, with Telegram Stars.\n\nHow to start:\n1️⃣ Install Allay: the plugin on Paper or Spigot, or the mod on Fabric or NeoForge.\n2️⃣ In the game, run /allay link: as an operator, or in your own world.\n3️⃣ Tap the link Allay shows. It brings you back here: pick a plan, pay, and Allay answers right away.\n\n🔑 With your own AI key, Allay costs nothing here.",
+    "👋 Hi! Here you pay for Allay, the AI helper for Minecraft, with Telegram Stars.\n\nHow to start:\n1️⃣ Install Allay: the plugin on Paper or Spigot, or the mod on Fabric or NeoForge.\n\n2️⃣ In the game, run /allay link: as an operator, or in your own world.\n\n3️⃣ Tap the link Allay shows. It brings you back here: pick a plan, pay, and Allay answers right away.\n\n🔑 With your own AI key, Allay costs nothing here.",
   download_button: "📥 Download Allay",
   guide_button: "📖 Setup guide",
   servers_button: "📋 My servers",
@@ -122,7 +122,7 @@ const ru: Texts = {
   command_status: "Ваши серверы, их лимиты и оплата",
   command_start: "Как привязать сервер",
   welcome:
-    "👋 Привет! Здесь оплачивают Allay — ИИ-помощника для Minecraft — звёздами Telegram.\n\nКак начать:\n1️⃣ Установите Allay: плагин на Paper или Spigot либо мод на Fabric или NeoForge.\n2️⃣ В игре выполните /allay link — от имени оператора или в своём мире.\n3️⃣ Нажмите на ссылку, которую покажет Allay. Она вернёт вас сюда: выберите тариф, оплатите, и Allay сразу начнёт отвечать.\n\n🔑 Со своим ключом ИИ Allay здесь бесплатен.",
+    "👋 Привет! Здесь оплачивают Allay — ИИ-помощника для Minecraft — звёздами Telegram.\n\nКак начать:\n1️⃣ Установите Allay: плагин на Paper или Spigot либо мод на Fabric или NeoForge.\n\n2️⃣ В игре выполните /allay link — от имени оператора или в своём мире.\n\n3️⃣ Нажмите на ссылку, которую покажет Allay. Она вернёт вас сюда: выберите тариф, оплатите, и Allay сразу начнёт отвечать.\n\n🔑 Со своим ключом ИИ Allay здесь бесплатен.",
   download_button: "📥 Скачать Allay",
   guide_button: "📖 Инструкция",
   servers_button: "📋 Мои серверы",
@@ -185,7 +185,7 @@ const es: Texts = {
   command_status: "Tus servidores, sus límites y el pago",
   command_start: "Cómo vincular un servidor",
   welcome:
-    "👋 ¡Hola! Aquí se paga Allay, el asistente de IA para Minecraft, con Telegram Stars.\n\nCómo empezar:\n1️⃣ Instala Allay: el plugin en Paper o Spigot, o el mod en Fabric o NeoForge.\n2️⃣ En el juego, ejecuta /allay link: como operador o en tu propio mundo.\n3️⃣ Toca el enlace que muestra Allay. Te trae de vuelta aquí: elige un plan, paga y Allay responde al momento.\n\n🔑 Con tu propia clave de IA, Allay aquí no cuesta nada.",
+    "👋 ¡Hola! Aquí se paga Allay, el asistente de IA para Minecraft, con Telegram Stars.\n\nCómo empezar:\n1️⃣ Instala Allay: el plugin en Paper o Spigot, o el mod en Fabric o NeoForge.\n\n2️⃣ En el juego, ejecuta /allay link: como operador o en tu propio mundo.\n\n3️⃣ Toca el enlace que muestra Allay. Te trae de vuelta aquí: elige un plan, paga y Allay responde al momento.\n\n🔑 Con tu propia clave de IA, Allay aquí no cuesta nada.",
   download_button: "📥 Descargar Allay",
   guide_button: "📖 Guía de instalación",
   servers_button: "📋 Mis servidores",
@@ -248,7 +248,7 @@ const pt: Texts = {
   command_status: "Seus servidores, os limites e o pagamento",
   command_start: "Como vincular um servidor",
   welcome:
-    "👋 Olá! Aqui você paga o Allay, o assistente de IA para Minecraft, com Telegram Stars.\n\nComo começar:\n1️⃣ Instale o Allay: o plugin no Paper ou Spigot, ou o mod no Fabric ou NeoForge.\n2️⃣ No jogo, execute /allay link: como operador ou no seu próprio mundo.\n3️⃣ Toque no link que o Allay mostrar. Ele traz você de volta aqui: escolha um plano, pague e o Allay responde na hora.\n\n🔑 Com a sua própria chave de IA, o Allay não custa nada aqui.",
+    "👋 Olá! Aqui você paga o Allay, o assistente de IA para Minecraft, com Telegram Stars.\n\nComo começar:\n1️⃣ Instale o Allay: o plugin no Paper ou Spigot, ou o mod no Fabric ou NeoForge.\n\n2️⃣ No jogo, execute /allay link: como operador ou no seu próprio mundo.\n\n3️⃣ Toque no link que o Allay mostrar. Ele traz você de volta aqui: escolha um plano, pague e o Allay responde na hora.\n\n🔑 Com a sua própria chave de IA, o Allay não custa nada aqui.",
   download_button: "📥 Baixar o Allay",
   guide_button: "📖 Guia de instalação",
   servers_button: "📋 Meus servidores",
@@ -311,7 +311,7 @@ const de: Texts = {
   command_status: "Deine Server, ihre Limits und Bezahlen",
   command_start: "Wie du einen Server verknüpfst",
   welcome:
-    "👋 Hi! Hier bezahlst du Allay, den KI-Helfer für Minecraft, mit Telegram Stars.\n\nSo fängst du an:\n1️⃣ Installier Allay: das Plugin auf Paper oder Spigot oder den Mod auf Fabric oder NeoForge.\n2️⃣ Führ im Spiel /allay link aus – als Operator oder in deiner eigenen Welt.\n3️⃣ Tipp auf den Link, den Allay zeigt. Er bringt dich hierher zurück: Tarif wählen, bezahlen, und Allay antwortet sofort.\n\n🔑 Mit deinem eigenen KI-Schlüssel kostet Allay hier nichts.",
+    "👋 Hi! Hier bezahlst du Allay, den KI-Helfer für Minecraft, mit Telegram Stars.\n\nSo fängst du an:\n1️⃣ Installier Allay: das Plugin auf Paper oder Spigot oder den Mod auf Fabric oder NeoForge.\n\n2️⃣ Führ im Spiel /allay link aus – als Operator oder in deiner eigenen Welt.\n\n3️⃣ Tipp auf den Link, den Allay zeigt. Er bringt dich hierher zurück: Tarif wählen, bezahlen, und Allay antwortet sofort.\n\n🔑 Mit deinem eigenen KI-Schlüssel kostet Allay hier nichts.",
   download_button: "📥 Allay herunterladen",
   guide_button: "📖 Anleitung",
   servers_button: "📋 Meine Server",
