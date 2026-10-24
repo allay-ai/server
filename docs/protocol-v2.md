@@ -78,7 +78,7 @@ Every request through OpenRouter carries `provider: { data_collection: "deny" }`
 | `reasoning` | `{ "delta": "…" }` | A piece of the model's reasoning, when the model exposes it |
 | `tool_call` | `{ "call_id": "…", "name": "get_inventory", "args": { … } }` | The plugin must run this client tool and post the result |
 | `tool_status` | `{ "call_id": "…", "name": "search_web", "kind": "client" \| "server", "state": "started" \| "finished" \| "failed", "args": { … }, "summary": "5 sources", "summary_key"?: "sources", "summary_values"?: { "count": 5 } }` | Progress of any tool, for display. Client tools get `started` right before `tool_call`. Since 2.4, server tools add `summary_key` and `summary_values` so the plugin can show the summary in the player's language; `summary` stays in English |
-| `text` | `{ "delta": "…" }` | A piece of the answer. In task mode, a piece of the agent's note to itself: don't show it |
+| `text` | `{ "delta": "…" }` | A piece of the answer, in `&` codes (see “Answer text” below). In task mode, a piece of the agent's note to itself: don't show it |
 | `commands` | `{ "is_sequence": true, "commands": ["give @s diamond_sword 1"] }` | askx only: the commands to run (≤ 12, no leading slash) |
 | `usage` | `{ "input_tokens": 0, "output_tokens": 0, "reasoning_tokens": 0, "cost": 0.0 }` | Totals for the run so far: sent after every model step and once more, final, right before `done`. Each one replaces the last |
 | `done` | `{ "answer": "full text", "duration_ms": 5321 }` | The run finished; for askx `answer` may be a short note; for task it is the agent's note to itself, often empty |
@@ -87,6 +87,10 @@ Every request through OpenRouter carries `provider: { data_collection: "deny" }`
 ### Checking askx commands
 
 Since backend 6.18, when the plugin offers `search_commands` (plugin 6.16), an `askx` run checks the model's commands before it sends `commands`: the backend calls `search_commands` with `{ "check": ["sethome base", …] }` (no leading slash, as the model wrote them) as an ordinary `tool_call`. The plugin answers `{ "checks": [{ "command", "ok": bool, "error"?, "source"?, "usage"? }] }` in the same order: `ok` is false for a command this server doesn't have (the error names close ones), one the player may not run, one in `blocked_commands`, or, in the mods, arguments the game can't parse. A hidden plugin's command reads as unknown. When any isn't `ok`, the backend gives the model the reasons once, and sends whatever it answers then. The plugin checks again before it runs anything: unless every command exists and is the player's, nothing runs and the player hears why. A failed check call (an older plugin, a timeout) sends the commands as before.
+
+### Answer text
+
+The answer is Minecraft text: `&` codes and button tags, never Markdown. Since server 6.18.2 the backend turns any Markdown the model slips into codes before `text`, `done`, and the session get it, and does the same to `say`'s `text` and `finish`'s `summary`: `**x**` and `__x__` become `&lx&r`, `*x*` and `_x_` `&ox&r`, a `#` heading a bold line; backticks and code fences go. After the `&r` the color the line had comes back. Stars and underscores inside words, around spaces, or around a possible player name (`_Steve_`) stay, as do button tags and links. So that a `**` split over two deltas still pairs up, `text` arrives by whole lines in Minecraft runs, the last piece of a step when it ends; joined, the deltas are `done`'s answer.
 
 ### Buttons in the answer
 
