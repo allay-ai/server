@@ -120,8 +120,8 @@ describe("merged tools", () => {
     const tools = gameTools(["get_recipes"], "run", bridge);
     expect(await run(tools.get_recipes, { items: ["night_vision"] })).toEqual({ results: [{ query: "night_vision", steps: [] }] });
     await run(tools.get_recipes, { items: ["healing"], form: "splash_potion" });
-    expect(calls.map((c) => c.name)).toEqual(["get_recipes", "get_brewing_recipe", "get_brewing_recipe"]);
-    expect(calls[2].args).toEqual({ potion: "healing", form: "splash_potion" });
+    expect(calls.map((c) => c.name)).toEqual(["get_recipes", "get_brewing_recipe", "get_recipes", "get_brewing_recipe"]);
+    expect(calls[3].args).toEqual({ potion: "healing", form: "splash_potion" });
   });
 
   test("get_recipes brews the potion the plugin named by its id", async () => {
@@ -166,6 +166,19 @@ describe("merged tools", () => {
       { name: "get_recipes", args: { item: "beacon", items: ["beacon", "зелье заражения"] } },
       { name: "get_brewing_recipe", args: { potion: "infested" } },
     ]);
+  });
+
+  test("a form brews only the potions, never a beacon asked with them", async () => {
+    const { bridge, calls } = fakeBridge({
+      get_recipes: {
+        ok: true,
+        result: { results: [{ query: "beacon", item: "beacon", recipes: [] }, { query: "infested", error: "potions are brewed: call get_brewing_recipe with infested" }] },
+      },
+      get_brewing_recipe: { ok: true, result: { potion: "infested", steps: [] } },
+    });
+    await run(gameTools(["get_recipes"], "run", bridge).get_recipes, { items: ["beacon", "infested"], form: "splash_potion" });
+    expect(calls.map((c) => c.name)).toEqual(["get_recipes", "get_brewing_recipe"]);
+    expect(calls[1].args).toEqual({ potion: "infested", form: "splash_potion" });
   });
 
   test("a plugin before 6.13 gets one name a call, side by side", async () => {

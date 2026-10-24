@@ -88,7 +88,7 @@ const definitions = {
         .min(1)
         .max(5)
         .describe("Item ids like beacon or mymod:wrench, potions' ids like night_vision or infested, or names like «зелье заражения»"),
-      form: potionForm.optional().describe("For potions: the bottle; potion by default"),
+      form: potionForm.optional().describe("For the potions among items: the bottle; potion by default. Other items ignore it"),
     }),
   },
   search_items: {
@@ -433,12 +433,12 @@ const composites: Partial<Record<keyof typeof definitions, Composite>> = {
     run: async (input, call) => {
       const items = input.items as string[];
       const brew = (potion: unknown) => call("get_brewing_recipe", { potion, ...(input.form ? { form: input.form } : {}) });
-      // A form names a bottle, so every item is a potion.
-      const crafted = input.form ? await Promise.all(items.map(brew)) : await each(items, call, "get_recipes", (item) => ({ item }), { items });
+      // A form is for the potions among them: the plugin still says which those are, beside a beacon asked with them.
+      const crafted = await each(items, call, "get_recipes", (item) => ({ item }), { items });
       const answers = await Promise.all(
         crafted.map(async (answer, at) => {
           // The plugin turns potions away from get_recipes; a name that isn't an item may still be one.
-          if (input.form || answer.ok || !/potions are brewed|no item called/.test(answer.error)) return answer;
+          if (answer.ok || !/potions are brewed|no item called/.test(answer.error)) return answer;
           // Since plugin 6.12 the refusal names the potion's id (infested for “Potion of Infestation”).
           const named = /call get_brewing_recipe with ([a-z0-9_.:/-]+)$/.exec(answer.error)?.[1];
           const brewed = await brew(named ?? items[at]);
