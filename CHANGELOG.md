@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.17.0
+
+Nothing changes for the plugin's protocol.
+
+- 🛠️ **One operator tool.** Operators' seven tools reach the model as one, `operator`, with an `action`: give, teleport, gamemode, heal, effect, time, or weather. The plugin still runs its own seven, each checked as before; the model has six tools fewer to read when an operator asks.
+- 🌍 **English as the last resort.** When neither a message nor the game's locale says which language to answer in, Allay answers in English instead of Russian, and a request without a locale counts as `en_us`.
+
 ## 6.16.0
 
 A leaner tool set and a sharper `/askx`. Nothing changes for current plugins; plugins before Allay for Minecraft 6.7 lose their notes tool.
