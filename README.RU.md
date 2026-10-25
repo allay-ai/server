@@ -60,7 +60,7 @@
 ## Связанные проекты
 
 - **[Moonlands](https://minecraft.mairwunnx.com)** — сервер хардкорного выживания, где всё это работает.
-- **[WorldAPI](https://github.com/MairwunNx/minecraft-worldapi)** — REST и WebSocket API к миру, игрокам и статистике сервера Paper.
+- **[WorldAPI](https://github.com/MairwunNx/minecraft-worldapi)** — REST и WebSocket API к миру, игрокам и статистике сервера на Paper, Fabric или NeoForge.
 - **[Minecraft MCP](https://github.com/MairwunNx/minecraft-mcp)** — даёт ИИ-клиенту читать сервер и управлять им через WorldAPI.
 - **[Allay](https://github.com/allay-ai/minecraft)** — ИИ-помощник в игре: спрашивайте через `/ask` прямо в чате.
 - **[Mo’Joins](https://github.com/MairwunNx/mojoins)** — сообщения о входе и выходе на языке каждого игрока.
