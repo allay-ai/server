@@ -2,6 +2,15 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.18.4
+
+Plugins need nothing new: these fixes live in the payment bot and the admin panel.
+
+- 💳 **A payment always reaches the books.** When the backend failed while booking a payment Telegram had already charged, it still told Telegram “done”, so the Stars were gone and the server got nothing. Now Telegram hears the failure and delivers the payment again, and a payment written without its budget gets it on that delivery, once.
+- 🔁 **No second subscription.** While a monthly subscription renews, the bot no longer offers another month: Telegram would charge both, and “Stop renewal” stopped only the newer one. A week or a year still adds to it.
+- 🔑 **A server taken over in the bot.** When another Telegram account opens a newer link from `/allay link`, the previous account's subscription stops renewing and it gets a message, with how long what it paid lasts. The new account can no longer stop or resume someone else's subscription. A license's full refund tells each payer what came back to them.
+- ↩️ **Nothing charges for a license that's gone.** Blocking or deleting a license in the panel stops its subscription, and a renewal that still arrives for a deleted or revoked license goes straight back to the payer, with its subscription cancelled.
+
 ## 6.18.3
 
 Allay 6.18 brings what these lines describe; with an older plugin the model asks for it and hears a refusal, as before.

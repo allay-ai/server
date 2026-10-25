@@ -27,8 +27,10 @@ export const handleTelegram = (deps: AllayDeps) => async (req: Request): Promise
     try {
       await handleUpdate(deps.billing, bot.api, update);
     } catch (error) {
-      // Telegram retries anything but 200; one bad update must not jam the queue.
       logger.error(`Telegram update ${update.update_id} failed: ${String(error)}`);
+      // Telegram retries anything but 200. A payment it took must reach the books, so that one comes again; any
+      // other bad update must not jam the queue.
+      if (update.message?.successful_payment) return new Response(null, { status: 500 });
     }
   }
   return Response.json({ ok: true });
@@ -61,8 +63,13 @@ const poll = async (billing: Billing, api: TelegramApi, run: number) => {
     try {
       const updates = await api.call<Update[]>("getUpdates", { offset, timeout: 30, allowed_updates: ALLOWED_UPDATES });
       for (const update of updates) {
+        const failed = await handleUpdate(billing, api, update).then(
+          () => false,
+          (error) => (logger.error(`Telegram update ${update.update_id} failed: ${String(error)}`), true),
+        );
+        // A payment that didn't reach the books comes again with the next poll, as the webhook's 500 makes it.
+        if (failed && update.message?.successful_payment) throw new Error("payment not booked");
         offset = update.update_id + 1;
-        await handleUpdate(billing, api, update).catch((error) => logger.error(`Telegram update ${update.update_id} failed: ${String(error)}`));
       }
     } catch {
       await Bun.sleep(5_000);

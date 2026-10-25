@@ -39,22 +39,33 @@ const forSale = (license: LicenseRecord): Plan[] => (kindOf(license) === "solo" 
 /** Whether [plan] may be paid for [license] now. */
 const sells = (license: LicenseRecord, plan: Plan) => forSale(license).some((p) => p.id === plan.id);
 
-const planButtons = (language: string, license: LicenseRecord): Button[][] =>
-  forSale(license).map((plan) => [
+/**
+ * What the bot offers [license] now: no second subscription while one renews, since Telegram would charge both and
+ * the bot could stop only the newer one. Pre-checkout doesn't ask this, so the running subscription's renewals pass.
+ */
+const offered = async (billing: Billing, license: LicenseRecord): Promise<Plan[]> => {
+  const renewing = license.renews && !!license.subscription_charge_id && (await quotaFor(billing, license)).active;
+  return forSale(license).filter((plan) => !(renewing && plan.subscription));
+};
+
+const planButtons = (language: string, license: LicenseRecord, offer: Plan[]): Button[][] =>
+  offer.map((plan) => [
     {
       text: fill(textsOf(language).plan_button, { plan: PLAN_NAMES[languageOf(language)][plan.id], stars: plan.stars }),
       callback_data: `buy:${plan.id}:${license.id}`,
     },
   ]);
 
-const planList = (language: string, license: LicenseRecord) => {
+const planList = (language: string, offer: Plan[]) => {
   const t = textsOf(language);
   const contact = settings.get("SUPPORT_CONTACT")?.trim();
-  return [t.plans, "", ...forSale(license).map((plan) => `• ${t.plan[plan.id]} — ${plan.stars} ⭐`), ...(contact ? ["", fill(t.more, { contact })] : [])].join("\n");
+  return [t.plans, "", ...offer.map((plan) => `• ${t.plan[plan.id]} — ${plan.stars} ⭐`), ...(contact ? ["", fill(t.more, { contact })] : [])].join("\n");
 };
 
-const showPlans = (api: TelegramApi, chat: number, language: string, license: LicenseRecord) =>
-  forSale(license).length ? say(api, chat, `💳 ${planList(language, license)}`, planButtons(language, license)) : say(api, chat, `⚠️ ${textsOf(language).unavailable}`);
+const showPlans = async (billing: Billing, api: TelegramApi, chat: number, language: string, license: LicenseRecord) => {
+  const offer = await offered(billing, license);
+  return offer.length ? say(api, chat, `💳 ${planList(language, offer)}`, planButtons(language, license, offer)) : say(api, chat, `⚠️ ${textsOf(language).unavailable}`);
+};
 
 /** /start <claim code>: ties the server to this Telegram account and offers the plans. */
 const claim = async (billing: Billing, api: TelegramApi, chat: number, from: TelegramUser, code: string) => {
@@ -62,11 +73,42 @@ const claim = async (billing: Billing, api: TelegramApi, chat: number, from: Tel
   const t = textsOf(language);
   const license = await billing.licenses.claim(sha256(code), billing.now());
   if (!license || license.revoked_at) return say(api, chat, `⌛ ${t.claim_failed}`);
-  // The code came from an operator's /allay link, so whoever opens it may take the server over.
+  // The code came from an operator's /allay link, so whoever opens it may take the server over. The subscription stays
+  // the previous payer's, and only they could stop it: it stops now, and the new account can't resume someone else's.
+  if (license.telegram_user_id !== undefined && license.telegram_user_id !== from.id) await handOver(billing, api, license);
   await billing.licenses.update(license.id, { telegram_user_id: from.id, telegram_chat_id: chat, language });
   logger.info(`License ${license.id} claimed in Telegram`);
   await say(api, chat, `✅ ${fill(t.claimed, { server: serverName(license) })}`);
-  return showPlans(api, chat, language, license);
+  return showPlans(billing, api, chat, language, { ...license, telegram_user_id: from.id });
+};
+
+/**
+ * Stops a license's subscription in Telegram and in the books: a server taken over in the bot, blocked, or deleted in the
+ * panel. What was paid stays until its end. Telegram may refuse a subscription that's over already; that's fine.
+ */
+export const stopRenewal = async (billing: Billing, api: TelegramApi, license: LicenseRecord) => {
+  const payment = license.subscription_charge_id ? await billing.licenses.payment(license.subscription_charge_id) : null;
+  if (payment && license.renews) {
+    await api
+      .call("editUserStarSubscription", { user_id: payment.telegram_user_id, telegram_payment_charge_id: payment.charge_id, is_canceled: true })
+      .catch(() => undefined);
+  }
+  if (license.renews) await billing.licenses.update(license.id, { renews: false, stopped_at: billing.now() });
+};
+
+/** A server goes to another Telegram account: the previous one's renewal stops, and it hears why. */
+const handOver = async (billing: Billing, api: TelegramApi, license: LicenseRecord) => {
+  const renewed = license.renews && !!license.subscription_charge_id;
+  await stopRenewal(billing, api, license);
+  await billing.licenses.update(license.id, { subscription_charge_id: undefined });
+  logger.info(`License ${license.id} moved to another Telegram account${renewed ? "; its renewal stopped" : ""}`);
+  if (license.telegram_chat_id === undefined) return;
+  const language = license.language ?? "en";
+  const quota = await quotaFor(billing, license);
+  const text = quota.active && quota.paidUntil
+    ? fill(textsOf(language).taken_paid, { server: serverName(license), date: dateIn(language, quota.paidUntil) })
+    : fill(textsOf(language).taken, { server: serverName(license) });
+  await say(api, license.telegram_chat_id, `🔁 ${text}`).catch(() => undefined);
 };
 
 type Card = { license: LicenseRecord; quota: Awaited<ReturnType<typeof quotaFor>> };
@@ -166,10 +208,10 @@ const callback = async (billing: Billing, api: TelegramApi, query: NonNullable<U
     const one = card(language, { license, quota: await quotaFor(billing, license) }, true);
     return show(api, chat, query.message?.message_id, one.text, one.buttons);
   }
-  if (action === "plans") return showPlans(api, chat, language, license);
+  if (action === "plans") return showPlans(billing, api, chat, language, license);
   if (action === "buy") {
     const plan = planOf(a);
-    if (!plan || !sells(license, plan)) return say(api, chat, `⚠️ ${t.unavailable}`);
+    if (!plan || !(await offered(billing, license)).some((p) => p.id === plan.id)) return say(api, chat, `⚠️ ${t.unavailable}`);
     const link = await invoice(api, language, license, plan);
     return say(api, chat, `🧾 ${t.invoice_ready}`, [[{ text: fill(t.pay_button, { stars: plan.stars }), url: link }]]);
   }
@@ -226,10 +268,7 @@ const preCheckout = async (billing: Billing, api: TelegramApi, query: NonNullabl
 const paid = async (billing: Billing, api: TelegramApi, chat: number, from: TelegramUser, payment: SuccessfulPayment) => {
   const { plan, license: licenseId } = parsePayload(payment.invoice_payload);
   const license = licenseId ? await billing.licenses.get(licenseId) : null;
-  if (!plan || !license) {
-    logger.error(`Payment ${payment.telegram_payment_charge_id} for an unknown plan or license: ${payment.invoice_payload}`);
-    return;
-  }
+  if (!plan || !license || license.revoked_at) return giveBack(api, chat, from, payment);
   const now = billing.now();
   const before = await quotaFor(billing, license);
   const recurring = !!payment.is_recurring;
@@ -260,6 +299,21 @@ const paid = async (billing: Billing, api: TelegramApi, chat: number, from: Tele
   await say(api, chat, `${renewal ? "🔁" : "🎉"} ${fill(renewal ? t.renewed : t.paid, { server: serverName(license), date: dateIn(language, after.paidUntil ?? now) })}`, [
     [{ text: t.servers_button, callback_data: "list" }],
   ]);
+};
+
+/**
+ * A payment nothing can serve: its license was deleted or revoked while a subscription still renewed, or the payload
+ * names no plan. Its Stars go back at once, and so does the subscription, so it doesn't come again.
+ */
+const giveBack = async (api: TelegramApi, chat: number, from: TelegramUser, payment: SuccessfulPayment) => {
+  const charge = payment.telegram_payment_charge_id;
+  logger.warn(`Payment ${charge} has no license to serve (${payment.invoice_payload}); refunding it`);
+  if (payment.is_recurring) {
+    await api.call("editUserStarSubscription", { user_id: from.id, telegram_payment_charge_id: charge, is_canceled: true }).catch(() => undefined);
+  }
+  await api.call("refundStarPayment", { user_id: from.id, telegram_payment_charge_id: charge });
+  const language = languageOf(from.language_code);
+  await say(api, chat, `↩️ ${fill(textsOf(language).returned, { stars: payment.total_amount })}`).catch(() => undefined);
 };
 
 /** Takes a payment back from the books: a refund we made, or one Telegram reports. */
@@ -315,6 +369,8 @@ export const refundLicense = async (billing: Billing, api: TelegramApi, license:
   const payments = (await billing.licenses.payments({ license: license.id, limit: 100_000 })).filter((p) => !p.refunded_at);
   let stars = 0;
   let refunded = 0;
+  // Who paid what: a server taken over in the bot may have had more than one payer.
+  const payers = new Map<number, number>();
   for (const payment of payments) {
     const done = await refundPayment(billing, api, payment.charge_id).catch((failure: Error) => {
       throw new LicenseRefundFailure(refunded, payments.length - refunded, failure);
@@ -322,6 +378,7 @@ export const refundLicense = async (billing: Billing, api: TelegramApi, license:
     if (!done) continue;
     stars += payment.stars;
     refunded++;
+    payers.set(payment.telegram_user_id, (payers.get(payment.telegram_user_id) ?? 0) + payment.stars);
   }
   const now = await billing.licenses.get(license.id);
   // A subscription whose own payment went back earlier still renews until someone cancels it.
@@ -332,9 +389,10 @@ export const refundLicense = async (billing: Billing, api: TelegramApi, license:
   }
   await billing.licenses.update(license.id, { revoked_at: billing.now(), renews: false, claim_hash: undefined, claim_expires: undefined });
   logger.info(`License ${license.id} revoked after refunding ${refunded} payments`);
-  if (stars > 0 && license.telegram_chat_id !== undefined) {
-    const language = license.language ?? "en";
-    await say(api, license.telegram_chat_id, `↩️ ${fill(textsOf(language).revoked, { stars, server: serverName(license) })}`).catch(() => undefined);
+  // A private chat's id is its user's, so each payer hears in the chat they paid from; the language is the account's.
+  for (const [payer, back] of payers) {
+    const language = (payer === license.telegram_user_id ? license.language : undefined) ?? "en";
+    await say(api, payer, `↩️ ${fill(textsOf(language).revoked, { stars: back, server: serverName(license) })}`).catch(() => undefined);
   }
   return { stars, payments: refunded };
 };

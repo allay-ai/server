@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { GrantRecord, LicenseRecord, PaymentRecord } from "../../infrastructure/billing/licenses";
 import { type Billing, licenseName, quotaFor, serverName } from "../billing/billing";
 import { INFINITY_DAYS, LICENSE_KINDS, infinityBudget, kindOf, quotaOf } from "../billing/plans";
-import { LicenseRefundFailure, refundLicense, refundPayment } from "../telegram/telegram.bot";
+import { LicenseRefundFailure, refundLicense, refundPayment, stopRenewal } from "../telegram/telegram.bot";
 import { allows, record } from "./admin";
 import { type Context, type Route, body, error } from "./admin.http";
 import { serversView } from "./insight.routes";
@@ -346,11 +346,18 @@ export const billingRoutes: Route[] = [
         if (license.revoked_at) return revoked();
         const at = action === "block" ? ctx.deps.billing.now() : undefined;
         await ctx.deps.billing.licenses.update(license.id, { blocked_at: at });
+        // A blocked server can't ask, so its subscription must not charge for it; unblocking leaves it to the payer.
+        const api = ctx.deps.billing.bot.api;
+        const stopping = !!at && license.renews && !!api;
+        if (stopping) await stopRenewal(ctx.deps.billing, api!, license);
         await record(ctx.admin, {
           actor: ctx.me!.username,
           action: `license.${action}`,
           target: license.id,
-          changes: [{ field: "blocked", old: license.blocked_at ? "yes" : "no", new: at ? "yes" : "no" }],
+          changes: [
+            { field: "blocked", old: license.blocked_at ? "yes" : "no", new: at ? "yes" : "no" },
+            ...(stopping ? [{ field: "renews", old: "yes", new: "no" }] : []),
+          ],
           ip: ctx.ip,
         });
         const known = (await ctx.deps.servers?.list(`license:${license.id}`)) ?? [];
@@ -461,6 +468,8 @@ export const billingRoutes: Route[] = [
         return error(409, "PAID", "Someone paid for this license; refund it first, or delete it anyway", { stars, payments: unrefunded.length });
       }
       if (unrefunded.length && !allows(ctx.me!.role, "owner")) return error(403, "FORBIDDEN", "Only an owner can delete a paid license without a refund");
+      // Telegram would go on charging for a license that's gone; a renewal that still comes is refunded by the bot.
+      if (license.renews && billing.bot.api) await stopRenewal(billing, billing.bot.api, license);
       await billing.licenses.remove(license.id);
       await record(ctx.admin, {
         actor: ctx.me!.username,

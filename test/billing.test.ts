@@ -617,6 +617,91 @@ describe("the Telegram bot", () => {
     expect(h.telegram.last("answerPreCheckoutQuery")).toMatchObject({ ok: false });
   });
 
+  test("a payment that didn't reach the books comes again and counts once", async () => {
+    const h = await hosted();
+    await handleUpdate(h.billing, h.telegram.api, message(`/start ${h.code}`) as any);
+    // The payment is written, then the database goes away before its windows.
+    const pay = h.billing.licenses.pay.bind(h.billing.licenses);
+    let broken = true;
+    h.billing.licenses.pay = async (record, windows) => {
+      if (!broken) return pay(record, windows);
+      broken = false;
+      await pay(record, []);
+      throw new Error("MongoDB went away");
+    };
+    const deliver = () =>
+      fetch(`${h.base}/api/telegram/webhook`, {
+        method: "POST",
+        headers: { "X-Telegram-Bot-Api-Secret-Token": "s3cret" },
+        body: JSON.stringify(payment("week", h.created.license_id, "charge-1")),
+      });
+    // Telegram hears a failure, so it delivers the payment again.
+    expect((await deliver()).status).toBe(500);
+    expect(await h.billing.licenses.grants(h.created.license_id)).toHaveLength(0);
+    expect((await deliver()).status).toBe(200);
+    expect(await h.billing.licenses.grants(h.created.license_id)).toHaveLength(1);
+    expect(h.telegram.last("sendMessage").text).toContain("Thank you");
+    expect((await deliver()).status).toBe(200);
+    expect(await h.billing.licenses.grants(h.created.license_id)).toHaveLength(1);
+  });
+
+  test("no second subscription while one renews: Telegram would charge both", async () => {
+    const h = await hosted();
+    await handleUpdate(h.billing, h.telegram.api, message(`/start ${h.code}`) as any);
+    const press = (data: string) =>
+      handleUpdate(h.billing, h.telegram.api, { update_id: 3, callback_query: { id: "cb", from: user(), message: { chat: { id: 7 } }, data } } as any);
+    const offered = () => h.telegram.last("sendMessage").reply_markup?.inline_keyboard.map((row: any) => row[0].callback_data);
+    const id = h.created.license_id;
+
+    await h.pay("month", "charge-1", { is_recurring: true, is_first_recurring: true });
+    await press(`plans:${id}`);
+    expect(offered()).toEqual([`buy:week:${id}`, `buy:year:${id}`]);
+    const invoices = h.telegram.calls.filter((c) => c.method === "createInvoiceLink").length;
+    await press(`buy:month:${id}`);
+    expect(h.telegram.calls.filter((c) => c.method === "createInvoiceLink")).toHaveLength(invoices);
+    expect(h.telegram.last("sendMessage").text).toContain("can't be paid");
+
+    // Once renewal stops, a new subscription is for sale again.
+    await press(`stop:${id}`);
+    await press(`plans:${id}`);
+    expect(offered()).toEqual([`buy:week:${id}`, `buy:month:${id}`, `buy:year:${id}`]);
+  });
+
+  test("another account claims the server: the previous payer's renewal stops, and they hear it", async () => {
+    const h = await hosted();
+    await handleUpdate(h.billing, h.telegram.api, message(`/start ${h.code}`) as any);
+    await h.pay("month", "charge-1", { is_recurring: true, is_first_recurring: true });
+    const again = await body(fetch(`${h.base}/api/v2/license`, { method: "POST", headers: h.auth }));
+    const code = new URL(again.pay_url).searchParams.get("start")!;
+
+    await handleUpdate(h.billing, h.telegram.api, message(`/start ${code}`, user(8)) as any);
+    expect(h.telegram.last("editUserStarSubscription")).toEqual({ user_id: 7, telegram_payment_charge_id: "charge-1", is_canceled: true });
+    const told = h.telegram.calls.find((c) => c.method === "sendMessage" && c.params.chat_id === 7 && c.params.text.includes("another Telegram account"));
+    expect(told?.params.text).toContain("active there until");
+    const license = (await h.billing.licenses.get(h.created.license_id))!;
+    expect(license).toMatchObject({ telegram_user_id: 8, renews: false });
+    expect(license.subscription_charge_id).toBeUndefined();
+
+    // The new account can't resume someone else's subscription, and may start its own.
+    await handleUpdate(h.billing, h.telegram.api, message("/status", user(8)) as any);
+    const buttons = h.telegram.last("sendMessage").reply_markup.inline_keyboard.flat().map((b: any) => b.callback_data);
+    expect(buttons).not.toContain(`resume:${license.id}`);
+    expect(h.telegram.calls.filter((c) => c.method === "sendMessage" && c.params.chat_id === 8).at(0)).toBeDefined();
+  });
+
+  test("a renewal for a license that's gone goes back with its subscription", async () => {
+    const h = await hosted();
+    await handleUpdate(h.billing, h.telegram.api, message(`/start ${h.code}`) as any);
+    await h.pay("month", "charge-1", { is_recurring: true, is_first_recurring: true });
+    await h.billing.licenses.remove(h.created.license_id);
+    h.tick(30 * DAY);
+    await h.pay("month", "charge-2", { is_recurring: true });
+    expect(h.telegram.last("refundStarPayment")).toEqual({ user_id: 7, telegram_payment_charge_id: "charge-2" });
+    expect(h.telegram.last("editUserStarSubscription")).toEqual({ user_id: 7, telegram_payment_charge_id: "charge-2", is_canceled: true });
+    expect(h.telegram.last("sendMessage").text).toContain("500 ⭐ are back");
+    expect(await h.billing.licenses.payment("charge-2")).toBeNull();
+  });
+
   test("the webhook wants Telegram's secret token", async () => {
     const h = await hosted();
     const post = (secret: string) =>

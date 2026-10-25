@@ -32,7 +32,10 @@ export interface LicenseStore {
   claim(claimHash: string, now: Date): Promise<LicenseRecord | null>;
   ofTelegram(userId: number): Promise<LicenseRecord[]>;
   grants(license: string): Promise<GrantRecord[]>;
-  /** Records a payment with its windows; false when this charge was already counted. */
+  /**
+   * Records a payment with its windows; false when this charge was already counted. A charge recorded without its
+   * windows (the backend failed between the two) gets them now, so Telegram's next delivery finishes the job.
+   */
   pay(payment: PaymentRecord, grants: Array<Omit<GrantRecord, "id" | "spent" | "license" | "payment">>): Promise<boolean>;
   payment(chargeId: string): Promise<PaymentRecord | null>;
   /** Marks a payment refunded and closes the windows it opened. */
@@ -100,8 +103,9 @@ export const mongoLicenses: LicenseStore = {
       await PaymentModel.create(payment);
     } catch (error) {
       // The unique charge id: Telegram delivered this payment twice.
-      if ((error as { code?: number }).code === 11000) return false;
-      throw error;
+      if ((error as { code?: number }).code !== 11000) throw error;
+      const known = await PaymentModel.findOne({ charge_id: payment.charge_id }).lean<PaymentRecord>();
+      if (!known || known.refunded_at || (await GrantModel.exists({ payment: payment.charge_id }))) return false;
     }
     await GrantModel.insertMany(grants.map((g) => ({ ...g, id: id(), license: payment.license, payment: payment.charge_id, spent: 0 })));
     return true;
@@ -195,8 +199,9 @@ export const memoryLicenses = (): LicenseStore => {
       return grants.filter((g) => g.license === license).map((g) => ({ ...g }));
     },
     async pay(payment, windows) {
-      if (payments.has(payment.charge_id)) return false;
-      payments.set(payment.charge_id, { ...payment });
+      const known = payments.get(payment.charge_id);
+      if (known && (known.refunded_at || grants.some((g) => g.payment === payment.charge_id))) return false;
+      if (!known) payments.set(payment.charge_id, { ...payment });
       for (const w of windows) grants.push({ ...w, id: id(), license: payment.license, payment: payment.charge_id, spent: 0 });
       return true;
     },

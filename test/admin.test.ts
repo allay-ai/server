@@ -388,8 +388,22 @@ describe("billing in the panel", () => {
     const extended = await call("POST", "/api/admin/licenses/lic1/extend", { days: 7 });
     expect(Date.parse(extended.body.paid_until) - Date.parse(before)).toBe(7 * 86_400_000);
 
-    expect((await call("POST", "/api/admin/licenses/lic1/block")).body.license.status).toBe("blocked");
+    // A blocked server can't ask, so its subscription stops charging.
+    const calls: Array<{ method: string; params: any }> = [];
+    ctx.deps.billing.bot.api = { call: async <T>(method: string, params?: any) => (calls.push({ method, params }), true as T) };
+    const blocked = (await call("POST", "/api/admin/licenses/lic1/block")).body.license;
+    expect(blocked).toMatchObject({ status: "blocked", renews: false });
+    expect(calls).toEqual([{ method: "editUserStarSubscription", params: { user_id: 7, telegram_payment_charge_id: "ch1", is_canceled: true } }]);
     expect(audit.entries.map((e) => e.action)).toEqual(expect.arrayContaining(["license.grant", "license.extend", "license.block"]));
+  });
+
+  test("deleting a paid license anyway stops its subscription first", async () => {
+    const ctx = await withOwner({ selfHosted: false, billing: true });
+    await paid(ctx);
+    const calls: string[] = [];
+    ctx.deps.billing.bot.api = { call: async <T>(method: string) => (calls.push(method), true as T) };
+    expect((await ctx.call("DELETE", "/api/admin/licenses/lic1", { force: true })).body).toMatchObject({ deleted: true, forced: true });
+    expect(calls).toEqual(["editUserStarSubscription"]);
   });
 
   test("a refund goes through the bot and closes the period", async () => {
