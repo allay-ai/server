@@ -113,7 +113,7 @@ The owner's server, Moonlands, runs its own instance of this backend, built from
 Where the versions live, for `/update-deps` and `/update-minecraft` (both in `.claude/skills/`, the same files in every project of the family). This project has no Minecraft version to move, so `/update-minecraft` stops at once.
 
 - Bun: the `FROM oven/bun:…-alpine` line of `Dockerfile` and `bun-version` in `.github/workflows/`, always the same. Never below 1.4.3: older Bun crashes on bson from Mongoose 9.
-- Packages: `package.json`, locked in `bun.lock`, which the image installs from with `--frozen-lockfile`. `bun outdated` lists what's behind. The panel has its own `admin/package.json` and `admin/bun.lock`; update both.
+- Packages: `package.json`, locked in `bun.lock`, which the image installs from with `--frozen-lockfile`. `bun outdated` lists what's behind. `ai`, `@ai-sdk/provider`, and `@ai-sdk/openai-compatible` are pinned to the newest versions whose provider types still match the copy `@mastra/core` bundles (`node_modules/@mastra/core/dist/_types/@ai-sdk_provider-v7`): 4.0.32 added an `interrupted` finish reason Mastra 1.79.0 doesn't know, and `bun run typecheck` fails on `new Agent({ model })`. Move them once Mastra catches up. The panel has its own `admin/package.json` and `admin/bun.lock`; update both.
 - MongoDB: the image in `docker-compose.yaml` and `docker-compose.dev.yaml`. MongoDB stays on its major unless the owner asks; Moonlands pins its own in `~/c/personal/minecraft/compose.yaml`.
 - GitHub Actions in `.github/workflows/`.
 
