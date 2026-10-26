@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.18.5
+
+Plugins need nothing new: the backend and the admin panel move to newer dependencies.
+
+- 📦 **Newer dependencies.** Mastra 1.79.0 (with its MongoDB store 1.24.0, observability 1.21.0, and Perplexity 0.2.2), the AI SDK 7.0.148, Mongoose 9.11.4, and fresh patches of the panel's libraries. The AI SDK stays a few patches behind its newest, whose models Mastra doesn't accept yet.
+
 ## 6.18.4
 
 Plugins need nothing new: these fixes live in the payment bot and the admin panel.
