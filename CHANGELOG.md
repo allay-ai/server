@@ -2,6 +2,15 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.19.0
+
+Needs Allay 6.19 for the plan; older plugins answer as before.
+
+- 🧾 **“What am I missing?”** `get_recipes` takes `plan` and `count`: the plugin counts what the player has in the inventory, the ender chest, and the chests around, crafts the parts on the way four levels deep, and says what it would take and what's missing. The model no longer asks for each part's recipe and adds up the rest in its head, which often lost a level or a few planks.
+- ⛏️ **Smelting on the way.** A plan smelts what it must (raw iron for ingots, sand for glass, ancient debris for scrap): `smelt` says what goes into a furnace first. The crafting agent hands that to a furnaces agent, waits for its report, and crafts the rest; it breaks raw iron blocks into raw iron for the furnace by itself.
+- 🪨 **The grindstone.** Crafting agents get `grindstone` (plugin 6.19): enchantments off an item, or two worn pieces joined. Asked to join two items, an agent with both an anvil and a grindstone near asks which the player wants.
+- 🧩 **What each part is for.** `missing_for` says why something is short: diamonds for the diamond chestplate a netherite one is upgraded from. Several items in one `get_recipes` call share what the player has, so a set of armor counts each ingot once.
+
 ## 6.18.5
 
 Plugins need nothing new: the backend and the admin panel move to newer dependencies.

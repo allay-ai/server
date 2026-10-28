@@ -175,6 +175,15 @@ describe("merged tools", () => {
     expect(calls[1]).toEqual({ name: "get_brewing_recipe", args: { potion: "infested" } });
   });
 
+  test("get_recipes passes plan and count to the plugin, and to each item an older plugin asks for alone", async () => {
+    const { bridge, calls } = fakeBridge({ get_recipes: { ok: true, result: { item: "beacon", recipes: [] } } });
+    await run(gameTools(["get_recipes"], "run", bridge).get_recipes, { items: ["beacon", "piston"], plan: true, count: 4 });
+    expect(calls).toEqual([
+      { name: "get_recipes", args: { item: "beacon", items: ["beacon", "piston"], plan: true, count: 4 } },
+      { name: "get_recipes", args: { item: "piston", plan: true, count: 4 } },
+    ]);
+  });
+
   test("get_recipes keeps the plugin's own error for an unknown item", async () => {
     const { bridge } = fakeBridge({
       get_recipes: { ok: false, error: "no item called pizza" },

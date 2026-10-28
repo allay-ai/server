@@ -85,7 +85,7 @@ const definitions = {
   },
   get_recipes: {
     description:
-      "How this server makes items, from its own recipes, mods', data packs', and plugins' included: crafting grids, smelting, stonecutting, smithing (up to 5 for one item, 3 each for several, more_recipes when there are more), or for a potion or a plugin's brewed bottle every brewing step from a water bottle and the fuel. Always use it instead of recalling a recipe. Put every item you need into one call (a beacon and what its parts take): results has one answer per item, with its query, in the order asked. An item's name in any language works, and so does a mod's or plugin's id like redbull:original. No recipe means the item is mined, dropped, or traded here; an error names what this server has under close names.",
+      "How this server makes items, from its own recipes, mods', data packs', and plugins' included: crafting grids, smelting, stonecutting, smithing (up to 5 for one item, 3 each for several, more_recipes when there are more), or for a potion or a plugin's brewed bottle every brewing step from a water bottle and the fuel. Always use it instead of recalling a recipe. Put every item you need into one call (a beacon and what its parts take): results has one answer per item, with its query, in the order asked. An item's name in any language works, and so does a mod's or plugin's id like redbull:original. No recipe means the item is mined, dropped, or traded here; an error names what this server has under close names. With plan, each crafted item also says what making count of it would take from the player's inventory, ender chest, and chests around, the parts on the way included, four levels deep (planks, sticks, ingots from blocks): plan.takes, steps, smelt (what a furnace makes first: raw iron for ingots, sand for glass), missing (what's short, by base resource) with missing_for (what each was for), needs (a crafting_table, smithing_table, furnace, or water not near). Several items share what the player has, so a whole set counts each ingot once. Nothing is taken.",
     input: z.object({
       items: z
         .array(z.string().min(1).max(64))
@@ -93,6 +93,8 @@ const definitions = {
         .max(5)
         .describe("Item ids like beacon or mymod:wrench, potions' ids like night_vision or infested, or names like «зелье заражения»"),
       form: potionForm.optional().describe("For the potions among items: the bottle; potion by default. Other items ignore it"),
+      plan: z.boolean().optional().describe("Also say what crafting each item takes from what the player has, and what's missing"),
+      count: z.number().int().min(1).max(64).optional().describe("With plan: how many of each item; 1 by default"),
     }),
   },
   search_items: {
@@ -424,7 +426,9 @@ const composites: Partial<Record<string, Composite>> = {
       const items = input.items as string[];
       const brew = (potion: unknown) => call("get_brewing_recipe", { potion, ...(input.form ? { form: input.form } : {}) });
       // A form is for the potions among them: the plugin still says which those are, beside a beacon asked with them.
-      const crafted = await each(items, call, "get_recipes", (item) => ({ item }), { items });
+      // Plugins before 6.19 ignore plan and count, and answer without a plan.
+      const plan = input.plan ? { plan: true, ...(input.count ? { count: input.count } : {}) } : {};
+      const crafted = await each(items, call, "get_recipes", (item) => ({ item, ...plan }), { items, ...plan });
       const answers = await Promise.all(
         crafted.map(async (answer, at) => {
           // The plugin turns potions away from get_recipes; a name that isn't an item may still be one.
@@ -655,7 +659,7 @@ const automationDefinitions = {
   },
   craft: {
     description:
-      "Crafts item from this server's recipes: 2×2 ones (planks, sticks, a crafting table) by hand, 3×3 ones at a crafting table near the player, what a stonecutter cuts on one when it's near (stairs one per block), and netherite gear on a smithing table near the player: the diamond piece, worn ones too, keeps its enchantments, name, and wear, and the template and the ingot come from the player (an ingot is crafted from scrap and gold); a mod's, plugin's, or data pack's item by its id (redbull:empty_can) from its own recipes, that plugin's items in the slots; water bottles (potion:water) filled from glass bottles at water or a cauldron within 8 blocks, a level a bottle, also on the way to a recipe that needs one; with ingredients from the inventory, bundles, the ender chest when one is near, and chests the player may open; never from inside shulker boxes. The output goes to the inventory, or at the feet when it's full. dry_run: true only says what it would take and what's missing.",
+      "Crafts item from this server's recipes: 2×2 ones (planks, sticks, a crafting table) by hand, 3×3 ones at a crafting table near the player, what a stonecutter cuts on one when it's near (stairs one per block), and netherite gear on a smithing table near the player: the diamond piece, worn ones too, keeps its enchantments, name, and wear, and the template and the ingot come from the player (an ingot is crafted from scrap and gold); a mod's, plugin's, or data pack's item by its id (redbull:empty_can) from its own recipes, that plugin's items in the slots; water bottles (potion:water) filled from glass bottles at water or a cauldron within 8 blocks, a level a bottle, also on the way to a recipe that needs one; with ingredients from the inventory, bundles, the ender chest when one is near, and chests the player may open; never from inside shulker boxes. The output goes to the inventory, or at the feet when it's full. dry_run: true only says what it would take and what's missing. A plan that smelts first (smelt) crafts only what the furnaces need and answers crafted false with smelt: a furnaces agent smelts those, then craft again.",
     input: z.object({ item: itemId, count: z.number().int().min(1).max(64).optional(), dry_run: z.boolean().optional() }),
   },
   anvil: {
@@ -667,6 +671,15 @@ const automationDefinitions = {
       enchantments: z.array(z.string().min(1).max(40)).max(12).optional().describe("Enchantment ids to add, like mending"),
       merge: z.boolean().optional().describe("true: everything at hand that fits"),
       rename: z.string().min(1).max(50).optional(),
+    }),
+  },
+  grindstone: {
+    description:
+      "Works an item on a grindstone near the player, as the game does, for no levels. plan (default): the enchantments it takes off (curses stay), the experience it drops at the grindstone, and with combine the second piece and the durability after. apply: does it. Alone, an item loses every enchantment but curses, and an enchanted book with none left turns plain. combine: true joins it with a second piece of the same item from the inventory, bundles, the ender chest when one is near, or chests the player may open (the one that loses least): both durabilities and 5% more, and every enchantment but curses gone from both. item: hand (default) or an item id, worn pieces too.",
+    input: z.object({
+      action: z.enum(["plan", "apply"]).optional(),
+      item: itemId.optional().describe("hand, or an item id like diamond_sword"),
+      combine: z.boolean().optional().describe("true: join with a second piece of the same item"),
     }),
   },
 } as const;
@@ -748,7 +761,7 @@ const ACTION_TOOLS: ReadonlySet<string> = new Set([
 const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players", "start_task", "message_task", "cancel_task"]);
 
 /** What only an automation agent gets: it talks to the player, waits, and does the work the chat hands it. */
-const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil"]);
+const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil", "grindstone"]);
 
 /** What an automation agent never gets: it talks through say. */
 const NOT_IN_TASKS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players"]);
@@ -770,7 +783,7 @@ const KIND_TOOLS: Readonly<Record<TaskKind, readonly string[]>> = {
   chests: [],
   furnaces: ["smelt"],
   brewing: ["brew"],
-  crafting: ["craft", "anvil"],
+  crafting: ["craft", "anvil", "grindstone"],
 };
 const WORK_TOOLS: ReadonlySet<string> = new Set(Object.values(KIND_TOOLS).flat());
 

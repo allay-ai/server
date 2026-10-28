@@ -105,7 +105,7 @@ describe("task tools", () => {
   });
 
   test("an agent gets the automation tools, and starts and steers sub-agents only above the depth limit", () => {
-    const work = ["say", "wait", "finish", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil"] as const;
+    const work = ["say", "wait", "finish", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil", "grindstone"] as const;
     expect(offeredTools(every, true, "task", "private", 1)).toEqual(["inventory", "look_at", "show_marks", "start_task", "message_task", "cancel_task", ...work]);
     expect(offeredTools(every, true, "task", "private", 2)).toEqual(["inventory", "look_at", "show_marks", ...work]);
   });
@@ -113,7 +113,7 @@ describe("task tools", () => {
   test("an agent gets only its own kind's work tool and the reads its work needs", () => {
     const all = [...every, "locate_structure", "get_statistics", "reminders", "show_draft", "inspect_redstone", "get_recipes"];
     expect(offeredTools(all, false, "task", "private", 1, "brewing")).toEqual(["inventory", "look_at", "get_recipes", "show_marks", "start_task", "message_task", "cancel_task", "say", "wait", "finish", "pick_blocks", "chests", "brew"]);
-    expect(offeredTools(all, false, "task", "private", 2, "crafting")).toEqual(["inventory", "look_at", "get_recipes", "show_marks", "say", "wait", "finish", "pick_blocks", "chests", "craft", "anvil"]);
+    expect(offeredTools(all, false, "task", "private", 2, "crafting")).toEqual(["inventory", "look_at", "get_recipes", "show_marks", "say", "wait", "finish", "pick_blocks", "chests", "craft", "anvil", "grindstone"]);
     expect(offeredTools(all, false, "task", "private", 2, "chests")).toEqual(["inventory", "look_at", "get_recipes", "show_marks", "say", "wait", "finish", "pick_blocks", "chests"]);
   });
 
@@ -163,6 +163,8 @@ describe("task tools", () => {
     expect(valid("smelt", { action: "fuel", need: true, types: ["blast_furnace"] })).toBe(true);
     expect(valid("smelt", { action: "fuel", each: 65 })).toBe(false);
     expect(valid("anvil", { action: "plan", item: "diamond_sword", enchantments: ["mending"], rename: "Excalibur" })).toBe(true);
+    expect(valid("grindstone", { action: "apply", item: "iron_pickaxe", combine: true })).toBe(true);
+    expect(valid("grindstone", { action: "sharpen" })).toBe(false);
     expect(valid("smelt", { action: "collect", to: "chest" })).toBe(false);
     expect(valid("brew", { action: "start", potion: "night_vision", form: "splash_potion", bottles: 3 })).toBe(true);
     expect(valid("brew", { action: "start", potion: "long_night_vision", bottles: 4, fresh: false })).toBe(true);
