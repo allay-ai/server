@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.19.1
+
+Plugins need nothing new: a few of the game tools' words say more exactly what the plugin does.
+
+- 🎯 **Clearer tool arguments.** `show_marks` names its real default length, 30 seconds, instead of about two minutes. The model also learns that a surroundings radius counts blocks, that `head` to `feet` in `inspect_item` mean worn armor rather than a chest, how wide a `reach` goal is and which dimension its spot is in, and that an operator's effect level 1 is level I.
+
 ## 6.19.0
 
 Needs Allay 6.19 for the plan; older plugins answer as before.

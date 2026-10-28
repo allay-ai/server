@@ -58,7 +58,7 @@ const definitions = {
       "What is around the asking player, within radius. about overview (default): the most common blocks, notable blocks (ores, chests, spawners, portals) with x, y, z, distance, and direction, and mobs within 32 blocks by type with counts, nearest distance, and whether they are hostile; other players appear only as a count. dark_spots: where hostile mobs can spawn (block light 0 on a solid top), the count and the nearest ten with x, y, z, distance, and direction, for where to put torches. farm: crops by type with ripe counts and stages, hydrated and dry farmland, composters, hoppers, spawners by mob, and animals by type; raw facts for estimating a rate, so say it's an estimate.",
     input: z.object({
       about: z.enum(["overview", "dark_spots", "farm"]).optional(),
-      radius: z.number().int().min(1).max(16).optional().describe("1–16; 8 by default"),
+      radius: z.number().int().min(1).max(16).optional().describe("Blocks; 8 by default"),
     }),
   },
   look_at: {
@@ -174,7 +174,7 @@ const definitions = {
       from: z
         .enum(["hand", "offhand", "head", "chest", "legs", "feet", "inventory", "enderchest", "container"])
         .optional()
-        .describe("hand by default; container is the one the player looks at, within 6 blocks"),
+        .describe("hand by default; head to feet are worn armor; container is the one the player looks at, within 6 blocks"),
       slot: z
         .number()
         .int()
@@ -246,7 +246,7 @@ const definitions = {
         )
         .max(64)
         .optional(),
-      seconds: z.number().int().min(1).max(3600).optional().describe("The player's number; otherwise leave it out (about two minutes, ten at most)"),
+      seconds: z.number().int().min(1).max(3600).optional().describe("The player's number; otherwise leave it out (30 by default; the server caps it, 600 by default)"),
       clear: z.boolean().optional(),
     }),
   },
@@ -339,9 +339,9 @@ const definitions = {
       advancement: z.string().max(128).optional(),
       x: z.number().int().optional(),
       z: z.number().int().optional(),
-      radius: z.number().int().min(2).max(200).optional(),
+      radius: z.number().int().min(2).max(200).optional().describe("reach: blocks; 10 by default"),
       biome: z.string().max(64).optional(),
-      dimension: dimension.optional(),
+      dimension: dimension.optional().describe("reach: the spot's, if not the player's"),
       color: z.enum(["pink", "blue", "red", "green", "yellow", "purple", "white"]).optional(),
       style: z.enum(["solid", "segmented_6", "segmented_10", "segmented_12", "segmented_20"]).optional(),
       id: z.string().min(1).max(32).optional(),
@@ -702,7 +702,7 @@ const operatorDefinitions = {
       player: z.string().min(1).max(32).optional().describe("teleport: an online player's name, instead of x, y, z"),
       mode: z.enum(["survival", "creative", "adventure", "spectator"]).optional().describe("gamemode"),
       effect: z.string().min(1).max(64).optional().describe("effect: the effect id, such as night_vision"),
-      level: z.number().int().min(1).max(10).optional().describe("effect"),
+      level: z.number().int().min(1).max(10).optional().describe("effect: 1 is level I"),
       clear: z.boolean().optional().describe("effect: remove all their effects"),
       time: z.union([z.enum(["day", "noon", "night", "midnight"]), z.number().int().min(0).max(23999)]).optional().describe("time"),
       weather: z.enum(["clear", "rain", "thunder"]).optional().describe("weather"),
