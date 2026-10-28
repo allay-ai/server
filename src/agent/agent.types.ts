@@ -42,6 +42,8 @@ export interface ServerInfo {
   /** Since 6.12: what Allay runs on, and where; see `LOADERS` and `SIDES`. */
   loader?: Loader;
   side?: Side;
+  /** Since 6.20: what the server's operator wrote about it, at most `MAX_ABOUT` characters. */
+  about?: string;
 }
 
 /** What Allay runs on: the plugin for Bukkit, Spigot, Paper, and their forks, or a mod for Fabric or NeoForge. */

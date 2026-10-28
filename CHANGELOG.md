@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.20.0
+
+Plugin 6.20 sends what you wrote about your server; older plugins work as before.
+
+- 🏰 **Allay knows your server.** Write a few lines about it in the plugin's `server.about`: what it is, its rules and places, the site and the map, and how you'd like Allay to talk with players. Answers to questions use it; Allay's own rules still come first. The backend reads up to 10,000 characters of it.
+
 ## 6.19.1
 
 Plugins need nothing new: a few of the game tools' words say more exactly what the plugin does.

@@ -6,6 +6,9 @@ import { USER_ID } from "../../shared/types/owner";
 import { expansionSchema, expansionToolSchema, MAX_EXPANSION_PROMPT, MAX_EXPANSION_TOOLS, valid } from "../tools/expansion.tools";
 
 const text = (max: number) => z.string().max(max).optional();
+
+/** The longest `server.about` the model reads; the plugin warns past 2,000, since every question pays for it. */
+export const MAX_ABOUT = 10_000;
 const taskId = z.string().regex(/^[a-z0-9]{1,16}$/);
 
 // Extra fields are allowed so newer plugins can send more without breaking older backends.
@@ -47,6 +50,12 @@ export const chatRequestSchema = z.object({
       // Since 6.12; one this backend doesn't know is dropped, not refused.
       loader: z.enum(LOADERS).optional().catch(undefined),
       side: z.enum(SIDES).optional().catch(undefined),
+      // Since 6.20: cut, not refused, so a long text never stops a server's questions.
+      about: z
+        .string()
+        .optional()
+        .catch(undefined)
+        .transform((about) => about?.trim().slice(0, MAX_ABOUT) || undefined),
     })
     .optional(),
   tools: z.array(z.string().max(64)).max(256).default([]),
