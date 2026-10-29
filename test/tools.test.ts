@@ -79,7 +79,6 @@ describe("offered game tools", () => {
   });
 
   test("a merged tool comes with any of its plugin tools", () => {
-    expect(offeredTools(["scan_farm"], false)).toEqual(["get_surroundings"]);
     // Plugins before 6.7 kept notes; since 6.16 places are only memories.
     expect(offeredTools(["find_notes"], false)).toEqual([]);
     expect(offeredTools(["get_food_options"], false)).toEqual(["inventory"]);
@@ -121,23 +120,6 @@ describe("search_commands", () => {
 });
 
 describe("merged tools", () => {
-  test("get_surroundings reaches dark spots and farms by about", async () => {
-    const { bridge, calls } = fakeBridge({
-      get_surroundings: { ok: true, result: { blocks: {} } },
-      get_light_spawn_check: { ok: true, result: { count: 3 } },
-      scan_farm: { ok: true, result: { crops: {} } },
-    });
-    const tools = gameTools(["get_surroundings"], "run", bridge);
-    expect(await run(tools.get_surroundings, { radius: 6 })).toEqual({ blocks: {} });
-    expect(await run(tools.get_surroundings, { about: "dark_spots", radius: 12 })).toEqual({ count: 3 });
-    expect(await run(tools.get_surroundings, { about: "farm" })).toEqual({ crops: {} });
-    expect(calls).toEqual([
-      { name: "get_surroundings", args: { radius: 6 } },
-      { name: "get_light_spawn_check", args: { radius: 12 } },
-      { name: "scan_farm", args: {} },
-    ]);
-  });
-
   test("operator runs each action as the plugin's own tool, with only its arguments", async () => {
     const { bridge, calls } = fakeBridge({ give_item: { ok: true, result: { given: 1 } }, set_time: { ok: true, result: {} }, heal: { ok: true, result: {} } });
     const tools = gameTools(["operator"], "run", bridge);
@@ -315,11 +297,12 @@ describe("merged tools", () => {
   test("status carries the xp, and settings the time zone", async () => {
     const { bridge, calls } = fakeBridge({
       get_player_status: { ok: true, result: { health: 20 } },
-      get_xp_info: { ok: true, result: { level: 30 } },
+      get_xp_info: { ok: true, result: { level: 30, progress: 0.5, points_to_next_level: 112 } },
       set_timezone: { ok: true, result: { zone: "Asia/Yekaterinburg" } },
     });
     const tools = gameTools(["get_player_status", "allay_settings"], "run", bridge);
-    expect(await run(tools.get_player_status, { target_level: 30 })).toEqual({ health: 20, xp: { level: 30 } });
+    // The status says level and progress already; the xp tool adds only what it alone knows.
+    expect(await run(tools.get_player_status, { target_level: 30 })).toEqual({ health: 20, xp: { points_to_next_level: 112 } });
     expect(await run(tools.allay_settings, { timezone: "Asia/Yekaterinburg" })).toEqual({ zone: "Asia/Yekaterinburg" });
     expect(calls.map((c) => c.name)).toEqual(["get_player_status", "get_xp_info", "set_timezone"]);
   });

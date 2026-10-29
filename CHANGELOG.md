@@ -2,6 +2,16 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.21.0
+
+Plugin 6.21 brings most of what Allay now says; with older plugins it works as before.
+
+- 🧭 **Allay says where the way shows.** `point_to` returns `action_bar`, and Allay tells the player to look above the hotbar: an arrow there turns with their view, so they find the way with the spot behind them. It mentions the compass only when the compass really points there, and `show_marks` says which way to turn for the nearest mark.
+- 🎆 **Fireworks and other special recipes.** `get_recipes` reads fireworks, copied books, maps, and banners, decorated shields, dyed leather, tipped arrows, decorated pots, and recolored shulker boxes and bundles, with a firework guide of every color, shape, and effect; `craft` and the operator's `give` take a `firework` description, `give` a `potion` type too.
+- 🧱 **Agents that finish the job.** “Give me X” goes to a chests agent, and what falls short goes on to a crafting sub-agent; a crafting agent hands an item that already lies in a chest to a chests one. `craft` makes how many more are needed, up to 2304 in one call, and never waits between crafts or runs a dry run it doesn't need.
+- 🛠️ **Results that say what happened.** The descriptions cover the plugin's new fields: places a search couldn't look (claims, unloaded chunks), lists cut short, goals already done, a teleport's safety, time and weather of the overworld, and what a plugin kept as it was. `get_player_status` no longer sends the level twice.
+- 🧹 **Two merged views fewer.** `get_surroundings` no longer takes `about`: the dark spots and farm views went with the plugin's `get_light_spawn_check` and `scan_farm`. The deaths history keeps `more_drops`, the kinds past the 20 listed.
+
 ## 6.20.0
 
 Plugin 6.20 sends what you wrote about your server; older plugins work as before.

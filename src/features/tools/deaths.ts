@@ -42,6 +42,7 @@ export const historyPage = async (history: DeathHistory, page: number, now = Dat
         level: d.level,
         ...(d.kept_inventory ? { kept_inventory: true } : {}),
         ...(d.drops && Object.keys(d.drops).length ? { dropped_items: d.drops } : {}),
+        ...(d.more_drops ? { more_dropped_kinds: d.more_drops } : {}),
         ...(d.experience ? { dropped_experience: d.experience } : {}),
       };
     }),

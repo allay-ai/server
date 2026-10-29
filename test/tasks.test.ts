@@ -172,7 +172,11 @@ describe("task tools", () => {
     expect(valid("chests", { action: "plan", mode: "move", categories: ["wood"], to: [{ x: 1, y: 2, z: 3 }], from: ["inventory", "nearby"] })).toBe(true);
     expect(valid("chests", { action: "plan", mode: "move", from: ["ender_chest"] })).toBe(false);
     expect(valid("craft", { item: "iron_pickaxe", count: 2, dry_run: true })).toBe(true);
-    expect(valid("craft", { item: "iron_pickaxe", count: 65 })).toBe(false);
+    expect(valid("craft", { item: "lapis_lazuli", count: 2304 })).toBe(true);
+    expect(valid("craft", { item: "lapis_lazuli", count: 2305 })).toBe(false);
+    expect(valid("craft", { item: "firework_rocket", count: 6, firework: { flight: 3, stars: [{ shape: "large_ball", colors: ["red", "yellow"], fade: ["white"], trail: true, twinkle: true }] } })).toBe(true);
+    expect(valid("craft", { item: "firework_rocket", firework: { flight: 4 } })).toBe(false);
+    expect(valid("craft", { item: "firework_star", firework: { stars: [{ shape: "heart", colors: ["red"] }] } })).toBe(false);
   });
 
   test("take, stash, outputs to remember, adding to a smelt, and several potions in rounds", () => {

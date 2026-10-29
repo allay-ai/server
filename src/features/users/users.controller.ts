@@ -52,6 +52,8 @@ const DeathBody = z.object({
   kept_inventory: z.boolean().optional(),
   drops: z.record(ID, z.number().int().min(1).max(1_000_000)).refine((d) => Object.keys(d).length <= 20, "at most 20 kinds").optional(),
   experience: z.number().int().min(0).max(100_000_000).optional(),
+  // Since plugin 6.21: kinds beyond the 20 in drops.
+  more_drops: z.number().int().min(1).max(100_000).optional(),
 });
 /** A player's state as the plugin keeps it; the backend checks its shape and size, not what's inside. */
 const StateBody = z.object({

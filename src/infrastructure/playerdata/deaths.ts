@@ -19,6 +19,7 @@ export interface Death {
   level: number;
   kept_inventory?: boolean;
   drops?: Record<string, number>;
+  more_drops?: number;
   experience?: number;
 }
 
