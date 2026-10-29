@@ -4,11 +4,11 @@
 
 [Русская версия](https://github.com/allay-ai/server/blob/master/README.RU.md)
 
-**Allay Server** is the brain behind [Allay](https://github.com/allay-ai/minecraft), the AI helper for Minecraft players. It answers every `/ask` from your server: it looks into the player's game, searches the web, and remembers each player. Run it yourself with one Docker Compose file, or use the hosted one at `allay.chat`.
+**Allay Server** is the brain behind [Allay](https://github.com/allay-ai/minecraft), the AI helper for Minecraft players. It answers every `/ask` from your server: it looks into the player’s game, searches the web, and remembers each player. Run it yourself with one Docker Compose file, or use the hosted one at `allay.chat`.
 
 ## What you get
 
-- **Answers about your world.** The agent reads the asker's inventory, surroundings, recipes, and the server's plugins before it answers.
+- **Answers about your world.** The agent reads the asker’s inventory, surroundings, recipes, and the server’s plugins before it answers.
 - **Help in the world.** Trails to a spot, ghost blocks to build into, glowing chests that hold what you need, buttons right in every answer.
 - **Agents that do the chores.** Sorting chests, smelting, brewing, and crafting run as automation agents that report back.
 - **Fresh facts and exact math.** Web search when a question needs it, and calculations at 64 significant digits.
@@ -46,7 +46,7 @@
      mongo:
    ```
 
-2. Set `server.url` in the plugin's `config.yml` to `http://localhost:3000` and `server.token` to your `PLUGIN_TOKEN`, then run `/allay reload`. Then `/allay init` opens the admin panel, where you paste your OpenRouter key. The backend listens on this machine only; a Minecraft server elsewhere reaches it through a reverse proxy with TLS.
+2. Set `server.url` in the plugin’s `config.yml` to `http://localhost:3000` and `server.token` to your `PLUGIN_TOKEN`, then run `/allay reload`. Then `/allay init` opens the admin panel, where you paste your OpenRouter key. The backend listens on this machine only; a Minecraft server elsewhere reaches it through a reverse proxy with TLS.
 3. [Self-hosting with Docker](https://github.com/allay-ai/server/wiki/Self-hosting-with-Docker) goes further: proxies, passwords, and upgrades.
 
 ## Documentation
@@ -63,8 +63,8 @@ The [wiki](https://github.com/allay-ai/server/wiki) holds the full manual.
 - **[WorldAPI](https://github.com/MairwunNx/minecraft-worldapi)** – REST and WebSocket API to the world, players, and stats of a Paper, Fabric, or NeoForge server.
 - **[Minecraft MCP](https://github.com/MairwunNx/minecraft-mcp)** – lets an AI client read and run a server through WorldAPI.
 - **[Allay](https://github.com/allay-ai/minecraft)** – an AI helper in the game: ask with `/ask`, right in the chat.
-- **[Mo’Joins](https://github.com/MairwunNx/mojoins)** – join and quit messages in each player's language.
-- **[Mo’Afks](https://github.com/MairwunNx/moafks)** – a safe AFK mode that doesn't block the night.
+- **[Mo’Joins](https://github.com/MairwunNx/mojoins)** – join and quit messages in each player’s language.
+- **[Mo’Afks](https://github.com/MairwunNx/moafks)** – a safe AFK mode that doesn’t block the night.
 - **[Mo’Bosses](https://github.com/MairwunNx/mobosses)** – monsters that spawn as bosses with classes, abilities, and loot.
 - **[minecraft-exporter](https://github.com/MairwunNx/minecraft-exporter)** – Prometheus metrics from WorldAPI.
 - **[minecraft-grafana](https://github.com/MairwunNx/minecraft-grafana)** – the Grafana dashboard for WorldAPI.
