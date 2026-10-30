@@ -207,7 +207,7 @@ const definitions = {
   },
   point_to: {
     description:
-      "Points the asking player's compass at a spot in their dimension and draws a trail there that only they see; it ends once they arrive, and a new one replaces the old. Or pass player instead of x and z: the trail follows that player while they stay on the asker's locator bar. The trail shows only ahead of the player; with action_bar true, an arrow above the hotbar turns with their view and counts the blocks left, so they find the way with the spot behind them. label shows in that arrow line. Without y, the trail's end stands on the ground there. When it runs out the player hears how far is left, and on arrival how far up or down the spot still is. Returns distance, direction, seconds, style, compass (whether the compass points there), and action_bar.",
+      "Points the asking player's compass at a spot in their dimension and draws a trail there that only they see; it ends once they arrive, and a new one replaces the old. Or pass player instead of x and z: the trail follows that player while they stay on the asker's locator bar. The trail shows only ahead of the player; with boss_bar true, a bar at the top of the screen shrinks as they get closer, and it and the line above the hotbar (action_bar true) show an arrow that turns with their view, the blocks left, and how far up or down the spot lies, so they find the way with the spot behind them. label shows beside that arrow. Without y, the trail's end stands on the ground there. Without seconds, the trail lasts while they keep getting closer. When it runs out the player gets a button to go on, and on arrival hears how far up or down the spot still is. Returns distance, direction, seconds, idle_seconds, style, compass (whether the compass points there), action_bar, and boss_bar.",
     input: z.object({
       x: z.number().int().optional().describe("With z, the spot; leave both out for player"),
       y: z.number().int().optional().describe("Leave it out when unknown, as for structures"),
@@ -221,11 +221,15 @@ const definitions = {
         .min(1)
         .max(3600)
         .optional()
-        .describe("The player's number («на 5 минут» is 300); otherwise by the walk: about 30 close by, a few minutes for hundreds of blocks. Leave it out for a player. The server caps it (600 by default)"),
+        .describe("Only the player's number («на 5 минут» is 300). Leave it out otherwise: the trail then lasts while they keep getting closer. The server caps it (600 by default)"),
       style: z
         .enum(["sparkle", "flame", "soul", "glow", "magic", "spark", "cherry", "notes", "hearts", "snow", "totem", "happy"])
         .optional()
         .describe("The one the player asks for, or one that fits the place (flame or soul in the Nether, magic in the End, cherry for a cherry grove, hearts for a friend); sparkle by default"),
+      bar_color: z
+        .enum(["pink", "blue", "red", "green", "yellow", "purple", "white"])
+        .optional()
+        .describe("The boss bar's color: the one the player asks for, or one that fits (red for a death point, green for a village, purple in the End); the server's by default"),
     }),
   },
   show_marks: {

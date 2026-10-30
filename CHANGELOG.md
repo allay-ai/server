@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.23.0
+
+Plugin 6.23 uses all of it; older plugins ignore the new color.
+
+- 🧭 **The way lasts while you walk it.** `point_to` no longer guesses a length from the distance: without the player's own number the plugin keeps the trail while they get closer, and a button under the note shows the rest if it goes out.
+- 🎨 **A boss bar in a fitting color.** `point_to` takes `bar_color` (pink, blue, red, green, yellow, purple, white) for the plugin's new boss bar, and the model hears that the bar shows the arrow and how far up or down the spot lies.
+
 ## 6.22.0
 
 Plugin 6.22 uses all of it; older plugins work as before.
