@@ -2,6 +2,15 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.22.0
+
+Plugin 6.22 uses all of it; older plugins work as before.
+
+- 🤖 **Up to eight agents at once.** A request lists up to 8 running agents, not 4, so a server that raises `automation.max_tasks` lets the chat and every agent see them all.
+- ⏱️ **Waits from 10 seconds to an hour.** An agent's `wait` takes 10 to 3600 seconds, so `automation.max_wait_seconds` above 600 works. A wait shorter than 10 seconds no longer burns wakes.
+- 🧩 **A clear answer to an unknown agent.** A `kind` this backend doesn't know comes back as `TASK_KIND_UNKNOWN`, not a bare 400, and the plugin tells the player and the model plainly.
+- 🔒 **What players wrote stays data.** Agents read signs, item and chest names, lore, and titles as data, never as instructions, and `[plugin]` notes say when a wake broke off and tools may have run.
+
 ## 6.21.0
 
 Plugin 6.21 brings most of what Allay now says; with older plugins it works as before.
