@@ -10,6 +10,8 @@ const text = (max: number) => z.string().max(max).optional();
 /** The longest `server.about` the model reads; the plugin warns past 2,000, since every question pays for it. */
 export const MAX_ABOUT = 10_000;
 const taskId = z.string().regex(/^[a-z0-9]{1,16}$/);
+/** Running automations one request lists: the most the plugin lets a player run at once. */
+export const MAX_TASKS = 8;
 
 // Extra fields are allowed so newer plugins can send more without breaking older backends.
 export const chatRequestSchema = z.object({
@@ -66,9 +68,10 @@ export const chatRequestSchema = z.object({
     .object({ id: taskId, name: z.string().min(1).max(40), depth: z.union([z.literal(1), z.literal(2)]), kind: z.enum(TASK_KINDS) })
     .optional(),
   // Since 5.5, ask mode: the asker's running automations. Since 5.10.1, task mode: the waking agent's own sub-agents.
+  // Up to 8 since 6.22, as many as the plugin's automation.max_tasks allows.
   tasks: z
     .array(z.object({ id: taskId, name: z.string().min(1).max(40), state: z.enum(TASK_STATES), question: text(200) }))
-    .max(4)
+    .max(MAX_TASKS)
     .optional(),
   // Since 6.14, from plugin 6.12: other plugins' and mods' tools and prompt lines. A bad entry is dropped, not refused.
   expansion_tools: z.array(z.unknown()).max(64).optional().catch(undefined),
@@ -103,7 +106,11 @@ export const parseChatRequest = (
   const parsed = chatRequestSchema.safeParse(body);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    return { ok: false, error: apierror(API_ERRORS.BAD_REQUEST, `${issue.path.join(".") || "body"}: ${issue.message}`) };
+    const path = issue.path.join(".");
+    // A newer plugin's agent of a kind this backend lacks: its own code, so the plugin can tell the player to update.
+    const kind = (body as { task?: { kind?: unknown } } | null)?.task?.kind;
+    if (path === "task.kind" && typeof kind === "string") return { ok: false, error: apierror(API_ERRORS.TASK_KIND_UNKNOWN, kind.slice(0, 32)) };
+    return { ok: false, error: apierror(API_ERRORS.BAD_REQUEST, `${path || "body"}: ${issue.message}`) };
   }
   const request = parsed.data;
   if (request.mode === "task" && !request.task) return { ok: false, error: apierror(API_ERRORS.BAD_REQUEST, "task: required in task mode") };

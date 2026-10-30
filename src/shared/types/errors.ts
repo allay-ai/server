@@ -21,6 +21,7 @@ export const API_ERRORS = {
   QUESTION_TOO_LONG: { code: 'QUESTION_TOO_LONG', message: 'Question too long (max 1000 characters)', statusCode: 400 },
   NO_AI_RESPONSE: { code: 'NO_AI_RESPONSE', message: 'No response from AI model', statusCode: 503 },
   BAD_REQUEST: { code: 'BAD_REQUEST', message: 'Invalid request body', statusCode: 400 },
+  TASK_KIND_UNKNOWN: { code: 'TASK_KIND_UNKNOWN', message: "This backend doesn't know agents of this kind yet", statusCode: 400 },
   INVALID_JSON: { code: 'INVALID_JSON', message: 'Invalid JSON body', statusCode: 400 },
   METHOD_NOT_SUPPORTED: { code: 'METHOD_NOT_SUPPORTED', message: 'Method not supported', statusCode: 405 },
   PLATFORM_NOT_SUPPORTED: { code: 'PLATFORM_NOT_SUPPORTED', message: 'Platform not supported', statusCode: 400 },

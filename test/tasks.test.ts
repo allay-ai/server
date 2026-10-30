@@ -71,16 +71,22 @@ describe("task requests", () => {
     expect(code({ ...base, mode: "task", task: { ...task, id: "a".repeat(17) } })).toBe("BAD_REQUEST");
     expect(code({ ...base, mode: "task", task: { ...task, depth: 3 } })).toBe("BAD_REQUEST");
     expect(code({ ...base, mode: "task", task: { ...task, depth: 0 } })).toBe("BAD_REQUEST");
-    expect(code({ ...base, mode: "task", task: { ...task, kind: "mining" } })).toBe("BAD_REQUEST");
+    expect(code({ ...base, mode: "task", task: { ...task, kind: undefined } })).toBe("BAD_REQUEST");
     expect(code({ ...base, mode: "task", task: { ...task, name: "x".repeat(41) } })).toBe("BAD_REQUEST");
   });
 
-  test("an ask lists the running tasks, at most four; other modes drop them, and ask drops a task", () => {
+  test("a kind this backend doesn't know has its own code, so the plugin can say so", () => {
+    const parsed = parseChatRequest({ ...base, mode: "task", task: { ...task, kind: "mining" } }, "self");
+    expect(parsed.ok ? undefined : parsed.error).toMatchObject({ code: "TASK_KIND_UNKNOWN", statusCode: 400, message: "This backend doesn't know agents of this kind yet: mining" });
+  });
+
+  test("an ask lists the running tasks, at most eight; other modes drop them, and ask drops a task", () => {
     const tasks = [{ id: "k3f9", name: "Печи", state: "asking", question: "Куда положить слитки?" }, { id: "a1", name: "Зелья", state: "waiting" }];
     const parsed = parseChatRequest({ ...base, tasks, task }, "self");
     expect(parsed.ok ? parsed.context.tasks : undefined).toEqual(tasks as NonNullable<RunContext["tasks"]>);
     expect(parsed.ok && parsed.context.task).toBeUndefined();
-    expect(code({ ...base, tasks: Array(5).fill(tasks[1]) })).toBe("BAD_REQUEST");
+    expect(code({ ...base, tasks: Array(8).fill(tasks[1]) })).toBe("ok");
+    expect(code({ ...base, tasks: Array(9).fill(tasks[1]) })).toBe("BAD_REQUEST");
     expect(code({ ...base, tasks: [{ ...tasks[1], state: "sleeping" }] })).toBe("BAD_REQUEST");
     expect(code({ ...base, tasks: [{ ...tasks[0], question: "x".repeat(201) }] })).toBe("BAD_REQUEST");
     const askx = parseChatRequest({ ...base, mode: "askx", message: "give me bread", tasks }, "self");
@@ -137,14 +143,16 @@ describe("task tools", () => {
     expect(valid("cancel_task", { id: "Bad id" })).toBe(false);
   });
 
-  test("say has up to four buttons; wait up to ten minutes; finish a summary", () => {
+  test("say has up to four buttons; wait 10 seconds to an hour; finish a summary", () => {
     const button = { label: "Группировать", reply: "group" };
     expect(valid("say", { text: "Сортировать или группировать?", buttons: [button, button] })).toBe(true);
     expect(valid("say", { text: "x", buttons: Array(5).fill(button) })).toBe(false);
     expect(valid("say", { text: "x", buttons: [{ label: "x".repeat(25), reply: "x" }] })).toBe(false);
     expect(valid("wait", {})).toBe(true);
-    expect(valid("wait", { seconds: 600 })).toBe(true);
-    expect(valid("wait", { seconds: 601 })).toBe(false);
+    expect(valid("wait", { seconds: 10 })).toBe(true);
+    expect(valid("wait", { seconds: 3600 })).toBe(true);
+    expect(valid("wait", { seconds: 9 })).toBe(false);
+    expect(valid("wait", { seconds: 3601 })).toBe(false);
     expect(valid("finish", { summary: "Разложил 6 сундуков." })).toBe(true);
     expect(valid("finish", {})).toBe(false);
     expect(valid("finish", { summary: "Печи доделают стекло.", handoff: true })).toBe(true);
