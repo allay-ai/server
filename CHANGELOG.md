@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.23.1
+
+Dependency updates; nothing changes for plugins.
+
+- ⬆️ Mastra: core 1.81.0, MongoDB 1.25.0, observability 1.23.0; the AI SDK follows it: `ai` 7.0.159, `@ai-sdk/provider` 4.0.35, `@ai-sdk/openai-compatible` 3.0.82.
+- ⬆️ The admin panel's packages, `@hookform/resolvers` 7 among them.
+
 ## 6.23.0
 
 Plugin 6.23 uses all of it; older plugins ignore the new color.
