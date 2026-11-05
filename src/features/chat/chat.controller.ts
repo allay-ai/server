@@ -2,7 +2,8 @@ import type { Server } from "bun";
 import { type AllayDeps, runAllay } from "../../agent/allay";
 import { jsonError, readJson } from "../../shared/lib/http";
 import { logger } from "../../shared/logging/logger";
-import { API_ERRORS, ApiFailure, apierror } from "../../shared/types/errors";
+import { API_ERRORS, type ApiError, ApiFailure, apierror } from "../../shared/types/errors";
+import { event, signals } from "../../infrastructure/telemetry/signals";
 import { identify } from "../auth/caller";
 import { mayKeep } from "../auth/consent";
 import { admit, payer } from "../billing/gate";
@@ -13,6 +14,13 @@ import { clientAddress } from "../../shared/lib/address";
 import { parseChatRequest, toolAnswerSchema } from "./chat.types";
 import { sseResponse } from "./chat.sse";
 
+/** Answers a question refused before it ran, and counts it by code for the server that asked. */
+const refusing = (tenant: string, serverId: string | undefined, player: string) => (error: ApiError) => {
+  signals().instruments.refusals.add(1, { code: error.code, tenant, server_id: serverId ?? "" });
+  event("allay.gate.refused", { code: error.code, "allay.tenant": tenant, "allay.player": player, ...(serverId ? { "allay.server.id": serverId } : {}) });
+  return jsonError(error);
+};
+
 /** POST /api/v2/chat: one question, streamed back as events while the agent works. */
 export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Server<undefined>): Promise<Response> => {
   if (req.method !== "POST") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
@@ -22,18 +30,19 @@ export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Ser
   if (!json.ok) return jsonError(json.error);
   const parsed = parseChatRequest(json.body, caller.tenant);
   if (!parsed.ok) return jsonError(parsed.error);
+  const refuse = refusing(caller.tenant, parsed.context.server?.id, deps.pseudonyms.of(caller.tenant, parsed.context.userId));
   // A blocked player is refused before anything is paid for or kept.
-  if (await deps.bans.has(caller.tenant, deps.pseudonyms.of(caller.tenant, parsed.context.userId))) return jsonError(apierror(API_ERRORS.PLAYER_BLOCKED));
+  if (await deps.bans.has(caller.tenant, deps.pseudonyms.of(caller.tenant, parsed.context.userId))) return refuse(apierror(API_ERRORS.PLAYER_BLOCKED));
   // So is a player who hasn't agreed, on a hosted backend: nothing runs, is traced, or is kept.
-  if (!(await mayKeep(deps, caller.tenant, parsed.context.userId))) return jsonError(apierror(API_ERRORS.CONSENT_REQUIRED));
+  if (!(await mayKeep(deps, caller.tenant, parsed.context.userId))) return refuse(apierror(API_ERRORS.CONSENT_REQUIRED));
   // A Solo license answers its own player only.
   const solo = await soloRefusal(deps.billing, deps.pseudonyms, caller, parsed.context.userId);
-  if (solo) return jsonError(solo.toApiError());
+  if (solo) return refuse(solo.toApiError());
   if (deps.bridge.active >= settings.get("MAX_ACTIVE_RUNS")) {
-    return jsonError({ code: "QUEUE_ERROR", message: "Too many questions at once; try again in a minute", statusCode: 503 });
+    return refuse({ code: "QUEUE_ERROR", message: "Too many questions at once; try again in a minute", statusCode: 503 });
   }
   const admitted = await admit(deps.billing, req.headers, parsed.provider, caller);
-  if (!admitted.ok) return jsonError(admitted.error.toApiError());
+  if (!admitted.ok) return refuse(admitted.error.toApiError());
   const { admission } = admitted;
   // Where the server connects from and what it runs, for the panel; never in the log.
   const info = parsed.context.server;
@@ -64,9 +73,11 @@ export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Ser
 
   return sseResponse(async (emit, signal) => {
     deps.bridge.open(runId, emit, caller.tenant);
+    signals().instruments.streams.add(1);
     try {
       await runAllay(context, deps, { runId, emit, signal, spend: admission.spend, payer: admission.payer });
     } finally {
+      signals().instruments.streams.add(-1);
       deps.bridge.close(runId);
       admission.release();
     }

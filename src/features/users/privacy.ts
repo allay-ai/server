@@ -5,6 +5,7 @@ import type { SessionExport } from "../../infrastructure/history/history";
 import type { Consent } from "../../infrastructure/privacy/consents";
 import type { Death } from "../../infrastructure/playerdata/deaths";
 import type { StoredState } from "../../infrastructure/playerdata/state";
+import { privacyRequest } from "../../infrastructure/telemetry/signals";
 
 /** How many runs a player's copy lists; older ones still count in the statistics, by pseudonym. */
 const EXPORT_RUNS = 1000;
@@ -32,6 +33,7 @@ export interface PlayerExport extends SessionExport {
 }
 
 export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<PlayerExport> => {
+  privacyRequest("export", owner.tenant);
   const pseudonym = deps.pseudonyms.of(owner.tenant, owner.userId);
   const [memories, deaths, state, consent, sessions, runs, bans, known] = await Promise.all([
     deps.memories.list(owner),
@@ -113,6 +115,7 @@ export const erasePlayer = async (deps: AllayDeps, owner: Owner): Promise<Erased
   await deps.history.erase(owner);
   const runIds = (await deps.runs?.forget(deps.pseudonyms.of(owner.tenant, owner.userId), owner.tenant)) ?? [];
   const traces = (await deps.traces?.forget(runIds)) ?? 0;
+  privacyRequest("erasure", owner.tenant);
   return { memories, deaths, runs: runIds.length, traces };
 };
 
@@ -131,6 +134,7 @@ export interface Withdrawn {
  */
 export const withdrawPlayer = async (deps: AllayDeps, owner: Owner): Promise<Withdrawn> => {
   const withdrawn = await deps.consents.withdraw(owner);
+  if (withdrawn) privacyRequest("consent_withdrawn", owner.tenant);
   const memories = await deps.memories.clear(owner);
   const deaths = await deps.deaths.clear(owner);
   await deps.states.clear(owner);
@@ -149,5 +153,6 @@ export const erasePseudonym = async (deps: AllayDeps, tenant: string, pseudonym:
   await deps.players?.forget(tenant, pseudonym);
   const runIds = (await deps.runs?.forget(pseudonym, tenant)) ?? [];
   const traces = (await deps.traces?.forget(runIds)) ?? 0;
+  privacyRequest("erasure", tenant);
   return { memories: 0, deaths: 0, runs: runIds.length, traces };
 };

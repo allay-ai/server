@@ -899,7 +899,7 @@ export const gameTools = (names: GameToolName[], runId: string, bridge: ToolBrid
           const args = spoken((input ?? {}) as Record<string, unknown>, SPOKEN[name]);
           const call: Call = (tool, toolArgs) =>
             known.has(tool)
-              ? bridge.call(runId, tool, toolArgs, context?.abortSignal)
+              ? bridge.call(runId, tool, toolArgs, context?.abortSignal, context?.agent?.toolCallId ? { callId: context.agent.toolCallId, tool: name } : undefined)
               : Promise.resolve({ ok: false, error: `${tool} isn't available on this server` });
           const answer = composite ? await composite.run(args, call, options) : await call(name, args);
           return answer.ok ? trimmed(answer.result) : { error: answer.error };

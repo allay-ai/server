@@ -78,10 +78,16 @@ export const chatRequestSchema = z.object({
   expansions: z.array(z.unknown()).max(32).optional().catch(undefined),
 });
 
+/** Since 6.24: the plugin's own time for a tool, for the run's trace; anything odd is dropped, never refused. */
+const timing = z
+  .object({ queued_ms: z.number().int().min(0).max(600_000).optional(), run_ms: z.number().int().min(0).max(600_000).optional() })
+  .optional()
+  .catch(undefined);
+
 export const toolAnswerSchema = z.union([
-  z.object({ ok: z.literal(true), result: z.unknown() }),
+  z.object({ ok: z.literal(true), result: z.unknown(), timing }),
   // A longer error is cut, not refused: a refused answer left the model waiting out the tool timeout.
-  z.object({ ok: z.literal(false), error: z.string().transform((error) => error.slice(0, 2000)) }),
+  z.object({ ok: z.literal(false), error: z.string().transform((error) => error.slice(0, 2000)), timing }),
 ]);
 
 const LIMITS = { ask: 1000, askx: 500, task: 2000 } as const;

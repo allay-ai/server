@@ -1,8 +1,10 @@
+import { type ModelCall, type PluginTiming, runTraceOf } from "../../infrastructure/telemetry/run";
 import { logger } from "../../shared/logging/logger";
 import { settings } from "../settings/settings";
 import type { Emit } from "./chat.events";
 
-export type ToolAnswer = { ok: true; result: unknown } | { ok: false; error: string };
+/** Since 6.24 the plugin may add how long the tool waited for the server thread and ran there. */
+export type ToolAnswer = ({ ok: true; result: unknown } | { ok: false; error: string }) & { timing?: PluginTiming };
 
 interface PendingCall {
   settle: (answer: ToolAnswer) => void;
@@ -48,12 +50,16 @@ export class ToolBridge {
     return this.runs.size;
   }
 
-  /** Asks the plugin to run a tool; resolves with its answer, or a failure after the timeout. */
-  call(runId: string, name: string, args: unknown, signal?: AbortSignal): Promise<ToolAnswer> {
+  /**
+   * Asks the plugin to run a tool; resolves with its answer, or a failure after the timeout. [model] is the model's
+   * tool call it runs for, so the trip shows under that call in the run's trace.
+   */
+  call(runId: string, name: string, args: unknown, signal?: AbortSignal, model?: ModelCall): Promise<ToolAnswer> {
     const run = this.runs.get(runId);
     if (!run) return Promise.resolve({ ok: false, error: "The run is over" });
     const callId = crypto.randomUUID();
     const timeoutMs = this.fixedTimeoutMs ?? settings.get("TOOL_TIMEOUT_MS");
+    const trip = runTraceOf(runId)?.bridged(name, model);
     return new Promise<ToolAnswer>((resolve) => {
       const call: PendingCall = {
         answered: false,
@@ -61,6 +67,7 @@ export class ToolBridge {
           if (call.answered) return;
           call.answered = true;
           clearTimeout(call.timer);
+          trip?.end(answer.ok, answer.timing);
           run.emit({
             event: "tool_status",
             data: {
@@ -76,6 +83,7 @@ export class ToolBridge {
       };
       call.timer = setTimeout(() => {
         logger.warn(`Tool ${name} timed out in run ${runId}`);
+        trip?.timedOut();
         call.settle({ ok: false, error: `TOOL_TIMEOUT: the game didn't answer within ${timeoutMs / 1000} s` });
       }, timeoutMs);
       signal?.addEventListener("abort", () => call.settle({ ok: false, error: "Cancelled" }), { once: true });

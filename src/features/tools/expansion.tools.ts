@@ -133,7 +133,13 @@ export const expansionTools = (tools: ExpansionTool[], runId: string, bridge: To
         inputSchema: standard(cleanSchema({ ...tool.parameters, type: "object" })) as unknown as z.ZodType<Record<string, unknown>>,
         strict: false,
         execute: async (input, context) => {
-          const answer = await bridge.call(runId, tool.name, (input ?? {}) as Record<string, unknown>, context?.abortSignal);
+          const answer = await bridge.call(
+            runId,
+            tool.name,
+            (input ?? {}) as Record<string, unknown>,
+            context?.abortSignal,
+            context?.agent?.toolCallId ? { callId: context.agent.toolCallId, tool: tool.name } : undefined,
+          );
           if (!answer.ok) return { error: answer.error };
           const text = JSON.stringify(answer.result);
           return text !== undefined && text.length > MAX_RESULT_CHARS ? { truncated: true, json: `${text.slice(0, MAX_RESULT_CHARS)}…` } : answer.result;

@@ -2,7 +2,8 @@ import mongoose from 'mongoose';
 import { logger } from '../../shared/logging/logger';
 import { MONGODB_DATABASE, MONGODB_URI } from './mongodb.env';
 
-export const connect = async () => {
+/** [monitorCommands] lets telemetry time each command (telemetry/gauges.ts). */
+export const connect = async (options: { monitorCommands?: boolean } = {}) => {
   let connectionString = MONGODB_URI;
   const url = new URL(MONGODB_URI);
   url.pathname = `/${MONGODB_DATABASE}`;
@@ -10,7 +11,7 @@ export const connect = async () => {
 
   logger.info(`Connecting to MongoDB`);
 
-  await mongoose.connect(connectionString);
+  await mongoose.connect(connectionString, { monitorCommands: options.monitorCommands ?? false });
 
   logger.info('MongoDB connected!');
 

@@ -2,6 +2,16 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.24.0
+
+Plugin 6.24 adds its tools' time in the game; older plugins work as before.
+
+- 🔭 **OpenTelemetry.** Set `OTEL_EXPORTER_OTLP_ENDPOINT`, and every run goes out as a trace: the request, the agent, each model step, each tool call, and each trip to the plugin. Metrics count runs, errors, answer time, time to the first word, tokens, cost, tools, refusals, payments, and privacy requests per server, with `tenant` and `server_id` on each, so you see one server or all of them. Events (`allay.run.finished`, `allay.api_request`, `allay.tool_result`, and more) carry the numbers with the player's pseudonym. Attributes follow the GenAI conventions.
+- 🔒 **Numbers only.** No signal holds a question, an answer, tool data, a name, or a player id, and a test holds the code to that. A self-hosted backend may opt in to texts with `OTEL_LOG_CONTENT=1`; allay.chat never sends them.
+- 📊 **Dashboards ready to import.** `docs/telemetry/grafana/` holds Overview, Models & tools, Billing, and Traces, and `docs/telemetry/compose.yaml` runs Grafana with Prometheus, Loki, and Tempo next to the backend. Metrics may also go to a Prometheus scrape with `OTEL_METRICS_EXPORTER=prometheus`.
+- ⏱️ **The game's side of a tool.** A tool result may carry `timing` (`queued_ms`, `run_ms`): how long the tool waited for the server thread and ran there. It shows in the trace and in `allay.plugin.tool.*`.
+- 🧭 **Log lines name their trace.** While a run is traced, the backend's log lines end with `trace_id=…`.
+
 ## 6.23.1
 
 Dependency updates; nothing changes for plugins.

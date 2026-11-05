@@ -3,6 +3,7 @@ import { perplexitySearchRequest } from "@mastra/perplexity";
 import { generateText } from "ai";
 import { z } from "zod";
 import { forModel } from "./schema";
+import { signals } from "../../infrastructure/telemetry/signals";
 import { type ByokProvider, type ModelFactory, costOf } from "../../infrastructure/providers/openrouter/openrouter.client";
 import { redact } from "../../shared/lib/redact";
 import { logger } from "../../shared/logging/logger";
@@ -104,10 +105,12 @@ export const searchWebTool = (models: ModelFactory, options: SearchOptions) => {
           ? await searchPerplexity(perplexity, input as { query: string; sites?: string[]; recency?: Recency }, signal)
           : await searchModel(models, options, query, signal);
         if (perplexity) options.spend?.(PERPLEXITY_SEARCH_USD);
+        signals().instruments.searches.add(1, { provider: perplexity ? "perplexity" : "model", ok: "true" });
         status("finished", { text: count === 1 ? "1 source" : `${count} sources`, key: "sources", values: { count } });
         return found;
       } catch (error) {
         logger.warn(`Web search failed: ${redact(redact(String(error), options.provider?.apiKey), perplexity?.apiKey)}`);
+        signals().instruments.searches.add(1, { provider: perplexity ? "perplexity" : "model", ok: "false" });
         status("failed", { text: "search failed", key: "search_failed" });
         return { error: "Web search is unavailable right now; answer from knowledge and say you couldn't check." };
       }

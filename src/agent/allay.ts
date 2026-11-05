@@ -26,6 +26,8 @@ import type { DeathStore } from "../infrastructure/playerdata/deaths";
 import type { StateStore } from "../infrastructure/playerdata/state";
 import type { ExportStore } from "../infrastructure/playerdata/exports";
 import { type ByokProvider, type ModelFactory, costOf } from "../infrastructure/providers/openrouter/openrouter.client";
+import { RunTrace } from "../infrastructure/telemetry/run";
+import { event } from "../infrastructure/telemetry/signals";
 import { redact } from "../shared/lib/redact";
 import { logger } from "../shared/logging/logger";
 import { API_ERRORS, ApiFailure, apierror } from "../shared/types/errors";
@@ -234,28 +236,70 @@ const report = (deps: AllayDeps, context: RunContext, options: Pick<RunOptions, 
 
 const compact = async (context: RunContext, deps: AllayDeps, spend?: (usd: number) => void, foldAt?: number, options?: Pick<RunOptions, "runId" | "payer">) => {
   const started = Date.now();
+  const runId = crypto.randomUUID();
   let cost = 0;
   let usage = { input: 0, output: 0 };
   const charge = (usd: number) => {
     cost += usd;
     spend?.(usd);
   };
+  const telemetry = traceOf(context, deps, { runId, payer: options?.payer }, "summary");
+  const ended = (result: "ok" | "error", errorCode?: string) => {
+    telemetry.cost("summary", cost);
+    telemetry.end({ result, errorCode, inputTokens: usage.input, outputTokens: usage.output, reasoningTokens: 0, cost, steps: 1, tools: [] });
+  };
   try {
     const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
+    telemetry.model(model.modelId);
     const folded = await deps.history.compact(thread(context), summarizeWith(model, charge, (u) => (usage = u)), foldAt);
     if (folded) {
       logger.info(`Folded a ${thread(context).kind} session`);
       report(
         deps,
         context,
-        { runId: crypto.randomUUID(), payer: options?.payer },
+        { runId, payer: options?.payer },
         { at: new Date(started), model: model.modelId, input_tokens: usage.input, output_tokens: usage.output, reasoning_tokens: 0, cost, steps: 1, tools: [], searches: 0, duration_ms: Date.now() - started, result: "ok" },
         "summary",
       );
-    }
+      ended("ok");
+    } else telemetry.discard();
   } catch (error) {
     logger.warn(`Couldn't fold a ${thread(context).kind} session: ${redact(String(error), context.provider?.apiKey)}`);
+    ended("error", "SUMMARY_FAILED");
   }
+};
+
+/** The run's spans, metrics, and events; the player by pseudonym, as in the statistics. */
+const traceOf = (context: RunContext, deps: AllayDeps, options: Pick<RunOptions, "runId" | "payer">, kind = kindOf(context)) =>
+  new RunTrace({
+    runId: options.runId,
+    kind,
+    payer: options.payer?.kind ?? "self",
+    tenant: context.tenant,
+    serverId: context.server?.id,
+    player: deps.pseudonyms.of(context.tenant, context.userId),
+    platform: context.platform,
+    loader: context.server?.loader,
+    side: context.server?.side,
+    visibility: context.visibility,
+    language: context.locale,
+    taskKind: context.task?.kind,
+    model: context.model ?? "unknown",
+    provider: context.provider ? "byok" : "openrouter",
+  });
+
+/** How an automation agent's wake ended, from the tools it called last. */
+const wakeEnd = (called: Map<string, { name: string; ok: boolean }>) => {
+  const names = [...called.values()].map((c) => c.name);
+  return names.includes("finish") ? "finish" : names.includes("wait") ? "wait" : "steps";
+};
+
+type StepTokens = { inputTokens?: number; outputTokens?: number; reasoningTokens?: number; cachedInputTokens?: number; inputTokenDetails?: { cacheReadTokens?: number } };
+
+/** Why a step ended, wherever this Mastra puts it. */
+const finishOf = (payload: Record<string, unknown>): string | undefined => {
+  const reason = (payload.stepResult as { reason?: unknown } | undefined)?.reason ?? payload.finishReason;
+  return typeof reason === "string" ? reason : undefined;
 };
 
 /**
@@ -278,17 +322,21 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     cost += usd;
     options.spend?.(usd);
   };
+  const telemetry = traceOf(context, deps, options);
+  let askx: "accepted" | "rechecked" = "accepted";
   try {
     const model = deps.models({ provider: context.provider, platform: context.platform, model: context.model });
     modelId = model.modelId;
+    telemetry.model(modelId);
     const offered = offeredTools(context.tools, context.player?.op === true, context.mode, context.visibility, context.task?.depth ?? 0, context.task?.kind);
     const expansions = offeredExpansionTools(context.expansionTools ?? [], context.player?.op === true, context.mode);
-    const memories = await loadMemories(deps, context);
+    const memories = await telemetry.phase("allay.memories.load", () => loadMemories(deps, context));
     // askx turns one request into commands; earlier chat would only confuse it, as in v1. A task reads its own thread.
-    let session = context.mode === "askx" ? { messages: [] } : await deps.history.load(thread(context));
+    let session = context.mode === "askx" ? { messages: [] } : await telemetry.phase("allay.session.load", () => deps.history.load(thread(context)));
+    telemetry.contextFill(estimateTokens(session.messages) / maxTokens());
     // Folding after answers keeps a session well below this; a fold that failed, or one huge exchange, may not.
     if (estimateTokens(session.messages) > maxTokens()) {
-      await compact(context, deps, spend, maxTokens(), options);
+      await telemetry.phase("allay.session.compact", () => compact(context, deps, spend, maxTokens(), options));
       session = await deps.history.load(thread(context));
     }
     const instructions = systemPrompt({ ...context, tools: offered, expansionTools: expansions }, { memories, summary: session.summary });
@@ -318,7 +366,20 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
         // A server that brought its own key without a search model gets no web search, and an automation agent never does.
         ...(context.mode === "task" || (context.provider && !context.provider.searchModel)
           ? {}
-          : { web: { search_web: searchWebTool(deps.models, { provider: context.provider, platform: context.platform, emit, spend, perplexity: deps.perplexity }) } }),
+          : {
+              web: {
+                search_web: searchWebTool(deps.models, {
+                  provider: context.provider,
+                  platform: context.platform,
+                  emit,
+                  spend: (usd) => {
+                    telemetry.cost("search", usd);
+                    spend(usd);
+                  },
+                  perplexity: deps.perplexity,
+                }),
+              },
+            }),
         math: { exact_calculations: exactCalculationsTool({ emit }) },
         // askx only reads them: a remembered place is where “take me to my base” goes.
         ...((context.mode === "ask" || context.mode === "askx") && remembers(context.userId)
@@ -353,15 +414,22 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
         const payload = chunk.payload ?? {};
         switch (chunk.type) {
           case "reasoning-delta":
-            if (typeof payload.text === "string" && payload.text) emit({ event: "reasoning", data: { delta: payload.text } });
+            if (typeof payload.text === "string" && payload.text) {
+              telemetry.firstWord();
+              emit({ event: "reasoning", data: { delta: payload.text } });
+            }
             break;
           case "text-delta":
-            if (typeof payload.text === "string") write(chat ? chat.push(payload.text) : payload.text);
+            if (typeof payload.text === "string") {
+              if (payload.text) telemetry.firstWord();
+              write(chat ? chat.push(payload.text) : payload.text);
+            }
             break;
           case "tool-call":
             if (chat) write(chat.flush());
             exchange.call(payload);
             called.set(String(payload.toolCallId), { name: String(payload.toolName), ok: true });
+            telemetry.toolCalled(String(payload.toolCallId), String(payload.toolName), payload.args);
             if (context.mode === "task" && context.task && payload.toolName === "finish") {
               const summary = (payload.args as { summary?: unknown } | undefined)?.summary;
               if (typeof summary === "string" && summary.trim()) finishing.set(String(payload.toolCallId), toMinecraft(summary));
@@ -373,6 +441,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
             const result = payload.result as { error?: unknown } | null | undefined;
             const call = called.get(String(payload.toolCallId));
             if (call && result && typeof result === "object" && "error" in result) call.ok = false;
+            telemetry.toolEnded(String(payload.toolCallId), call?.ok ?? true, payload.result);
             // The plugin ended the task: its chat hears how with the player's next question.
             const summary = finishing.get(String(payload.toolCallId));
             if (summary && call?.ok) await deps.history.noteOutcome(ownerOf(context), outcomeOf(context, summary));
@@ -382,14 +451,24 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
             exchange.error(payload);
             const call = called.get(String(payload.toolCallId));
             if (call) call.ok = false;
+            telemetry.toolEnded(String(payload.toolCallId), false);
             break;
           }
           case "step-finish": {
             if (chat) write(chat.flush());
             steps++;
             exchange.endStep();
-            spend(costOf((payload.metadata as { providerMetadata?: unknown } | undefined)?.providerMetadata));
-            const step = (payload.output as { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } | undefined)?.usage;
+            const stepCost = costOf((payload.metadata as { providerMetadata?: unknown } | undefined)?.providerMetadata);
+            spend(stepCost);
+            const step = (payload.output as { usage?: StepTokens } | undefined)?.usage;
+            telemetry.stepFinished({
+              inputTokens: step?.inputTokens,
+              outputTokens: step?.outputTokens,
+              reasoningTokens: step?.reasoningTokens,
+              cachedTokens: step?.cachedInputTokens ?? step?.inputTokenDetails?.cacheReadTokens,
+              finishReason: finishOf(payload),
+              cost: stepCost,
+            });
             sofar.input_tokens += step?.inputTokens ?? 0;
             sofar.output_tokens += step?.outputTokens ?? 0;
             sofar.reasoning_tokens += step?.reasoningTokens ?? 0;
@@ -422,6 +501,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
         // Since plugin 6.16 the server checks the lines before they're final; what won't run goes back to the model once.
         const problems = context.tools.includes("search_commands") ? await uncheckable(deps.bridge, runId, commands.commands, signal) : [];
         if (problems.length) {
+          askx = "rechecked";
           text = "";
           const again = (await agent.stream(
             [...messages, { role: "assistant", content: JSON.stringify(object) }, { role: "user", content: recheck(problems) }],
@@ -433,11 +513,13 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
         }
       } catch (error) {
         if (error instanceof ApiFailure && error.code === API_ERRORS.AI_ERROR.code) {
+          telemetry.askx("refused");
           await record(context, deps, asked, [{ role: "assistant", content: `Refused: ${error.message.replace(/^AI returned an error: /, "")}` }]);
         }
         throw error;
       }
       await record(context, deps, asked, [{ role: "assistant", content: `Commands: ${commands.commands.join("; ")}` }]);
+      telemetry.askx(askx);
       emit({ event: "commands", data: commands });
       result = { answer: "", commands, usage: usage(), durationMs: Date.now() - started };
     } else {
@@ -467,6 +549,18 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       duration_ms: result.durationMs,
       result: "ok",
     });
+    if (context.mode === "task") telemetry.wake(wakeEnd(called));
+    telemetry.end({
+      result: "ok",
+      inputTokens: used.input_tokens,
+      outputTokens: used.output_tokens,
+      reasoningTokens: used.reasoning_tokens,
+      cost: used.cost,
+      steps,
+      tools: [...called.values()],
+      question: context.message,
+      answer: result.commands ? JSON.stringify(result.commands) : result.answer,
+    });
     // After done: the player has the answer, and the summary can take its time.
     void compact(context, deps, options.spend, undefined, options);
     return result;
@@ -487,6 +581,21 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       duration_ms: Date.now() - started,
       result: failure.code === API_ERRORS.CANCELLED.code ? "cancelled" : "error",
       error_code: failure.code,
+    });
+    if (context.mode === "task") telemetry.wake(failure.code === API_ERRORS.CANCELLED.code ? "cancelled" : "error");
+    if (APICallError.isInstance(error)) {
+      event("allay.api_error", { "allay.run.id": runId, "allay.tenant": context.tenant, model: modelId, error_code: failure.code, ...(error.statusCode ? { status_code: error.statusCode } : {}) });
+    }
+    telemetry.end({
+      result: failure.code === API_ERRORS.CANCELLED.code ? "cancelled" : "error",
+      errorCode: failure.code,
+      inputTokens: sofar.input_tokens,
+      outputTokens: sofar.output_tokens,
+      reasoningTokens: sofar.reasoning_tokens,
+      cost: Math.round(cost * 1_000_000) / 1_000_000,
+      steps,
+      tools: [...called.values()],
+      question: context.message,
     });
     emit({ event: "error", data: { code: failure.code, message: failure.message } });
     throw failure;

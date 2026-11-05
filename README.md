@@ -15,6 +15,7 @@
 - **A memory per player.** A session for follow-ups, plus up to 30 lasting facts the player controls.
 - **Privacy by design.** Every request says which server sends it, and a server reaches only its own players. Game tools see only the asker, the admin panel names players but never shows what anyone asked, and each player can get a copy of their data or have it erased.
 - **An admin panel.** Every setting, accounts with roles, and statistics on questions, cost, models, and tools.
+- **OpenTelemetry.** Traces of every run, metrics per server, and events go to any OTLP collector, with ready Grafana dashboards. Numbers only: no question or answer leaves.
 - **Your key, your rules.** Bring any OpenAI-compatible key, subscribe in Telegram Stars, or self-host with no limits.
 
 ## Get started
@@ -53,9 +54,9 @@
 
 The [wiki](https://github.com/allay-ai/server/wiki) holds the full manual.
 
-**For server owners:** [Self-hosting with Docker](https://github.com/allay-ai/server/wiki/Self-hosting-with-Docker) · [Environment variables](https://github.com/allay-ai/server/wiki/Environment-variables) · [Admin panel and settings](https://github.com/allay-ai/server/wiki/Admin-panel-and-settings) · [Who pays for the model](https://github.com/allay-ai/server/wiki/Who-pays-for-the-model) · [What Allay can do](https://github.com/allay-ai/server/wiki/What-Allay-can-do) · [Memory and traces](https://github.com/allay-ai/server/wiki/Memory-and-traces) · [Troubleshooting](https://github.com/allay-ai/server/wiki/Troubleshooting)
+**For server owners:** [Self-hosting with Docker](https://github.com/allay-ai/server/wiki/Self-hosting-with-Docker) · [Environment variables](https://github.com/allay-ai/server/wiki/Environment-variables) · [Admin panel and settings](https://github.com/allay-ai/server/wiki/Admin-panel-and-settings) · [Who pays for the model](https://github.com/allay-ai/server/wiki/Who-pays-for-the-model) · [What Allay can do](https://github.com/allay-ai/server/wiki/What-Allay-can-do) · [Memory and traces](https://github.com/allay-ai/server/wiki/Memory-and-traces) · [Telemetry](https://github.com/allay-ai/server/wiki/Telemetry) · [Troubleshooting](https://github.com/allay-ai/server/wiki/Troubleshooting)
 
-**For developers:** [HTTP API](https://github.com/allay-ai/server/wiki/HTTP-API) · [Architecture](https://github.com/allay-ai/server/wiki/Architecture) · [Building from source](https://github.com/allay-ai/server/wiki/Building-from-source) · [Releasing](https://github.com/allay-ai/server/wiki/Releasing) · [Development](https://github.com/allay-ai/server/wiki/Development) · [Protocol v2](docs/protocol-v2.md)
+**For developers:** [HTTP API](https://github.com/allay-ai/server/wiki/HTTP-API) · [Architecture](https://github.com/allay-ai/server/wiki/Architecture) · [Building from source](https://github.com/allay-ai/server/wiki/Building-from-source) · [Releasing](https://github.com/allay-ai/server/wiki/Releasing) · [Development](https://github.com/allay-ai/server/wiki/Development) · [Plugin protocol](https://github.com/allay-ai/server/wiki/Plugin-protocol)
 
 ## Related projects
 

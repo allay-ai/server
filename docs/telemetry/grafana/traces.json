@@ -1,0 +1,271 @@
+{
+ "uid": "allay-traces",
+ "title": "Allay · Traces",
+ "description": "Runs as traces in Tempo: the request, the agent, each model step, each tool call, and each trip to the plugin. Numbers only, never a question or an answer.",
+ "tags": [
+  "allay"
+ ],
+ "editable": false,
+ "graphTooltip": 1,
+ "schemaVersion": 41,
+ "version": 1,
+ "time": {
+  "from": "now-24h",
+  "to": "now"
+ },
+ "refresh": "1m",
+ "timezone": "browser",
+ "templating": {
+  "list": [
+   {
+    "name": "ds",
+    "label": "Prometheus",
+    "type": "datasource",
+    "query": "prometheus",
+    "current": {},
+    "hide": 0,
+    "refresh": 1
+   },
+   {
+    "name": "logs",
+    "label": "Loki",
+    "type": "datasource",
+    "query": "loki",
+    "current": {},
+    "hide": 0,
+    "refresh": 1
+   },
+   {
+    "name": "traces",
+    "label": "Tempo",
+    "type": "datasource",
+    "query": "tempo",
+    "current": {},
+    "hide": 0,
+    "refresh": 1
+   },
+   {
+    "name": "tenant",
+    "label": "Tenant",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "${ds}"
+    },
+    "query": {
+     "query": "label_values(allay_runs_total, tenant)",
+     "refId": "tenant"
+    },
+    "definition": "label_values(allay_runs_total, tenant)",
+    "includeAll": true,
+    "allValue": ".*",
+    "multi": true,
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    },
+    "refresh": 2,
+    "sort": 1
+   },
+   {
+    "name": "server",
+    "label": "Server",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "${ds}"
+    },
+    "query": {
+     "query": "label_values(allay_runs_total{tenant=~\"$tenant\"}, server_id)",
+     "refId": "server"
+    },
+    "definition": "label_values(allay_runs_total{tenant=~\"$tenant\"}, server_id)",
+    "includeAll": true,
+    "allValue": ".*",
+    "multi": true,
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    },
+    "refresh": 2,
+    "sort": 1
+   }
+  ]
+ },
+ "annotations": {
+  "list": []
+ },
+ "links": [
+  {
+   "title": "Allay",
+   "type": "dashboards",
+   "tags": [
+    "allay"
+   ],
+   "asDropdown": true,
+   "includeVars": true,
+   "keepTime": true
+  }
+ ],
+ "panels": [
+  {
+   "type": "text",
+   "title": "",
+   "options": {
+    "mode": "markdown",
+    "content": "Each run is a trace: `POST /api/v2/chat` → `invoke_agent allay` → `chat <model>` per step → `execute_tool <tool>` → `plugin <tool>` → `game <tool>` (plugin 6.24+).\n\nFind one run: `{ span.allay.run.id = \"<run id>\" }` · a player's: `{ span.allay.player = \"p_…\" }` · a server's: `{ span.allay.tenant = \"license:…\" && span.allay.server.id = \"…\" }` · slow tools: `{ name =~ \"execute_tool.*\" && duration > 5s }`."
+   },
+   "id": 1,
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 4
+   }
+  },
+  {
+   "type": "table",
+   "title": "Failed runs",
+   "description": "",
+   "datasource": {
+    "type": "tempo",
+    "uid": "${traces}"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "tempo",
+      "uid": "${traces}"
+     },
+     "queryType": "traceql",
+     "query": "{ name = \"invoke_agent allay\" && status = error && span.allay.tenant =~ \"$tenant\" }",
+     "limit": 50,
+     "tableType": "traces"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 2,
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 24,
+    "h": 10
+   }
+  },
+  {
+   "type": "table",
+   "title": "Slow runs",
+   "description": "",
+   "datasource": {
+    "type": "tempo",
+    "uid": "${traces}"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "tempo",
+      "uid": "${traces}"
+     },
+     "queryType": "traceql",
+     "query": "{ name = \"invoke_agent allay\" && duration > 20s && span.allay.tenant =~ \"$tenant\" }",
+     "limit": 50,
+     "tableType": "traces"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 3,
+   "gridPos": {
+    "x": 0,
+    "y": 14,
+    "w": 24,
+    "h": 10
+   }
+  },
+  {
+   "type": "table",
+   "title": "Tool timeouts",
+   "description": "",
+   "datasource": {
+    "type": "tempo",
+    "uid": "${traces}"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "tempo",
+      "uid": "${traces}"
+     },
+     "queryType": "traceql",
+     "query": "{ span.error.type = \"TOOL_TIMEOUT\" } && { span.allay.tenant =~ \"$tenant\" }",
+     "limit": 50,
+     "tableType": "traces"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 4,
+   "gridPos": {
+    "x": 0,
+    "y": 24,
+    "w": 24,
+    "h": 10
+   }
+  },
+  {
+   "type": "table",
+   "title": "Latest runs",
+   "description": "",
+   "datasource": {
+    "type": "tempo",
+    "uid": "${traces}"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "tempo",
+      "uid": "${traces}"
+     },
+     "queryType": "traceql",
+     "query": "{ name = \"invoke_agent allay\" && span.allay.tenant =~ \"$tenant\" }",
+     "limit": 50,
+     "tableType": "traces"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "id": 5,
+   "gridPos": {
+    "x": 0,
+    "y": 34,
+    "w": 24,
+    "h": 10
+   }
+  }
+ ]
+}

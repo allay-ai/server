@@ -1,0 +1,23 @@
+# Grafana, Prometheus, Loki, and Tempo in one container for a self-hosted backend's OpenTelemetry.
+# Start it next to the backend's own compose file:
+#
+#   docker compose -f docker-compose.yaml -f docs/telemetry/compose.yaml up -d
+#
+# then put OTEL_EXPORTER_OTLP_ENDPOINT=http://allay-lgtm:4318 into .env and restart the backend. Grafana is at
+# http://127.0.0.1:3001 (admin / admin on the first start); import the dashboards from docs/telemetry/grafana/.
+services:
+  allay-lgtm:
+    image: grafana/otel-lgtm:0.37.0
+    container_name: allay-lgtm
+    restart: unless-stopped
+    # Only this machine reaches Grafana; the backend reaches OTLP on the compose network.
+    ports:
+      - 127.0.0.1:3001:3000
+    volumes:
+      - allay-lgtm-data:/data
+    mem_limit: 1g
+    networks: [default]
+
+volumes:
+  allay-lgtm-data:
+    driver: local

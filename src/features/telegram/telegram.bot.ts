@@ -5,6 +5,7 @@ import { type Plan, kindOf, planOf, plans, soloOn, windowsFor } from "../billing
 import type { SuccessfulPayment, TelegramApi, TelegramUser, Update } from "./telegram.client";
 import { settings } from "../settings/settings";
 import { PLAN_NAMES, dateIn, fill, languageOf, textsOf } from "./telegram.texts";
+import { paymentMade } from "../../infrastructure/telemetry/signals";
 
 /** Telegram allows only this period for Stars subscriptions: 30 days. */
 const SUBSCRIPTION_PERIOD = 2_592_000;
@@ -292,6 +293,7 @@ const paid = async (billing: Billing, api: TelegramApi, chat: number, from: Tele
     ...(payment.is_first_recurring ? { subscription_charge_id: payment.telegram_payment_charge_id } : {}),
   });
   logger.info(`License ${license.id} paid ${payment.total_amount} Stars for ${plan.id}${recurring ? " (subscription)" : ""}`);
+  paymentMade(`license:${license.id}`, plan.id, payment.total_amount, recurring && !payment.is_first_recurring ? "renewal" : "payment");
   const after = await quotaFor(billing, license);
   const language = license.language ?? languageOf(from.language_code);
   const t = textsOf(language);
@@ -323,6 +325,7 @@ const unbook = async (billing: Billing, chargeId: string) => {
   const license = await billing.licenses.get(payment.license);
   if (license?.subscription_charge_id && payment.recurring) await billing.licenses.update(license.id, { renews: false });
   logger.info(`Payment ${chargeId} of license ${payment.license} refunded`);
+  paymentMade(`license:${payment.license}`, payment.plan, payment.stars, "refund");
   return { payment, license };
 };
 

@@ -1,4 +1,5 @@
 import type { Server } from "bun";
+import { observed } from "../infrastructure/telemetry/http";
 import type { AllayDeps } from "../agent/allay";
 import type { handleAdmin } from "../features/admin/admin.controller";
 import type { handleAdminInit } from "../features/admin/init.controller";
@@ -83,7 +84,7 @@ export const routes = (deps: AllayDeps, h: Handlers): Record<string, Route> => {
     ...(h.handleAdmin ? { "/api/admin/*": h.handleAdmin(deps) } : {}),
   };
   return {
-    ...Object.fromEntries(Object.entries(api).map(([path, route]) => [path, secured(route)])),
+    ...Object.fromEntries(Object.entries(api).map(([path, route]) => [path, observed(path, secured(route))])),
     ...(h.adminPages ? { "/admin": h.adminPages, "/admin/*": h.adminPages } : {}),
   };
 };

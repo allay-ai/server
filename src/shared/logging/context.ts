@@ -1,4 +1,11 @@
+import { trace } from "@opentelemetry/api";
 import { Logger, ILogObj } from "tslog";
+
+/** The trace a line belongs to, so Grafana goes from a log line in Loki to its trace in Tempo. */
+const traced = (message: string) => {
+  const span = trace.getActiveSpan()?.spanContext();
+  return span && span.traceFlags & 1 ? `${message} trace_id=${span.traceId}` : message;
+};
 
 export class ContextLogger<T extends ILogObj = ILogObj> {
   private readonly baseLogger: Logger<T>;
@@ -14,26 +21,26 @@ export class ContextLogger<T extends ILogObj = ILogObj> {
   }
 
   info(message: string, ...args: any[]) {
-    console.log("[INFO] " + message, ...args)
+    console.log("[INFO] " + traced(message), ...args)
   }
 
   warn(message: string, ...args: any[]) {
-    console.log("[WARN] " + message, ...args)
+    console.log("[WARN] " + traced(message), ...args)
   }
 
   error(message: string, ...args: any[]) {
-    console.log("[ERROR] " + message, ...args)
+    console.log("[ERROR] " + traced(message), ...args)
   }
 
   debug(message: string, ...args: any[]) {
-    console.log("[DEBUG] " + message, ...args)
+    console.log("[DEBUG] " + traced(message), ...args)
   }
 
   fatal(message: string, ...args: any[]) {
-    console.log("[FATAL] " + message, ...args)
+    console.log("[FATAL] " + traced(message), ...args)
   }
 
   trace(message: string, ...args: any[]) {
-    console.log("[TRACE] " + message, ...args)
+    console.log("[TRACE] " + traced(message), ...args)
   }
 }

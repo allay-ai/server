@@ -26,11 +26,20 @@ import { selfHosted } from "../features/billing/billing";
 import { productionDeps } from "./deps";
 import { routes } from "./routes";
 import { guardAborts } from "./aborts";
+import mongoose from "mongoose";
+import { startTelemetry } from "../infrastructure/telemetry/telemetry";
+import { watchGauges, watchMongo, watchProcess } from "../infrastructure/telemetry/gauges";
 
 guardAborts();
 logger.info("Allay Server is starting...");
+// Before anything else, so the first run and the first MongoDB command are counted.
+const telemetry = startTelemetry({ version: process.env.APP_VERSION || "dev", selfHosted: selfHosted() });
 
-await mongoConnect();
+await mongoConnect({ monitorCommands: telemetry.metrics });
+if (telemetry.metrics) {
+  watchMongo(mongoose.connection);
+  watchProcess();
+}
 const vault = productionVault();
 await settings.attach(mongoSettings, vault);
 const pseudonyms = pseudonymsWith(await vault.derive(PSEUDONYM_LABEL));
@@ -38,6 +47,7 @@ const pseudonyms = pseudonymsWith(await vault.derive(PSEUDONYM_LABEL));
 useDataKey(await vault.derive(DATA_KEY_LABEL));
 await prepareDatabase();
 const deps = productionDeps(pseudonyms);
+if (telemetry.metrics) watchGauges({ servers: deps.servers, licenses: deps.billing.enabled ? deps.billing.licenses : undefined });
 
 // Days past RUN_DAYS keep how many played, not who; once at start and then daily.
 const prune = () => mongoRuns.prune(new Date()).catch((error) => logger.warn(`Couldn't prune old statistics: ${String(error)}`));
@@ -78,6 +88,7 @@ if (deps.admin && !deps.admin.selfHosted && (await needsSetup(deps.admin))) {
 const shutdown = (signal: string) => async () => {
   logger.info(`Graceful shutdown: received ${signal}, closing connections...`);
   server.stop();
+  await telemetry.shutdown();
   await mongoDisconnect();
   logger.info("All connections closed");
   process.exitCode = 0;

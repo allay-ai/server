@@ -12,6 +12,7 @@ import { erasePlayer, exportPlayer, withdrawPlayer } from "./privacy";
 import { AGE_BANDS, type Agreement, MAX_CONSENT_VERSION } from "../../infrastructure/privacy/consents";
 import { POLICY_REVISION } from "../../shared/policy";
 import { settings } from "../settings/settings";
+import { privacyRequest } from "../../infrastructure/telemetry/signals";
 
 type Params = { userId?: string; memoryId?: string };
 type Routed = Request & { params?: Params };
@@ -125,7 +126,11 @@ export const handleConsent = (deps: AllayDeps) => async (req: Routed): Promise<R
   try {
     // The current revision comes along, so the plugin can hash the notice it would show now and compare.
     if (req.method === "GET") return noStore({ consent: await deps.consents.get(owner), revision: POLICY_REVISION });
-    if (agreement) return noStore({ consent: await deps.consents.give(owner, agreement), revision: POLICY_REVISION });
+    if (agreement) {
+      const consent = await deps.consents.give(owner, agreement);
+      privacyRequest("consent_given", owner.tenant);
+      return noStore({ consent, revision: POLICY_REVISION });
+    }
     // Withdrawing takes away what the agreement covered; the record stays, marked, as proof.
     return noStore(await withdrawPlayer(deps, owner));
   } catch (error) {
