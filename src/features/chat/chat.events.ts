@@ -1,6 +1,6 @@
 import type { Usage } from "../../agent/agent.types";
 
-/** Every event the v2 stream sends; see docs/protocol-v2.md. */
+/** Every event the v2 stream sends; see https://github.com/allay-ai/server/wiki/Plugin-protocol. */
 export type ChatEvent =
   | { event: "start"; data: { run_id: string; model: string } }
   | { event: "reasoning"; data: { delta: string } }
