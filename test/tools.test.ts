@@ -443,3 +443,19 @@ describe("memories in askx", () => {
     expect((await store.list(owner)).length).toBe(1);
   });
 });
+
+describe("the ender chest in chests", () => {
+  const tools = gameTools(["chests", "smelt"], "run", {} as ToolBridge);
+  const valid = (name: "chests" | "smelt", value: unknown) => {
+    const result = tools[name].inputSchema!["~standard"].validate(value);
+    if (result instanceof Promise) throw new Error("expected a synchronous schema");
+    return !result.issues;
+  };
+
+  test("stands in for coordinates wherever a chest goes (plugin 6.26+)", () => {
+    expect(valid("chests", { action: "plan", mode: "move", to: ["ender_chest"], from: ["inventory"], items: ["iron_block"] })).toBe(true);
+    expect(valid("chests", { action: "plan", mode: "take", chests: ["ender_chest", { x: 1, y: 2, z: 3 }], items: ["iron_block"] })).toBe(true);
+    expect(valid("smelt", { action: "start", item: "raw_iron", to: ["ender_chest"] })).toBe(true);
+    expect(valid("chests", { action: "plan", mode: "move", to: ["chest"], items: ["iron_block"] })).toBe(false);
+  });
+});
