@@ -15,7 +15,7 @@ const PRUNE_EVERY_MS = 60 * 60 * 1000;
  * The agent is built per run, so each run registers with this instance.
  */
 export const tracing = (uri: string, dbName: string): Mastra | undefined => {
-  // About 150 KB a run.
+  // About 150 KB to 1 MB a run, by how long the session is.
   const sample = settings.get("TRACE_SAMPLE");
   // Long enough to look into a complaint and see a month's patterns, short enough that questions don't pile up.
   const days = settings.get("TRACE_DAYS");
@@ -33,8 +33,9 @@ export const tracing = (uri: string, dbName: string): Mastra | undefined => {
           exporters: [new MastraStorageExporter({ customSpanFormatter: (span) => sealSpan(span as unknown as Record<string, unknown>) as unknown as typeof span })],
           // Mastra's own processors and the raw provider calls repeat each step's whole prompt: two thirds of the bytes, nothing new.
           excludeSpanTypes: [SpanType.PROCESSOR_RUN, SpanType.MODEL_INFERENCE, SpanType.MODEL_CHUNK],
-          // The system prompt is in the code; a step's own messages and results fit.
-          serializationOptions: { maxStringLength: 8_000 },
+          // The system prompt is in the code; a step's own messages and results fit. Mastra keeps the first 50 items of an
+          // array and 8 levels by default, which cut a long session before the question it answered and nested tool results.
+          serializationOptions: { maxStringLength: 32_000, maxArrayLength: 1_000, maxDepth: 24, maxObjectKeys: 200 },
           // tslog already writes the backend's logs; traces are for runs.
           logging: { enabled: false },
         },
