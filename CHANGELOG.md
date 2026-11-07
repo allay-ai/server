@@ -2,6 +2,13 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.25.0
+
+Plugin 6.26 reaches the ender chest; older plugins skip it.
+
+- 🟪 **The ender chest is a chest.** `chests` takes `"ender_chest"` in place of coordinates in `chests` and `to`, and `smelt` and `brew` in `to`: the player's own ender chest, through the ender chest nearest them. The prompts stop telling players to move things there by hand, and no longer write “don't touch the ender chest” into a brief the player didn't ask for.
+- 🔍 **Whole traces.** A revealed run showed only the first 50 messages of a long session, so the question it answered was cut off, and nested tool results read `[MaxDepth]`. Traces now keep up to 1000 items an array, 24 levels, and 32 000 characters a string. A long session's run takes up to about 1 MB.
+
 ## 6.24.0
 
 Plugin 6.24 adds its tools' time in the game; older plugins work as before.
