@@ -4,7 +4,7 @@ import { logger } from "../../shared/logging/logger";
 import { API_ERRORS, ApiFailure, apierror } from "../../shared/types/errors";
 import { type Owner, USER_ID } from "../../shared/types/owner";
 import { z } from "zod";
-import { MAX_MEMORY_CHARS, type Place } from "../../infrastructure/memory/memory";
+import { CATEGORIES, type Draft, KINDS, MAX_MEMORY_CHARS, MAX_TAG_CHARS, MAX_TAGS, MAX_TITLE_CHARS, type Patch } from "../../infrastructure/memory/memory";
 import { DIMENSIONS } from "../../agent/agent.types";
 import { identify } from "../auth/caller";
 import { mayKeep } from "../auth/consent";
@@ -25,8 +25,18 @@ const PlaceBody = z.object({
   z: z.number().int(),
   dimension: z.enum(DIMENSIONS),
   world: z.string().min(1).max(64).optional(),
+  radius: z.number().int().min(1).max(256).optional(),
 });
-const MemoryBody = z.object({ text: z.string().trim().min(3).max(MAX_MEMORY_CHARS), place: PlaceBody.optional() });
+// kind, title, tags, pinned, and category since 6.27, from the plugin's memory window.
+const MemoryFields = {
+  kind: z.enum(KINDS).optional(),
+  tags: z.array(z.string().trim().min(1).max(MAX_TAG_CHARS)).max(MAX_TAGS).optional(),
+  pinned: z.boolean().optional(),
+  category: z.enum(CATEGORIES).optional(),
+};
+const MemoryBody = z.object({ text: z.string().trim().min(3).max(MAX_MEMORY_CHARS), title: z.string().trim().max(MAX_TITLE_CHARS).optional(), place: PlaceBody.optional(), ...MemoryFields });
+// What's given replaces what was; an empty title and a null place remove them.
+const MemoryPatch = z.object({ text: z.string().trim().min(3).max(MAX_MEMORY_CHARS).optional(), title: z.string().trim().max(MAX_TITLE_CHARS).optional(), place: PlaceBody.nullable().optional(), ...MemoryFields });
 // hash since 6.9: SHA-256 of the notice the player saw and the policy's revision, hex.
 // age_confirmed and age_band since 6.9: the player is old enough to agree where they play, and the group they picked.
 const ConsentBody = z.object({
@@ -156,20 +166,19 @@ export const handleMemories = (deps: AllayDeps) => async (req: Routed): Promise<
   if (!["GET", "POST", "DELETE"].includes(req.method)) return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
   const owner = await ownerOf(deps, req);
   if (owner instanceof Response) return owner;
-  let text: string | undefined;
-  let place: Place | undefined;
+  let draft: Draft | undefined;
   if (req.method === "POST") {
     const body = MemoryBody.safeParse(await req.json().catch(() => undefined));
     if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `text must be 3–${MAX_MEMORY_CHARS} characters, and a place x, y, z, dimension`));
-    text = body.data.text;
-    place = body.data.place;
+    draft = body.data;
   }
   try {
     if (req.method === "GET") return noStore({ memories: await deps.memories.list(owner) });
-    if (text !== undefined) {
+    if (draft) {
       if (!(await mayKeep(deps, owner.tenant, owner.userId))) return jsonError(apierror(API_ERRORS.CONSENT_REQUIRED));
-      const saved = await deps.memories.add(owner, text, place);
-      return saved === "full" ? jsonError(apierror(API_ERRORS.MEMORY_FULL)) : Response.json({ memory: saved });
+      const saved = await deps.memories.add(owner, draft);
+      if (saved === "full") return jsonError(apierror(API_ERRORS.MEMORY_FULL));
+      return saved === "pins" ? jsonError(apierror(API_ERRORS.MEMORY_PINS_FULL)) : Response.json({ memory: saved });
     }
     return Response.json({ deleted: await deps.memories.clear(owner) });
   } catch (error) {
@@ -177,13 +186,27 @@ export const handleMemories = (deps: AllayDeps) => async (req: Routed): Promise<
   }
 };
 
-/** DELETE /api/v2/users/{user_id}/memories/{id}: `/ask forget <n>`. */
+/** DELETE /api/v2/users/{user_id}/memories/{id}: `/ask forget <n>`; PATCH since 6.27: the window edits, pins, and tags one. */
 export const handleMemory = (deps: AllayDeps) => async (req: Routed): Promise<Response> => {
-  if (req.method !== "DELETE") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
+  if (req.method !== "DELETE" && req.method !== "PATCH") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
   const owner = await ownerOf(deps, req);
   if (owner instanceof Response) return owner;
   const id = req.params?.memoryId;
   if (!id || !MEMORY_ID.test(id)) return jsonError(apierror(API_ERRORS.MEMORY_NOT_FOUND));
+  if (req.method === "PATCH") {
+    const body = MemoryPatch.safeParse(await req.json().catch(() => undefined));
+    if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `${body.error.issues[0]?.path.join(".") || "body"}: ${body.error.issues[0]?.message}`));
+    try {
+      if (!(await mayKeep(deps, owner.tenant, owner.userId))) return jsonError(apierror(API_ERRORS.CONSENT_REQUIRED));
+      const { title, ...rest } = body.data;
+      const patch: Patch = { ...rest, ...(title !== undefined ? { title: title || null } : {}) };
+      const changed = await deps.memories.update(owner, id, patch);
+      if (changed === "pins") return jsonError(apierror(API_ERRORS.MEMORY_PINS_FULL));
+      return changed ? Response.json({ memory: changed }) : jsonError(apierror(API_ERRORS.MEMORY_NOT_FOUND));
+    } catch (error) {
+      return failed("change the memory", error);
+    }
+  }
   try {
     if (!(await deps.memories.remove(owner, id))) return jsonError(apierror(API_ERRORS.MEMORY_NOT_FOUND));
     return Response.json({ deleted: 1 });

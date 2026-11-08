@@ -324,18 +324,19 @@ describe("POST /api/v2/chat", () => {
       [toolCall("memories", { action: "add", text: "a librarian with mending", here: true }), finish("tool-calls")],
       [...text("Saved."), finish()],
       [toolCall("memories", { action: "find", query: "mending", near: true }), finish("tool-calls")],
-      [...text("100 blocks east."), finish()],
+      [...text("500 blocks east."), finish()],
     ]);
     const deps = testDeps(model);
     const base = start(deps);
     const at = (x: number, z: number) => ({ name: "Steve", position: { x, y: 70, z, dimension: "overworld", world: "world" } });
     await readSse(await chat(base, { message: "remember this librarian", player: at(10, -20) }));
     expect((await deps.memories.list(owner("player-1")))[0]).toMatchObject({ text: "a librarian with mending", place: { x: 10, y: 70, z: -20, dimension: "overworld", world: "world" } });
-    await readSse(await chat(base, { message: "where was the mending guy?", player: at(-90, -20) }));
-    // The prompt counts the place without spelling it out; find gives the way.
-    expect(JSON.stringify(prompts[2])).toContain("1 saved place");
+    await readSse(await chat(base, { message: "where was the mending guy?", player: at(-490, -20) }));
+    // A place this far is only counted in the prompt; find gives the way.
+    expect(JSON.stringify(prompts[2])).toContain("1 more saved place");
+    expect(JSON.stringify(prompts[2])).not.toContain("Places within");
     const found = JSON.stringify(prompts[3]);
-    expect(found).toContain('"distance":100');
+    expect(found).toContain('"distance":500');
     expect(found).toContain('"direction":"east"');
   });
 
@@ -470,7 +471,7 @@ describe("session and memory endpoints", () => {
     const { model, prompts } = scripted([[...text("Ender pearls."), finish()], [...text("Hi again."), finish()]]);
     const deps = testDeps(model);
     const base = start(deps);
-    await deps.memories.add(owner("player-1"), "base at 120 64 -300");
+    await deps.memories.add(owner("player-1"), { text: "base at 120 64 -300" });
     await readSse(await chat(base, { message: "what do I need for the end?" }));
     const cleared = await fetch(`${base}/api/v2/users/player-1/session`, { method: "DELETE" });
     expect(await cleared.json()).toEqual({ cleared: true });
@@ -482,13 +483,19 @@ describe("session and memory endpoints", () => {
   test("memories can be listed and deleted one by one or all at once", async () => {
     const deps = testDeps(scripted([[finish()]]).model);
     const base = start(deps);
-    const first = await deps.memories.add(owner("player-1"), "base at 120 64 -300");
-    await deps.memories.add(owner("player-1"), "wants an iron farm");
-    if (first === "full") throw new Error("unexpected");
+    const first = await deps.memories.add(owner("player-1"), { text: "base at 120 64 -300" });
+    await deps.memories.add(owner("player-1"), { text: "wants an iron farm" });
+    if (typeof first === "string") throw new Error("unexpected");
     const url = `${base}/api/v2/users/player-1/memories`;
     const listed = (await (await fetch(url)).json()) as any;
     expect(listed.memories.map((m: any) => m.text)).toEqual(["base at 120 64 -300", "wants an iron farm"]);
     expect(listed.memories[0]).toMatchObject({ id: first.id, created_at: expect.any(String) });
+
+    const patch = (body: unknown) => fetch(`${url}/${first.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    expect(((await (await patch({ title: "Base", tags: ["Дом"], pinned: true })).json()) as any).memory).toMatchObject({ title: "Base", tags: ["дом"], pinned: true, text: "base at 120 64 -300" });
+    expect(((await (await patch({ title: "" })).json()) as any).memory.title).toBeUndefined();
+    expect((await patch({ text: "x" })).status).toBe(400);
+    expect((await fetch(`${url}/zzzzz`, { method: "PATCH", body: "{}" })).status).toBe(404);
 
     expect(await (await fetch(`${url}/${first.id}`, { method: "DELETE" })).json()).toEqual({ deleted: 1 });
     const again = await fetch(`${url}/${first.id}`, { method: "DELETE" });
@@ -521,7 +528,7 @@ describe("session and memory endpoints", () => {
     expect((await post({ text: "x" })).status).toBe(400);
     expect((await post({})).status).toBe(400);
     expect((await fetch(url, { method: "POST", body: "not json" })).status).toBe(400);
-    for (let i = 1; i < maxMemories(); i++) await deps.memories.add(owner("player-1"), `fact ${i}`);
+    for (let i = 1; i < maxMemories(); i++) await deps.memories.add(owner("player-1"), { text: `fact ${i}` });
     const full = await post({ text: "one too many" });
     expect(full.status).toBe(409);
     expect(((await full.json()) as any).error.code).toBe("MEMORY_FULL");

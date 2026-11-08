@@ -30,6 +30,7 @@ export const API_ERRORS = {
   CANCELLED: { code: 'CANCELLED', message: 'The request was cancelled', statusCode: 499 },
   MEMORY_NOT_FOUND: { code: 'MEMORY_NOT_FOUND', message: 'No such memory', statusCode: 404 },
   MEMORY_FULL: { code: 'MEMORY_FULL', message: 'Memory is full', statusCode: 409 },
+  MEMORY_PINS_FULL: { code: 'MEMORY_PINS_FULL', message: 'Too many pinned memories', statusCode: 409 },
   PROVIDER_AUTH_FAILED: { code: 'PROVIDER_AUTH_FAILED', message: 'The provider refused the API key', statusCode: 401 },
   MODEL_NOT_FOUND: { code: 'MODEL_NOT_FOUND', message: "The provider doesn't know this model", statusCode: 400 },
   MODEL_NO_TOOLS: { code: 'MODEL_NO_TOOLS', message: "The model can't call tools, and Allay needs them", statusCode: 400 },
