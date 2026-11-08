@@ -2,6 +2,14 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.26.0
+
+Plugin 6.27 plans a count for each item; older plugins plan every item for the first one.
+
+- 👀 **Allay looks instead of guessing.** A chat's earlier tool results now say they're from an earlier message, and an earlier inventory and player status drop out of the session. Allay checks again before it says what you have or hold, and when you say it's wrong, it looks before answering. Before, it told a player with a golden shovel in slot 4 that they had none, from an inventory twenty minutes old.
+- 🧮 **A count for each item.** `get_recipes` takes `counts`, so “one redstone torch and six repeaters” plans one and six, not four of each. A plan that lacks nothing says `enough`: a model read the missing `missing` as “no redstone” and refused a craft the player had everything for.
+- 🧱 **Builds and plugins from the source.** A question about a door or a farm near the player leads to `look_at` and a draft, and how a plugin behaves (GriefPrevention's gold claim outline) to a web search, not a guess.
+
 ## 6.25.0
 
 Plugin 6.26 reaches the ender chest; older plugins skip it.
