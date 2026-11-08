@@ -2,6 +2,17 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.28.0
+
+Plugin 6.29 answers several items in `find_item`, tells the slot in hand, and passes unfit anvil slots over; older plugins answer as before.
+
+- 🛠️ **Arguments one step from right are set right.** In October a third of the tools' failures were the schema refusing what the model meant: `chests` with `action: "take"` (now a plan in take mode), a `finish` summary past 500 characters (now cut at its last whole clause), an output written as `"\"inventory\""` or a placeholder chest at 0 0 0 (now inventory and the default), 13 anvil slots (now the first 8). Agents repeated those calls and gave up.
+- 🧭 **Agents know their own tools fetch ingredients.** Crafting and brewing agents kept taking ingredients out of chests by hand, which only a chests agent may; the prompt and the plugin's refusal now say that `craft`, `brew`, and `smelt` take them from the chests around themselves.
+- 📊 **Why tools fail, without their words.** Each failed call in `runs` and the daily rollups carries a code (`invalid_args`, `wrong_agent`, `changed`, `too_far`, `unknown_name`, `no_station`, and more), and the dashboard's tool table shows the top causes. Finding them no longer means opening players' traces.
+- 🧮 **Sessions fold by tokens.** The session's size is counted with the open o200k tokenizer instead of three characters a token, so the fold limits mean the same for every language.
+- 🎯 **No place at 0 0 0.** A spot at 0 0 0 is the model's placeholder for “none” in every tool now, not only in outputs: `memories` with x, y, z all 0 saves a fact without a place.
+- 🔎 `find_item` takes `items`, several at once, and the prompt asks for `inventory`'s `selected_slot` and `find_item` before saying what the player holds or lacks.
+
 ## 6.27.0
 
 Plugin 6.28 shows the new fields in its memory window; older plugins list memories as before.
