@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Mode, TaskKind, Visibility } from "../../agent/agent.types";
 import { toMinecraft } from "../../agent/chat-text";
 import type { ToolAnswer, ToolBridge } from "../chat/chat.bridge";
-import { forModel } from "./schema";
+import { forModel, type Repair } from "./schema";
 import { type DeathHistory, historyPage } from "./deaths";
 
 const dimension = z.enum(["overworld", "the_nether", "the_end"]);
@@ -47,7 +47,7 @@ const definitions = {
   },
   inventory: {
     description:
-      "The asking player's inventory. about overview (default): main slots (0–8 are the hotbar) with ids, counts, names, enchantments, durability, stored_enchantments of books, potion types, trims, and contents_count of shulker boxes and bundles; armor; offhand; and inside_containers, the totals of what those boxes and bundles hold, so count them too. include_enderchest adds the ender chest. repair: every damageable item with damage, percent_left, unbreaking, mending, and almost_broken (“what needs repair?”). food: what they can eat with nutrition, saturation, side effects, and food_missing, and inside_boxes_and_bundles, food in their bundles or boxes to take out first. brewing: ingredients (this server's own brews included), potions, and bottles, inside_boxes_and_bundles, plus up to 4 brewing stands within 8 blocks with fuel, time left, and bottles (more_stands counts the rest). One item in depth: inspect_item; where an item is: find_item.",
+      "The asking player's inventory. about overview (default): main slots (0–8 are the hotbar) with ids, counts, names, enchantments, durability, stored_enchantments of books, potion types, trims, and contents_count of shulker boxes and bundles; armor; offhand; selected_slot, the hotbar slot in hand (plugin 6.28+); and inside_containers, the totals of what those boxes and bundles hold, so count them too. include_enderchest adds the ender chest. repair: every damageable item with damage, percent_left, unbreaking, mending, and almost_broken (“what needs repair?”). food: what they can eat with nutrition, saturation, side effects, and food_missing, and inside_boxes_and_bundles, food in their bundles or boxes to take out first. brewing: ingredients (this server's own brews included), potions, and bottles, inside_boxes_and_bundles, plus up to 4 brewing stands within 8 blocks with fuel, time left, and bottles (more_stands counts the rest). One item in depth: inspect_item; where an item is: find_item.",
     input: z.object({
       about: z.enum(["overview", "repair", "food", "brewing"]).optional(),
       include_enderchest: z.boolean().optional(),
@@ -165,9 +165,10 @@ const definitions = {
   },
   find_item: {
     description:
-      "Where an item is and how many: the asking player's inventory, armor, offhand, ender chest, and the containers around, inside boxes and bundles too. Returns total and places (where, slot or x, y, z with distance and direction, count, the box). An exact id finds that item; a part finds every match (log finds all logs) and lists matched_ids. The containers found glow for the player with a label, and a way button goes under your answer when the nearest is far, so add neither yourself. locked_containers (chests in claims the player can't open) and unloaded_chunks say where it couldn't look, and chest minecarts, chest boats, and pack animals are never searched: with total 0 and either, say it may be there, not that they have none.",
+      "Where an item is and how many: the asking player's inventory, armor, offhand, ender chest, and the containers around, inside boxes and bundles too; the inventory always, whatever the radius. Returns total and places (where: inventory, offhand, armor, enderchest, or container; slot or x, y, z with distance and direction; count; the box). An exact id finds that item; a part finds every match (log finds all logs) and lists matched_ids; a name in any language or a plugin's item id (redbull:empty_can) finds that item (plugin 6.28+). Several items at once: items, each answered in results with its query and item (plugin 6.28+); “do I have redstone, slime, and iron?” is one call. The containers found glow for the player with a label, and a way button goes under your answer when the nearest is far, so add neither yourself. locked_containers (chests in claims the player can't open) and unloaded_chunks say where it couldn't look, and chest minecarts, chest boats, and pack animals are never searched: with total 0 and either, say it may be there, not that they have none.",
     input: z.object({
-      item: z.string().min(1).max(64).describe("Item id or a part of one, such as diamond or log; plurals work. A name nothing matches returns an error with close ids"),
+      item: z.string().min(1).max(64).optional().describe("Item id or a part of one, such as diamond or log; plurals work. A name nothing matches returns an error with close ids"),
+      items: z.array(z.string().min(1).max(64)).min(1).max(8).optional().describe("Several items in one call, in place of item"),
       radius: z.number().int().min(1).max(52).optional().describe("How far to search containers; 32 by default, as far as automation agents reach"),
     }),
   },
@@ -191,7 +192,7 @@ const definitions = {
   },
   get_anvil_plan: {
     description:
-      "The anvil order for one of the asking player's items, wherever it lies: in hand, in the inventory, worn, or in the offhand. Pass item when they name one («мой меч», the bow) or slot from an earlier result; leave both out and it picks the item their books improve, the one in hand first. When several could be meant it returns choose (slot, where, item, gain): ask which with a button each, then call again with that slot. Without enchantments: plans with the books and same-kind items the player really has (or only the given slots), priced as the game does; returns target and slot of the item, pieces (where, slot, enchantments, repair_cost), steps (left, right, levels, gives), result, total_levels, too_expensive (40+ per step), unused, and not_considered (more pieces past the 7 richest). With enchantments: the cheapest order for ideal books they don't have yet; capped_to says levels lowered to the game's maximum (sharpness 10 is sharpness 5).",
+      "The anvil order for one of the asking player's items, wherever it lies: in hand, in the inventory, worn, or in the offhand. Pass item when they name one («мой меч», the bow) or slot from an earlier result; leave both out and it picks the item their books improve, the one in hand first. When several could be meant it returns choose (slot, where, item, gain): ask which with a button each, then call again with that slot. Without enchantments: plans with the books and same-kind items the player really has (or only the given slots), priced as the game does; returns target and slot of the item, pieces (where, slot, enchantments, repair_cost), steps (left, right, levels, gives), result, total_levels, too_expensive (40+ per step), unused, not_considered (more pieces past the 7 richest), and unfit_slots (slots given that hold nothing for this item, passed over; plugin 6.28+). With enchantments: the cheapest order for ideal books they don't have yet; capped_to says levels lowered to the game's maximum (sharpness 10 is sharpness 5).",
     input: z.object({
       item: z.string().min(1).max(64).optional().describe("The item to enchant by id or name, like diamond_sword or bow; hand for the one in hand"),
       slot: z.number().int().min(0).max(40).optional().describe("The item's slot: 0–35 the inventory (0–8 the hotbar), 36–39 boots to helmet, 40 the offhand"),
@@ -421,6 +422,20 @@ const results = (names: string[], answers: ToolAnswer[]): ToolAnswer => ({
 });
 
 const composites: Partial<Record<string, Composite>> = {
+  find_item: {
+    uses: ["find_item"],
+    run: async (input, call) => {
+      const items = input.items as string[] | undefined;
+      const radius = input.radius ? { radius: input.radius } : {};
+      if (!items?.length) return input.item ? call("find_item", { item: input.item, ...radius }) : { ok: false, error: "item or items is required, such as diamond or log" };
+      // Plugins before 6.28 read item alone; they answer the first, and the rest are asked one by one.
+      const first = await call("find_item", { item: items[0], items, ...radius });
+      if (first.ok && isObject(first.result) && Array.isArray(first.result.results) && first.result.results.length === items.length) return first;
+      const rest = await Promise.all(items.slice(1).map((item) => call("find_item", { item, ...radius })));
+      // Each under the name asked; the plugin's own query is how it read it.
+      return results(items, [first, ...rest].map((answer) => (answer.ok && isObject(answer.result) ? { ...answer, result: without(answer.result, "query") } : answer)));
+    },
+  },
   get_player_status: {
     uses: ["get_player_status", "get_xp_info"],
     run: async (input, call) => {
@@ -709,7 +724,7 @@ const automationDefinitions = {
   },
   craft: {
     description:
-      "Crafts item from this server's recipes: 2×2 ones (planks, sticks, a crafting table) by hand, 3×3 ones at a crafting table near the player, what a stonecutter cuts on one when it's near (stairs one per block), and netherite gear on a smithing table near the player: the diamond piece, worn ones too, keeps its enchantments, name, and wear, and the template and the ingot come from the player (an ingot is crafted from scrap and gold); a mod's, plugin's, or data pack's item by its id (redbull:empty_can) from its own recipes, that plugin's items in the slots; water bottles (potion:water) filled from glass bottles at water or a cauldron within 8 blocks, a level a bottle, also on the way to a recipe that needs one; with ingredients from the inventory, bundles, the ender chest when one is near, and chests the player may open; never from inside shulker boxes. The output goes to the inventory, or at the feet when it's full. count is how many more to make, beyond what the player has (they hold 5 lapis and want 20: craft 15), up to 2304 in one call; crafting is instant, so never wait between crafts or split an order. dry_run: true only says what it would take and what's missing, and is worth it only when the player should choose first; craft itself takes nothing when something is short. Missing ingredients that wait in the player's ender chest with no ender chest near come back in_ender_chest: ask them to stand by one. A plan that smelts first (smelt) crafts only what the furnaces need and answers crafted false with smelt: a furnaces agent smelts those, then craft again. Fireworks: item firework_rocket (three a craft) or firework_star with firework, the player's description; it takes paper, gunpowder, dyes, and the shape and effect items, and needs a crafting table near for a grid over 4.",
+      "Crafts item from this server's recipes: 2×2 ones (planks, sticks, a crafting table) by hand, 3×3 ones at a crafting table near the player, what a stonecutter cuts on one when it's near (stairs one per block), and netherite gear on a smithing table near the player: the diamond piece, worn ones too, keeps its enchantments, name, and wear, and the template and the ingot come from the player (an ingot is crafted from scrap and gold); a mod's, plugin's, or data pack's item by its id (redbull:empty_can) from its own recipes, and since plugin 6.28 an item by its name in any language, that plugin's items in the slots; water bottles (potion:water) filled from glass bottles at water or a cauldron within 8 blocks, a level a bottle, also on the way to a recipe that needs one; with ingredients from the inventory, bundles, the ender chest when one is near, and chests the player may open; never from inside shulker boxes. The output goes to the inventory, or at the feet when it's full. count is how many more to make, beyond what the player has (they hold 5 lapis and want 20: craft 15), up to 2304 in one call; crafting is instant, so never wait between crafts or split an order. dry_run: true only says what it would take and what's missing, and is worth it only when the player should choose first; craft itself takes nothing when something is short. Missing ingredients that wait in the player's ender chest with no ender chest near come back in_ender_chest: ask them to stand by one. A plan that smelts first (smelt) crafts only what the furnaces need and answers crafted false with smelt: a furnaces agent smelts those, then craft again. Fireworks: item firework_rocket (three a craft) or firework_star with firework, the player's description; it takes paper, gunpowder, dyes, and the shape and effect items, and needs a crafting table near for a grid over 4.",
     input: z.object({ item: itemId, count: z.number().int().min(1).max(2304).optional(), dry_run: z.boolean().optional(), firework: firework.optional() }),
   },
   anvil: {
@@ -905,6 +920,29 @@ const SPOKEN: Partial<Record<GameToolName, string>> = { say: "text", finish: "su
 const spoken = (args: Record<string, unknown>, field?: string) =>
   field && typeof args[field] === "string" ? { ...args, [field]: toMinecraft(args[field]) } : args;
 
+const MODES = new Set(["sort", "group", "move", "take", "stash"]);
+const FINISH_CHARS = 500;
+const ANVIL_SLOTS = 8;
+
+/** Cuts [text] to [most] characters at the last sentence or clause that fits, so the player reads whole words. */
+export const clipped = (text: string, most: number) => {
+  if (text.length <= most) return text;
+  const head = text.slice(0, most - 1);
+  const cut = Math.max(head.lastIndexOf(". "), head.lastIndexOf("; "), head.lastIndexOf(", "));
+  return `${(cut > most / 2 ? head.slice(0, cut + 1) : head).trimEnd()}…`;
+};
+
+/**
+ * What each tool sets right before its arguments are checked: the mistakes models made in October, which the schema
+ * refused and the agent then repeated. `action: "take"` is a plan in take mode, a summary too long loses its tail;
+ * placeholders at 0 0 0 and twice-quoted strings `forModel` sets right for every tool.
+ */
+const REPAIRS: Partial<Record<string, Repair>> = {
+  chests: (args) => (typeof args.action === "string" && MODES.has(args.action) ? { ...args, mode: args.mode ?? args.action, action: "plan" } : args),
+  finish: (args) => (typeof args.summary === "string" ? { ...args, summary: clipped(args.summary, FINISH_CHARS) } : args),
+  get_anvil_plan: (args) => (Array.isArray(args.slots) && args.slots.length > ANVIL_SLOTS ? { ...args, slots: args.slots.slice(0, ANVIL_SLOTS) } : args),
+};
+
 export const gameTools = (names: GameToolName[], runId: string, bridge: ToolBridge, options: GameToolsOptions = {}) => {
   const offered = options.offered ?? PLUGIN_TOOLS;
   const known = new Set(offered);
@@ -915,7 +953,7 @@ export const gameTools = (names: GameToolName[], runId: string, bridge: ToolBrid
       const tool = createTool({
         id: name,
         description: definition.description,
-        inputSchema: forModel(definition.input),
+        inputSchema: forModel(definition.input, REPAIRS[name]),
         strict: false,
         execute: async (input, context) => {
           const args = spoken((input ?? {}) as Record<string, unknown>, SPOKEN[name]);

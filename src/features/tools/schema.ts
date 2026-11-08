@@ -37,20 +37,59 @@ export const withoutNulls = (value: unknown): unknown => {
   return value;
 };
 
+/** A string the model quoted twice, like "\"inventory\"": the value inside. Anything else as it was. */
+const unquoted = (value: unknown): unknown => {
+  if (typeof value === "string" && value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    try {
+      const inner = JSON.parse(value);
+      if (typeof inner === "string") return inner;
+    } catch {}
+  }
+  if (Array.isArray(value)) return value.map(unquoted);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, unquoted(v)]));
+  return value;
+};
+
+/** A spot at 0 0 0 is the model's placeholder for “none”, never a place it read: none, or the default. */
+const isOrigin = (value: unknown) =>
+  typeof value === "object" && value !== null && !Array.isArray(value) && ["x", "y", "z"].every((k) => (value as Record<string, unknown>)[k] === 0);
+
+const withoutOrigins = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    const kept = value.filter((item) => !isOrigin(item)).map(withoutOrigins);
+    return kept.length || !value.length ? kept : undefined;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value).filter(([, v]) => !isOrigin(v));
+    // x, y, and z all 0 beside other fields (memories add) are the same placeholder for “no place”.
+    const flat = isOrigin(value) && Object.keys(value).length > 3 ? entries.filter(([k]) => !["x", "y", "z"].includes(k)) : entries;
+    return Object.fromEntries(flat.map(([k, v]) => [k, withoutOrigins(v)]).filter(([, v]) => v !== undefined));
+  }
+  return value;
+};
+
+/** What a tool sets right in the model's arguments before they're checked: a mode written as the action, a summary too long. */
+export type Repair = (args: Record<string, unknown>) => Record<string, unknown>;
+
 /**
  * A tool's parameters as OpenAI models fill them best: every field required, the optional ones nullable.
  * Left optional, they fill every field with a placeholder (a note at 0 0 0). Mastra's own layer does the
  * same but repeats each description and spells out constraints, a third more tokens; tools that use this
  * pass strict: false so that layer stays out. Zod still checks what comes back, once the nulls are gone.
  */
-export const forModel = <T extends z.ZodType>(schema: T): T => {
+export const forModel = <T extends z.ZodType>(schema: T, repair?: Repair): T => {
   const json = requireAll(z.toJSONSchema(schema, { io: "input", target: "draft-07" }) as Json);
   delete json.$schema;
+  // A third of the tools' failures in October were arguments one step from right; set those right instead of refusing.
+  const ready = (value: unknown) => {
+    const args = withoutOrigins(unquoted(withoutNulls(value)));
+    return repair && args && typeof args === "object" && !Array.isArray(args) ? repair(args as Record<string, unknown>) : args;
+  };
   const standard = {
     "~standard": {
       version: 1,
       vendor: "allay",
-      validate: (value: unknown) => schema["~standard"].validate(withoutNulls(value)),
+      validate: (value: unknown) => schema["~standard"].validate(ready(value)),
       jsonSchema: { input: () => json, output: () => json },
     },
   };

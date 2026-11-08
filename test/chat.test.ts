@@ -9,7 +9,7 @@ import { handleConsent, handleMemories, handleMemory, handleSession, handleUser 
 import { handleLicense } from "../src/features/billing/license.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { finish, reasoning, readSse, scripted, testDeps, text, toolCall } from "./helpers";
-import { AUTH, owner, thread } from "./helpers";
+import { AUTH, filler, owner, thread } from "./helpers";
 import { maxMemories } from "../src/infrastructure/memory/memory";
 import { type HistoryMessage, MAX_EXCHANGES, maxTokens } from "../src/infrastructure/history/history";
 
@@ -48,6 +48,22 @@ const answerTools = (base: string, results: Record<string, unknown>) => {
 };
 
 describe("POST /api/v2/chat", () => {
+  test("arguments one step from right are set right before the schema checks them", async () => {
+    const { model } = scripted([
+      [toolCall("get_anvil_plan", { slots: [19, 20, 21, 22, 23, 24, 25, 26, 29, 31], item: '"diamond_leggings"' }), finish("tool-calls")],
+      [...text("Done."), finish()],
+    ]);
+    const base = start(testDeps(model));
+    const asked: any[] = [];
+    const answer = answerTools(base, { get_anvil_plan: { steps: [] } });
+    await readSse(await chat(base, { message: "plan my leggings", tools: ["get_anvil_plan"] }), async (event) => {
+      if (event.event === "tool_call") asked.push(event.data);
+      await answer(event as never);
+    });
+    expect(asked).toHaveLength(1);
+    expect(asked[0].args).toMatchObject({ item: "diamond_leggings", slots: [19, 20, 21, 22, 23, 24, 25, 26] });
+  });
+
   test("public questions share the server's thread, with each asker's name, apart from private sessions", async () => {
     const { model, prompts } = scripted([
       [...text("Mine at y -58 with a bed."), finish()],
@@ -405,7 +421,7 @@ describe("POST /api/v2/chat", () => {
   const bulky = (i: number, tokens: number): HistoryMessage[] => [
     { role: "user", content: `q${i}` },
     { role: "assistant", content: [{ type: "tool-call", toolCallId: `c${i}`, toolName: "inventory", input: {} }] },
-    { role: "tool", content: [{ type: "tool-result", toolCallId: `c${i}`, toolName: "inventory", output: { type: "text", value: "x".repeat(tokens * 3) } }] },
+    { role: "tool", content: [{ type: "tool-result", toolCallId: `c${i}`, toolName: "inventory", output: { type: "text", value: filler(tokens) } }] },
     { role: "assistant", content: `a${i}` },
   ];
 

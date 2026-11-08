@@ -466,6 +466,57 @@ describe("memories in askx", () => {
   });
 });
 
+describe("find_item with several items", () => {
+  test("goes to a 6.28 plugin in one call, and to an older one item by item", async () => {
+    const answer = { results: [{ query: "redstone", item: "redstone", total: 52 }, { query: "slime", item: "slime_ball", total: 10 }], highlighted: "glow" };
+    const fresh = fakeBridge({ find_item: { ok: true, result: answer } });
+    expect(await run(gameTools(["find_item"], "run", fresh.bridge).find_item, { items: ["redstone", "slime"] })).toEqual(answer);
+    expect(fresh.calls).toEqual([{ name: "find_item", args: { item: "redstone", items: ["redstone", "slime"] } }]);
+
+    const old = fakeBridge({ find_item: { ok: true, result: { query: "redstone", total: 3, places: [] } } });
+    const listed = (await run(gameTools(["find_item"], "run", old.bridge).find_item, { items: ["redstone", "slime"], radius: 8 })) as any;
+    expect(old.calls.map((c) => c.args)).toEqual([{ item: "redstone", items: ["redstone", "slime"], radius: 8 }, { item: "slime", radius: 8 }]);
+    expect(listed.results.map((r: any) => r.query)).toEqual(["redstone", "slime"]);
+  });
+});
+
+describe("arguments set right before the check", () => {
+  const tools = gameTools(["chests", "brew", "finish"], "run", {} as ToolBridge);
+  const checked = (name: "chests" | "brew" | "finish", value: unknown) => {
+    const result = tools[name].inputSchema!["~standard"].validate(value);
+    if (result instanceof Promise) throw new Error("expected a synchronous schema");
+    return result as { value?: any; issues?: unknown };
+  };
+
+  test("a mode written as the action is a plan in that mode", () => {
+    expect(checked("chests", { action: "take", items: ["apple"], count: 16, chests: [{ x: 1, y: 2, z: 3 }] }).value).toMatchObject({ action: "plan", mode: "take" });
+    expect(checked("chests", { action: "read" }).value).toEqual({ action: "read" });
+  });
+
+  test("a placeholder spot and a twice-quoted output are the default and inventory", () => {
+    expect(checked("brew", { action: "start", potion: "poison", to: [{ x: 0, y: 0, z: 0 }] }).value).toEqual({ action: "start", potion: "poison" });
+    expect(checked("brew", { action: "start", potion: "poison", to: '"inventory"' }).value).toMatchObject({ to: "inventory" });
+  });
+
+  test("a placeholder place is no place in any tool", async () => {
+    const { memoryTools } = await import("../src/features/tools/memory.tools");
+    const { memoryMemories } = await import("../src/infrastructure/memory/memory");
+    const memory = memoryTools(memoryMemories(), { owner: { tenant: "self", userId: "p1" }, emit: () => {} }).memories;
+    const result = memory.inputSchema!["~standard"].validate({ action: "add", text: "likes oak", x: 0, y: 0, z: 0 });
+    if (result instanceof Promise) throw new Error("expected a synchronous schema");
+    expect((result as { value: unknown }).value).toEqual({ action: "add", text: "likes oak" });
+    expect(checked("chests", { action: "read", chests: [{ x: 0, y: 0, z: 0 }, { x: 5, y: 64, z: 0 }] }).value).toEqual({ action: "read", chests: [{ x: 5, y: 64, z: 0 }] });
+  });
+
+  test("a summary past 500 characters ends at its last whole clause", () => {
+    const long = `${"Сделал 4 липких поршня, ".repeat(30)}и ещё кое-что.`;
+    const { value, issues } = checked("finish", { summary: long });
+    expect(issues).toBeUndefined();
+    expect(value.summary.length).toBeLessThanOrEqual(500);
+    expect(value.summary).toEndWith(",…");
+  });
+});
+
 describe("memories since 6.27", () => {
   const setup = async () => {
     const { memoryTools } = await import("../src/features/tools/memory.tools");

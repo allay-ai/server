@@ -164,7 +164,9 @@ describe("task tools", () => {
     expect(valid("chests", { action: "plan", mode: "group", chests: [{ x: 1, y: 64, z: 2 }], assign: [{ x: 1, y: 64, z: 2, category: "ores", items: ["raw_iron"] }] })).toBe(true);
     expect(valid("chests", { action: "apply", mode: "move", categories: ["food"], to: [{ x: 1, y: 64, z: 2 }] })).toBe(true);
     expect(valid("chests", { action: "plan", assign: [{ x: 1, y: 64, z: 2, category: "gems" }] })).toBe(false);
-    expect(valid("chests", { action: "sort" })).toBe(false);
+    // A mode written as the action is a plan in that mode since 6.28.
+    expect(valid("chests", { action: "sort" })).toBe(true);
+    expect(valid("chests", { action: "shuffle" })).toBe(false);
     expect(valid("smelt", { action: "start", item: "raw_gold", count: 64, fuel: "coal", to: "inventory" })).toBe(true);
     expect(valid("smelt", { action: "collect", to: [{ x: 1, y: 64, z: 2 }] })).toBe(true);
     expect(valid("smelt", { action: "fuel", fuel: "coal", count: 18 })).toBe(true);
