@@ -166,6 +166,28 @@ describe("merged tools", () => {
     ]);
   });
 
+  test("get_recipes passes each item's count, and a plan that lacks nothing says enough", async () => {
+    const { bridge, calls } = fakeBridge({
+      get_recipes: {
+        ok: true,
+        result: {
+          results: [
+            { query: "redstone_torch", item: "redstone_torch", plan: { takes: { redstone: 1 } } },
+            { query: "repeater", item: "repeater", plan: { takes: { redstone: 6 }, missing: { stone: 3 } } },
+          ],
+        },
+      },
+    });
+    const answer = await run(gameTools(["get_recipes"], "run", bridge).get_recipes, { items: ["redstone_torch", "repeater"], plan: true, count: 2, counts: [1, 6] });
+    expect(calls).toEqual([{ name: "get_recipes", args: { item: "redstone_torch", items: ["redstone_torch", "repeater"], plan: true, count: 1, counts: [1, 6] } }]);
+    expect(answer).toEqual({
+      results: [
+        { query: "redstone_torch", item: "redstone_torch", plan: { takes: { redstone: 1 }, enough: true } },
+        { query: "repeater", item: "repeater", plan: { takes: { redstone: 6 }, missing: { stone: 3 } } },
+      ],
+    });
+  });
+
   test("get_recipes keeps the plugin's own error for an unknown item", async () => {
     const { bridge } = fakeBridge({
       get_recipes: { ok: false, error: "no item called pizza" },

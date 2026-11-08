@@ -84,7 +84,7 @@ const definitions = {
   },
   get_recipes: {
     description:
-      "How this server makes items, from its own recipes, mods', data packs', and plugins' included: crafting grids, smelting, stonecutting, smithing (up to 5 for one item, 3 each for several, more_recipes when there are more), or for a potion or a plugin's brewed bottle every brewing step from a water bottle and the fuel. Always use it instead of recalling a recipe. Put every item you need into one call (a beacon and what its parts take): results has one answer per item, with its query, in the order asked. An item's name in any language works, and so does a mod's or plugin's id like redbull:original. crafting_transmute recolors a shulker box or a bundle, keeping what it holds. crafting_special is a recipe no fixed grid shows, in words: fireworks, copying written books, maps, and banners, decorating a shield, dyeing leather, tipped arrows, decorated pots; a firework_rocket or firework_star answer adds fireworks, every color, shape, and effect with the item that gives it and how to make a show, so design a firework from it, never from memory. No recipe at all means the item is mined, dropped, or traded here; an error names what this server has under close names. With plan, each crafted item also says what making count of it would take from the player's inventory, ender chest, and chests around, the parts on the way included, four levels deep (planks, sticks, ingots from blocks): plan.takes, steps, smelt (what a furnace makes first: raw iron for ingots, sand for glass), missing (what's short, by base resource) with missing_for (what each was for), needs (a crafting_table, smithing_table, furnace, or water not near). Several items share what the player has, so a whole set counts each ingot once. Nothing is taken.",
+      "How this server makes items, from its own recipes, mods', data packs', and plugins' included: crafting grids, smelting, stonecutting, smithing (up to 5 for one item, 3 each for several, more_recipes when there are more), or for a potion or a plugin's brewed bottle every brewing step from a water bottle and the fuel. Always use it instead of recalling a recipe. Put every item you need into one call (a beacon and what its parts take): results has one answer per item, with its query, in the order asked. An item's name in any language works, and so does a mod's or plugin's id like redbull:original. crafting_transmute recolors a shulker box or a bundle, keeping what it holds. crafting_special is a recipe no fixed grid shows, in words: fireworks, copying written books, maps, and banners, decorating a shield, dyeing leather, tipped arrows, decorated pots; a firework_rocket or firework_star answer adds fireworks, every color, shape, and effect with the item that gives it and how to make a show, so design a firework from it, never from memory. No recipe at all means the item is mined, dropped, or traded here; an error names what this server has under close names. With plan, each crafted item also says what making count of it would take from the player's inventory, ender chest, and chests around, the parts on the way included, four levels deep (planks, sticks, ingots from blocks): plan.takes, steps, smelt (what a furnace makes first: raw iron for ingots, sand for glass), missing (what's short, by base resource) with missing_for (what each was for), or enough true when the player has everything for it, needs (a crafting_table, smithing_table, furnace, or water not near). Several items share what the player has, so a whole set counts each ingot once. Nothing is taken.",
     input: z.object({
       items: z
         .array(z.string().min(1).max(64))
@@ -94,6 +94,11 @@ const definitions = {
       form: potionForm.optional().describe("For the potions among items: the bottle; potion by default. Other items ignore it"),
       plan: z.boolean().optional().describe("Also say what crafting each item takes from what the player has, and what's missing"),
       count: z.number().int().min(1).max(2304).optional().describe("With plan: how many of each item; 1 by default"),
+      counts: z
+        .array(z.number().int().min(1).max(2304))
+        .max(5)
+        .optional()
+        .describe("With plan: how many of each item in the order of items, when they differ («1 факел и 6 повторителей» → [1, 6]); beats count"),
     }),
   },
   search_items: {
@@ -401,6 +406,14 @@ const each = async (names: string[], call: Call, tool: string, one: (name: strin
   return [first, ...(await Promise.all(names.slice(1).map((name) => call(tool, one(name)))))];
 };
 
+/** A plan that lacks nothing says enough, in so many words. */
+const enough = (answer: ToolAnswer): ToolAnswer => {
+  if (!answer.ok || !isObject(answer.result)) return answer;
+  const plan = answer.result.plan;
+  if (!isObject(plan) || "missing" in plan || "error" in plan) return answer;
+  return { ...answer, result: { ...answer.result, plan: { ...plan, enough: true } } };
+};
+
 /** Each name's answer under its query, in the order asked. */
 const results = (names: string[], answers: ToolAnswer[]): ToolAnswer => ({
   ok: true,
@@ -431,8 +444,14 @@ const composites: Partial<Record<string, Composite>> = {
       const brew = (potion: unknown) => call("get_brewing_recipe", { potion, ...(input.form ? { form: input.form } : {}) });
       // A form is for the potions among them: the plugin still says which those are, beside a beacon asked with them.
       // Plugins before 6.19 ignore plan and count, and answer without a plan.
-      const plan = input.plan ? { plan: true, ...(input.count ? { count: input.count } : {}) } : {};
-      const crafted = await each(items, call, "get_recipes", (item) => ({ item, ...plan }), { items, ...plan });
+      // counts since plugin 6.27; an older one plans every item for the first count.
+      const counts = input.plan ? ((input.counts as number[] | undefined) ?? []) : [];
+      const plan = (at: number) => (input.plan ? { plan: true, ...((counts[at] ?? input.count) ? { count: counts[at] ?? input.count } : {}) } : {});
+      const crafted = await each(items, call, "get_recipes", (item) => ({ item, ...plan(items.indexOf(item)) }), {
+        items,
+        ...plan(0),
+        ...(counts.length ? { counts } : {}),
+      });
       const answers = await Promise.all(
         crafted.map(async (answer, at) => {
           // The plugin turns potions away from get_recipes; a name that isn't an item may still be one.
@@ -443,7 +462,8 @@ const composites: Partial<Record<string, Composite>> = {
           return brewed.ok ? brewed : answer;
         }),
       );
-      return results(items, answers);
+      // A plan with nothing missing said so only by leaving missing out, and a model read that as “nothing on hand”.
+      return results(items, answers.map(enough));
     },
   },
   search_items: {
