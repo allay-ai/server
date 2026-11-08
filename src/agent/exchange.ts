@@ -62,3 +62,29 @@ export class Exchange {
     });
   }
 }
+
+/** Tools that read what the player has and holds and what lies around them: their answers age with every message. */
+const LIVE = new Set(["find_item", "scan_nearby_containers", "get_recipes", "get_surroundings", "look_at", "get_nearby_players", "get_locations", "inspect_item", "get_anvil_plan"]);
+/** The inventory and the player's state are cheap to read again and wrong a minute later, so earlier ones drop out. */
+const GONE = new Set(["inventory", "get_player_status"]);
+const EARLIER = "read for an earlier message; the player's things and what lies around may have changed since: call the tool again before you say what they have, hold, or lack";
+
+/**
+ * The session's tool results as the next question reads them. A model took a twenty-minute-old inventory for the
+ * player's own and answered “you have no golden shovel” without looking, so each earlier result of a live tool says
+ * it's old, and the inventory and status go. The same every run, so the provider's cache still holds.
+ */
+export const aged = (messages: ModelMessage[]): ModelMessage[] =>
+  messages.map((message) => {
+    if (message.role !== "tool") return message;
+    return {
+      ...message,
+      content: message.content.map((part) => {
+        if (part.type !== "tool-result" || part.output.type !== "json") return part;
+        if (GONE.has(part.toolName)) return { ...part, output: { type: "json" as const, value: { earlier: EARLIER } } };
+        if (!LIVE.has(part.toolName)) return part;
+        const value = part.output.value;
+        return { ...part, output: { type: "json" as const, value: value && typeof value === "object" && !Array.isArray(value) ? { earlier: EARLIER, ...value } : { earlier: EARLIER, value } } };
+      }),
+    };
+  });

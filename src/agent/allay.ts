@@ -35,7 +35,7 @@ import { ChatText, toMinecraft } from "./chat-text";
 import type { CommandsResult, RunContext, RunResult, Usage } from "./agent.types";
 import { commandsFromText, commandsSchema, validateCommands } from "./commands";
 import { systemPrompt } from "./prompts";
-import { Exchange } from "./exchange";
+import { Exchange, aged } from "./exchange";
 import { localStamp } from "./time";
 import { summarizeWith } from "./summary";
 
@@ -344,7 +344,8 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     if (deps.mastra) agent.__registerMastra(deps.mastra);
     if (hearsOutcomes(context)) outcomes = await deps.history.takeOutcomes(ownerOf(context));
     const asked = question(context, outcomes);
-    const messages: ModelMessage[] = [...session.messages, { role: "user", content: asked }];
+    // An automation agent reads its own wakes as they were; a chat's earlier tool results are marked old.
+    const messages: ModelMessage[] = [...(context.mode === "task" ? session.messages : aged(session.messages)), { role: "user", content: asked }];
 
     emit({ event: "start", data: { run_id: runId, model: model.modelId } });
 

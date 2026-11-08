@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import type { JSONValue, ToolResultPart } from "ai";
 import mongoose from "mongoose";
+import { aged } from "../src/agent/exchange";
 import {
   estimateTokens,
   foldTokens,
@@ -315,5 +317,14 @@ describe("the chat session", () => {
       { role: "assistant", content: "12 in the chest." },
     ]);
     expect(text).toBe('Player: where are my diamonds?\n\nAllay called find_item {"item":"diamond"}\n\nfind_item returned {"total":12}\n\nAllay: 12 in the chest.');
+  });
+
+  test("earlier results of live tools say they're old, and the inventory and status go", () => {
+    const result = (toolName: string, value: JSONValue): ToolResultPart => ({ type: "tool-result", toolCallId: toolName, toolName, output: { type: "json", value } });
+    const [tool] = aged([{ role: "tool", content: [result("inventory", { main: [] }), result("find_item", { total: 1 }), result("search_commands", { results: [] })] }]);
+    const [inventory, found, commands] = (tool as { content: { output: { value: Record<string, unknown> } }[] }).content.map((part) => part.output.value);
+    expect(Object.keys(inventory!)).toEqual(["earlier"]);
+    expect(found).toMatchObject({ total: 1, earlier: expect.stringContaining("call the tool again") });
+    expect(commands).toEqual({ results: [] });
   });
 });
