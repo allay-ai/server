@@ -2,6 +2,16 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.27.0
+
+Plugin 6.28 shows the new fields in its memory window; older plugins list memories as before.
+
+- 🗂️ **Memories with a structure.** A memory now has a kind (fact, preference, goal, or place), a title, up to five tags, and a pin, and holds up to 500 characters instead of 200. A place gets a category (base, farm, portal, villager, and more) and a radius for an area. Old memories read as facts and places.
+- ✏️ **Allay changes what changed.** `memories` takes `update`: “the farm has three layers now” changes the memory in place, and tags, a title, the pin, or the place change the same way. The prompt tells Allay never to keep a second copy.
+- 📌 **Pins and places near you.** Every pinned memory, 20 at most, is in Allay's mind in every answer, and so are the 5 saved places nearest the player within 256 blocks, with the way there and whether they stand inside one.
+- 🔎 **A search that falls back to meaning.** When no memory has the words, `memories find` returns a short index of all of them, so the model matches by meaning instead of reading every text.
+- 🔌 `PATCH /api/v2/users/{id}/memories/{memory}` changes a memory from the plugin's window; `MEMORY_PINS_FULL` answers past 20 pins.
+
 ## 6.26.0
 
 Plugin 6.27 plans a count for each item; older plugins plan every item for the first one.

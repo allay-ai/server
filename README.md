@@ -12,7 +12,7 @@
 - **Help in the world.** Trails to a spot, ghost blocks to build into, glowing chests that hold what you need, buttons right in every answer.
 - **Agents that do the chores.** Sorting chests, smelting, brewing, and crafting run as automation agents that report back.
 - **Fresh facts and exact math.** Web search when a question needs it, and calculations at 64 significant digits.
-- **A memory per player.** A session for follow-ups, plus up to 30 lasting facts the player controls.
+- **A memory per player.** A session for follow-ups, plus up to 200 lasting facts and places the player controls, with tags and pins. Allay changes a fact when it changes and knows the places near the player.
 - **Privacy by design.** Every request says which server sends it, and a server reaches only its own players. Game tools see only the asker, the admin panel names players but never shows what anyone asked, and each player can get a copy of their data or have it erased.
 - **An admin panel.** Every setting, accounts with roles, and statistics on questions, cost, models, and tools.
 - **OpenTelemetry.** Traces of every run, metrics per server, and events go to any OTLP collector, with ready Grafana dashboards. Numbers only: no question or answer leaves.
