@@ -114,7 +114,7 @@ describe("a player's copy by link", () => {
   test("opens for a day without credentials, holds everything, and dies with an erasure", async () => {
     const deps = testDeps(scripted([[finish()]]).model);
     const base = start(deps);
-    await deps.memories.add(owner("player-1"), "a librarian with mending", { x: 1, y: 2, z: 3, dimension: "overworld" });
+    await deps.memories.add(owner("player-1"), { text: "a librarian with mending", place: { x: 1, y: 2, z: 3, dimension: "overworld" } });
     await deps.deaths.add(owner("player-1"), death(Date.now()));
     await deps.states.put(owner("player-1"), { timezone: "Europe/Madrid" });
     const link = (await (await fetch(`${base}/api/v2/users/player-1/export`, { method: "POST" })).json()) as any;
@@ -168,7 +168,7 @@ describe("consent", () => {
     const url = `${base}/api/v2/users/player-1/consent`;
     const me = owner("player-1");
     await fetch(url, { method: "PUT", body: JSON.stringify({ version: 2, age_confirmed: true }) });
-    await deps.memories.add(me, "base at the lake", { x: 1, y: 2, z: 3, dimension: "overworld" });
+    await deps.memories.add(me, { text: "base at the lake", place: { x: 1, y: 2, z: 3, dimension: "overworld" } });
     await deps.deaths.add(me, death(Date.now()));
     await deps.states.put(me, { timezone: "Europe/Madrid" });
 
@@ -201,7 +201,7 @@ if (MONGODB) {
 
     test("memories, deaths, and state are sealed: no word of them in the clear", async () => {
       const me = owner("sealed-1");
-      await mongoMemories.add(me, "diamond stash behind the waterfall", { x: 4242, y: 12, z: -77, dimension: "overworld" });
+      await mongoMemories.add(me, { text: "diamond stash behind the waterfall", place: { x: 4242, y: 12, z: -77, dimension: "overworld" }, title: "Waterfall stash", tags: ["secret-cave"] });
       await mongoDeaths.add(me, death(Date.now(), { killer_name: "Herobrine", x: 4242 }));
       await mongoStates.put(me, { timezone: "Pacific/Chatham" });
       const raw = JSON.stringify([
@@ -209,7 +209,7 @@ if (MONGODB) {
         await DeathModel.collection.find({ user_id: "sealed-1" }).toArray(),
         await StateModel.collection.find({ user_id: "sealed-1" }).toArray(),
       ]);
-      for (const word of ["diamond", "4242", "Herobrine", "Chatham"]) expect(raw).not.toContain(word);
+      for (const word of ["diamond", "4242", "Waterfall", "secret-cave", "Herobrine", "Chatham"]) expect(raw).not.toContain(word);
       expect((await mongoMemories.list(me))[0]).toMatchObject({ text: "diamond stash behind the waterfall", place: { x: 4242 } });
       expect((await mongoDeaths.page(me, 1, 10)).deaths[0]).toMatchObject({ killer_name: "Herobrine" });
       expect((await mongoStates.get(me))?.state).toEqual({ timezone: "Pacific/Chatham" });

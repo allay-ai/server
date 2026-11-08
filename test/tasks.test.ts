@@ -219,7 +219,7 @@ describe("task prompts", () => {
   });
 
   test("an agent gets its own prompt with its name, kind, depth, and read-only memories", () => {
-    const prompt = systemPrompt(context({ task: { id: "k3f9", name: "Сортировка", depth: 2, kind: "chests" } }), { memories: [{ id: "m1", text: "Likes ores at the bottom", createdAt: new Date() } as any] });
+    const prompt = systemPrompt(context({ task: { id: "k3f9", name: "Сортировка", depth: 2, kind: "chests" } }), { memories: [{ id: "m1", kind: "preference", tags: [], pinned: false, text: "Likes ores at the bottom", created_at: "2026-10-11T00:00:00Z" }] });
     expect(prompt).toStartWith("You are an Allay automation agent");
     expect(prompt).toContain("- Automation agent: Сортировка");
     expect(prompt).toContain("- Kind: chests");

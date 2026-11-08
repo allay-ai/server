@@ -66,7 +66,7 @@ describe("every route identifies its caller", () => {
     test(`without credentials nothing but the public routes answers (${billing ? "hosted" : "self-hosted"})`, async () => {
       const { admin } = testAdmin({ selfHosted: !billing });
       const deps = { ...testDeps(scripted([[...text("secret"), finish()]]).model, { billing: testBilling({ enabled: billing }) }), admin };
-      await deps.memories.add(owner("player-1", billing ? "license:abc" : "self"), "base at 120 64 -300");
+      await deps.memories.add(owner("player-1", billing ? "license:abc" : "self"), { text: "base at 120 64 -300" });
       const { base, table } = start(deps);
       const answered: string[] = [];
       for (const path of pathsOf(table)) {
@@ -114,7 +114,7 @@ describe("tenants never meet", () => {
 
   test("B can't read, add to, or wipe A's memories through /users, even with A's player id", async () => {
     const t = await twoServers();
-    await t.deps.memories.add(owner("player-1", t.tenantA), "A's secret base at 120 64 -300");
+    await t.deps.memories.add(owner("player-1", t.tenantA), { text: "A's secret base at 120 64 -300" });
     const url = `${t.base}/api/v2/users/player-1/memories`;
     expect(await (await fetch(url, { headers: t.B })).json()).toEqual({ memories: [] });
     expect(await (await fetch(url, { method: "DELETE", headers: t.B })).json()).toEqual({ deleted: 0 });
@@ -169,7 +169,7 @@ describe("tenants never meet", () => {
 
   test("B's question with A's player id loads none of A's memories, session, or outcomes", async () => {
     const t = await twoServers();
-    await t.deps.memories.add(owner("player-1", t.tenantA), "A's secret base at 120 64 -300");
+    await t.deps.memories.add(owner("player-1", t.tenantA), { text: "A's secret base at 120 64 -300" });
     await t.deps.history.append(thread("player-1", { tenant: t.tenantA }), { role: "user", content: "my stash is under the oak" }, { role: "assistant", content: "Noted." });
     await t.deps.history.noteOutcome(owner("player-1", t.tenantA), "[Automation «xyzzy» finished]");
     const events = await readSse(
@@ -186,7 +186,7 @@ describe("tenants never meet", () => {
 
   test("B's agent can't remember into or forget from A's memories", async () => {
     const t = await twoServers([[toolCall("memories", { action: "add", text: "B was here" }), finish("tool-calls")], [...text("ok"), finish()]]);
-    const mine = await t.deps.memories.add(owner("player-1", t.tenantA), "A's own fact");
+    const mine = await t.deps.memories.add(owner("player-1", t.tenantA), { text: "A's own fact" });
     if (mine === "full") throw new Error("unexpected");
     await readSse(await fetch(`${t.base}/api/v2/chat`, { method: "POST", headers: t.B, body: JSON.stringify({ user_id: "player-1", message: "remember me" }) }));
     expect((await t.deps.memories.list(owner("player-1", t.tenantA))).map((m) => m.text)).toEqual(["A's own fact"]);
@@ -230,7 +230,7 @@ describe("a player's data on request", () => {
     const { model } = scripted([[...text("Noted."), finish()]]);
     const deps = { ...testDeps(model), runs: (await import("../src/infrastructure/runs/runs")).memoryRuns() };
     const { base } = start(deps);
-    await deps.memories.add(owner("player-1"), "base at 120 64 -300");
+    await deps.memories.add(owner("player-1"), { text: "base at 120 64 -300" });
     await readSse(await fetch(`${base}/api/v2/chat`, { method: "POST", headers: AUTH, body: JSON.stringify({ user_id: "player-1", message: "hi there" }) }));
     await readSse(await fetch(`${base}/api/v2/chat`, { method: "POST", headers: AUTH, body: JSON.stringify({ user_id: "player-2", message: "hello" }) }));
 

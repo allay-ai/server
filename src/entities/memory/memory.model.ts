@@ -8,6 +8,8 @@ export interface Place {
   z: number;
   dimension: string;
   world?: string;
+  /** Since 6.27: how far the place reaches around x, z, in blocks (a farm 20×20 is 10). */
+  radius?: number;
 }
 
 /** A lasting fact Allay keeps about one player of one tenant, such as where their base is. */
@@ -16,11 +18,13 @@ export interface MemoryDocument {
   /** `self` or `license:<id>`: whose server the player asked on. */
   tenant: string;
   user_id: string;
-  /** `{ text, place? }`, sealed. */
+  /** `{ text, place?, kind?, title?, tags?, pinned?, category? }`, sealed; the rest since 6.27. */
   sealed?: Sealed;
   /** Memories from before 6.9 keep their text in the clear until they're saved again or go. */
   text?: string;
   created_at: Date;
+  /** Since 6.27: when the player or the model last changed it. */
+  updated_at?: Date;
   /** When the player last asked: memories of a player who stops asking go after MEMORY_DAYS. */
   seen_at: Date;
 }
@@ -35,6 +39,7 @@ const schema = new Schema<MemoryDocument>({
   sealed: Schema.Types.Mixed,
   text: { type: String, maxlength: 200 },
   created_at: { type: Date, default: Date.now },
+  updated_at: Date,
   seen_at: { type: Date, default: Date.now },
 });
 

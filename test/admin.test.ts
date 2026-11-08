@@ -642,7 +642,7 @@ describe("players in the panel", () => {
     const runs = (await import("../src/infrastructure/runs/runs")).memoryRuns();
     Object.assign(ctx.deps, { runs });
     const { call, deps, audit } = ctx;
-    await deps.memories.add({ tenant: "self", userId: "uuid-steve" }, "base at 120 64 -300");
+    await deps.memories.add({ tenant: "self", userId: "uuid-steve" }, { text: "base at 120 64 -300" });
     const pseudonym = deps.pseudonyms.of("self", "uuid-steve");
     await runs.add({
       id: "r1", at: new Date(), kind: "ask", payer: "self", server: "self", user_id: pseudonym, model: "m",
@@ -674,7 +674,7 @@ describe("players in the panel", () => {
     const { call, deps, audit } = ctx;
     const steve = { tenant: "self", userId: "uuid-steve" };
     await deps.consents.give(steve, { version: 1 });
-    await deps.memories.add(steve, "base at 120 64 -300");
+    await deps.memories.add(steve, { text: "base at 120 64 -300" });
     await deps.history.append(thread("uuid-steve"), { role: "user", content: "hi" });
     const pseudonym = deps.pseudonyms.of("self", "uuid-steve");
     await runs.add({
