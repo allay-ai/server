@@ -2,6 +2,10 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.29.0
+
+- 🧮 **Sessions measured in the model's own tokens.** Each run's first step tells how many tokens the provider counted for what the open tokenizer counts, and the session keeps that ratio for its next fold: Claude counts Russian about 1.4 times o200k, and the fold limits now mean that. Without a count from the provider the last ratio stays, or the open tokenizer alone.
+
 ## 6.28.0
 
 Plugin 6.29 answers several items in `find_item`, tells the slot in hand, and passes unfit anvil slots over; older plugins answer as before.
