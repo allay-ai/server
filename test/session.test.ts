@@ -20,18 +20,18 @@ import {
 } from "../src/infrastructure/history/history";
 import { transcriptOf } from "../src/agent/summary";
 import { AdminSessionModel, memorySessions, mongoSessions, type SessionStore } from "../src/infrastructure/admin/sessions";
-import { owner, thread } from "./helpers";
+import { filler, owner, thread } from "./helpers";
 
 const exchange = (i: number, size = 0): HistoryMessage[] => [
   { role: "user", content: `question ${i}` },
-  { role: "assistant", content: `answer ${i} ${"x".repeat(size)}`.trim() },
+  { role: "assistant", content: `answer ${i} ${filler(size / 3)}`.trim() },
 ];
 
 /** An exchange about this many tokens long, most of it a tool's result, as in a real run. */
 const sized = (i: number, tokens: number): HistoryMessage[] => [
   { role: "user", content: `question ${i}` },
   { role: "assistant", content: [{ type: "tool-call", toolCallId: `c${i}`, toolName: "inventory", input: {} }] },
-  { role: "tool", content: [{ type: "tool-result", toolCallId: `c${i}`, toolName: "inventory", output: { type: "text", value: "x".repeat(tokens * 3) } }] },
+  { role: "tool", content: [{ type: "tool-result", toolCallId: `c${i}`, toolName: "inventory", output: { type: "text", value: filler(tokens) } }] },
   { role: "assistant", content: `answer ${i}` },
 ];
 

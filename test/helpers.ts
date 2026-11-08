@@ -230,3 +230,7 @@ export const testAdmin = (options: { selfHosted?: boolean; envAdmin?: EnvAdmin; 
   };
   return { admin, audit, advance: (ms: number) => (now += ms) };
 };
+
+const WORDS = ["iron", "gold", "chest", "stone", "farm", "portal", "villager", "diamond", "beacon", "redstone"];
+/** Text of about [tokens] o200k tokens: words and numbers that vary, so the tokenizer can't fold them as it folds "xxxx". */
+export const filler = (tokens: number) => Array.from({ length: Math.ceil(tokens / 2) }, (_, k) => `${WORDS[k % WORDS.length]}${k}`).join(" ");

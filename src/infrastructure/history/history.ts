@@ -1,4 +1,5 @@
 import type { ModelMessage } from "ai";
+import { countTokens } from "gpt-tokenizer/encoding/o200k_base";
 import { Schema, model } from "mongoose";
 import { settings } from "../../features/settings/settings";
 import { logger } from "../../shared/logging/logger";
@@ -91,8 +92,12 @@ const CAP = MAX_EXCHANGES + 20;
 const MAX_CONTENT = 4000;
 export const MAX_SUMMARY = 3000;
 
-/** A rough count that errs high: about three characters a token for English, Russian, and JSON alike. */
-export const estimateTokens = (messages: HistoryMessage[]) => Math.ceil(JSON.stringify(messages).length / 3);
+/**
+ * The session's size in tokens, counted with o200k, the open tokenizer of OpenAI's current models, over the messages as
+ * the model reads them. Claude's own tokenizer isn't public and counts Russian about a third higher; the fold limits
+ * leave room for that. About 12 ms for a session near the fold.
+ */
+export const estimateTokens = (messages: HistoryMessage[]) => countTokens(JSON.stringify(messages));
 
 /** A player who starts task after task and never asks keeps only the latest outcomes. */
 const MAX_OUTCOMES = 10;
