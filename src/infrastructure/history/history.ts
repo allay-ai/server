@@ -15,6 +15,8 @@ export type HistoryMessage = ModelMessage;
 export interface Session {
   summary?: string;
   messages: HistoryMessage[];
+  /** The provider's tokens per o200k token, measured on this session's last run ([calibrate]); none until a provider reported them. */
+  ratio?: number;
 }
 
 /** Writes a new summary from the old one and the messages that drop out of the verbatim window. */
@@ -41,6 +43,8 @@ export interface HistoryStore {
   append(thread: Thread, ...messages: HistoryMessage[]): Promise<void>;
   /** Once the session outgrows foldAt tokens (CHAT_FOLD_TOKENS by default) or MAX_EXCHANGES, folds all but about CHAT_KEEP_TOKENS of it into the summary. True when it folded. */
   compact(thread: Thread, summarize: Summarize, foldAt?: number): Promise<boolean>;
+  /** Keeps how many tokens the provider counted per o200k token in this session's last run, so its size reads in the model's own tokens. */
+  calibrate(thread: Thread, ratio: number): Promise<void>;
   /** `/ask new`: the player's own session and pending outcomes go; their memories and agents' threads stay. */
   clear(owner: Owner): Promise<void>;
   /** Keeps how one of the player's automations ended, until their next question carries it to the chat. */
@@ -93,11 +97,20 @@ const MAX_CONTENT = 4000;
 export const MAX_SUMMARY = 3000;
 
 /**
- * The session's size in tokens, counted with o200k, the open tokenizer of OpenAI's current models, over the messages as
- * the model reads them. Claude's own tokenizer isn't public and counts Russian about a third higher; the fold limits
- * leave room for that. About 12 ms for a session near the fold.
+ * The session's size in tokens: o200k, the open tokenizer of OpenAI's current models, over the messages as the model
+ * reads them, times the [ratio] the provider's own count showed on the session's last run ([calibrate]). Claude's
+ * tokenizer isn't public and counts Russian about 1.4 times o200k; the ratio brings that in. About 12 ms near the fold.
  */
-export const estimateTokens = (messages: HistoryMessage[]) => countTokens(JSON.stringify(messages));
+export const estimateTokens = (messages: HistoryMessage[], ratio = 1) => Math.round(countTokens(JSON.stringify(messages)) * ratio);
+
+/** Tokens per o200k token outside these bounds are a provider's odd report, not a tokenizer's. */
+export const RATIO_BOUNDS = [0.5, 3] as const;
+
+/** [measured] tokens the provider counted for text o200k counts as [counted], or undefined when there's nothing to go by. */
+export const ratioOf = (measured: number | undefined, counted: number): number | undefined => {
+  if (!measured || measured <= 0 || counted <= 0) return undefined;
+  return Math.min(RATIO_BOUNDS[1], Math.max(RATIO_BOUNDS[0], Math.round((measured / counted) * 1000) / 1000));
+};
 
 /** A player who starts task after task and never asks keeps only the latest outcomes. */
 const MAX_OUTCOMES = 10;
@@ -128,8 +141,8 @@ const entry = (messages: HistoryMessage[]): HistoryMessage[] =>
     .filter((m) => m.content.length > 0);
 
 /** How many of the newest exchanges stay verbatim, or undefined when nothing needs to fold. Exchanges come newest first. */
-const keepOf = (exchanges: HistoryMessage[][], foldAt: number): number | undefined => {
-  const sizes = exchanges.map(estimateTokens);
+const keepOf = (exchanges: HistoryMessage[][], foldAt: number, ratio?: number): number | undefined => {
+  const sizes = exchanges.map((exchange) => estimateTokens(exchange, ratio));
   const total = sizes.reduce((sum, size) => sum + size, 0);
   if (total <= foldAt && exchanges.length <= MAX_EXCHANGES) return undefined;
   let kept = 0;
@@ -150,6 +163,8 @@ interface SessionDoc {
   started: string;
   summary?: string | Sealed;
   exchanges: Array<string | Sealed>;
+  /** See [Session.ratio]. */
+  ratio?: number;
   expires_at: Date;
 }
 
@@ -165,6 +180,7 @@ const sessionSchema = new Schema<SessionDoc>({
   started: { type: String, required: true },
   summary: Schema.Types.Mixed,
   exchanges: { type: [Schema.Types.Mixed], default: [] },
+  ratio: Number,
   expires_at: { type: Date, required: true },
 });
 // Only garbage collection: the monitor runs about once a minute, so every read checks expires_at itself.
@@ -185,10 +201,10 @@ const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"
 const startingWith = (prefix: string) => new RegExp(`^${escapeRegex(prefix)}`);
 
 /** The exchanges a document holds, oldest first, as the model reads them. */
-const sessionOf = (doc: Pick<SessionDoc, "summary" | "exchanges"> | null): Session => {
+const sessionOf = (doc: Pick<SessionDoc, "summary" | "exchanges" | "ratio"> | null): Session => {
   if (!doc) return { messages: [] };
   const summary = doc.summary ? openJson<string>(doc.summary) : undefined;
-  return { messages: exchangesOf(doc.exchanges ?? []).reverse().flat(), ...(summary ? { summary } : {}) };
+  return { messages: exchangesOf(doc.exchanges ?? []).reverse().flat(), ...(summary ? { summary } : {}), ...(doc.ratio ? { ratio: doc.ratio } : {}) };
 };
 
 const outcomesOf = (stored: Array<string | Sealed> | undefined) => (stored ?? []).map((o) => openJson<string>(o)).filter((o): o is string => typeof o === "string");
@@ -255,7 +271,7 @@ export const mongoHistory = (now: () => number = Date.now): HistoryStore => {
       const parsed = doc.exchanges.map(parse);
       const valid = parsed.flatMap((exchange, i) => (exchange ? [i] : []));
       const exchanges = valid.map((i) => parsed[i]!);
-      const kept = keepOf(exchanges, foldAt);
+      const kept = keepOf(exchanges, foldAt, doc.ratio);
       if (kept === undefined) return false;
       const older = exchanges.slice(kept).reverse().flat();
       const summary = (await summarize(sessionOf(doc).summary, older)).trim().slice(0, MAX_SUMMARY);
@@ -266,6 +282,14 @@ export const mongoHistory = (now: () => number = Date.now): HistoryStore => {
         { $set: { exchanges: { $slice: ["$exchanges", keep] }, ...(summary ? { summary: { $literal: sealJson(summary) } } : {}) } },
       ]);
       return true;
+    },
+    async calibrate(thread, ratio) {
+      try {
+        // Only a live session: the measure belongs to its messages, and a fresh one starts without it.
+        await sessions().updateOne({ key: thread.key, expires_at: alive() }, { $set: { ratio } });
+      } catch (error) {
+        logger.warn(`Couldn't keep the session's token ratio: ${String(error)}`);
+      }
     },
     async clear(owner) {
       await Promise.all([sessions().deleteOne({ key: privateThread(owner).key }), outcomes().deleteOne({ key: privateThread(owner).key })]);
@@ -320,7 +344,7 @@ export const mongoHistory = (now: () => number = Date.now): HistoryStore => {
 
 /** For tests and local runs without MongoDB; the same windows, and the same exact expiry by [now]. */
 export const memoryHistory = (now: () => number = Date.now): HistoryStore & { keys: () => string[] } => {
-  type Stored = { summary?: string; exchanges: HistoryMessage[][]; started: number; until: number };
+  type Stored = { summary?: string; exchanges: HistoryMessage[][]; started: number; until: number; ratio?: number };
   const store = new Map<string, Stored>();
   const outcomes = new Map<string, { list: string[]; until: number }>();
   let starts = 0;
@@ -331,7 +355,9 @@ export const memoryHistory = (now: () => number = Date.now): HistoryStore & { ke
   };
   const load = (key: string): Session => {
     const session = live(store, key);
-    return session ? { ...(session.summary ? { summary: session.summary } : {}), messages: session.exchanges.flat() } : { messages: [] };
+    return session
+      ? { ...(session.summary ? { summary: session.summary } : {}), messages: session.exchanges.flat(), ...(session.ratio ? { ratio: session.ratio } : {}) }
+      : { messages: [] };
   };
   return {
     keys: () => [...store.keys(), ...[...outcomes.keys()].map((k) => `outcomes:${k}`)],
@@ -351,7 +377,7 @@ export const memoryHistory = (now: () => number = Date.now): HistoryStore & { ke
       if (!session) return false;
       const read = session.exchanges.length;
       const newest = [...session.exchanges].reverse();
-      const kept = keepOf(newest, foldAt);
+      const kept = keepOf(newest, foldAt, session.ratio);
       if (kept === undefined) return false;
       const older = newest.slice(kept).reverse().flat();
       const summary = (await summarize(session.summary, older)).trim().slice(0, MAX_SUMMARY);
@@ -361,6 +387,10 @@ export const memoryHistory = (now: () => number = Date.now): HistoryStore & { ke
       const added = Math.max(0, current.exchanges.length - read);
       Object.assign(current, { summary: summary || current.summary, exchanges: current.exchanges.slice(-(kept + added)) });
       return true;
+    },
+    async calibrate(thread, ratio) {
+      const session = live(store, thread.key);
+      if (session) session.ratio = ratio;
     },
     async clear(owner) {
       store.delete(privateThread(owner).key);

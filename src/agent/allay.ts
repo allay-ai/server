@@ -13,7 +13,7 @@ import { DEATHS_PER_PAGE } from "../features/tools/deaths";
 import { memoryTools } from "../features/tools/memory.tools";
 import { type PerplexitySearch, searchWebTool } from "../features/tools/search-web.tool";
 import type { RunKind, RunRecord, RunStore } from "../infrastructure/runs/runs";
-import { estimateTokens, type HistoryStore, maxTokens, threadOf } from "../infrastructure/history/history";
+import { estimateTokens, type HistoryStore, maxTokens, ratioOf, threadOf } from "../infrastructure/history/history";
 import type { Pseudonyms } from "../infrastructure/privacy/pseudonyms";
 import type { ConsentStore } from "../infrastructure/privacy/consents";
 import type { BanStore } from "../infrastructure/privacy/bans";
@@ -37,6 +37,7 @@ import { commandsFromText, commandsSchema, validateCommands } from "./commands";
 import { systemPrompt } from "./prompts";
 import { Exchange, aged } from "./exchange";
 import { type FailureCode, failureCode } from "./failures";
+import { promptTokens } from "./tokens";
 import { localStamp } from "./time";
 import { summarizeWith } from "./summary";
 
@@ -334,9 +335,10 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     const memories = await telemetry.phase("allay.memories.load", () => loadMemories(deps, context));
     // askx turns one request into commands; earlier chat would only confuse it, as in v1. A task reads its own thread.
     let session = context.mode === "askx" ? { messages: [] } : await telemetry.phase("allay.session.load", () => deps.history.load(thread(context)));
-    telemetry.contextFill(estimateTokens(session.messages) / maxTokens());
+    const size = estimateTokens(session.messages, session.ratio);
+    telemetry.contextFill(size / maxTokens());
     // Folding after answers keeps a session well below this; a fold that failed, or one huge exchange, may not.
-    if (estimateTokens(session.messages) > maxTokens()) {
+    if (size > maxTokens()) {
       await telemetry.phase("allay.session.compact", () => compact(context, deps, spend, maxTokens(), options));
       session = await deps.history.load(thread(context));
     }
@@ -469,6 +471,12 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
             const stepCost = costOf((payload.metadata as { providerMetadata?: unknown } | undefined)?.providerMetadata);
             spend(stepCost);
             const step = (payload.output as { usage?: StepTokens } | undefined)?.usage;
+            // The first step reads the session as it was loaded, so the provider's count of it measures the session in
+            // the model's own tokens. Without a count the last measure stays, or o200k alone. askx reads no session.
+            if (steps === 1 && stream === firstStream && context.mode !== "askx") {
+              const ratio = ratioOf(step?.inputTokens, promptTokens(instructions, common.toolsets as Record<string, Record<string, unknown>>, messages));
+              if (ratio) void deps.history.calibrate(thread(context), ratio);
+            }
             telemetry.stepFinished({
               inputTokens: step?.inputTokens,
               outputTokens: step?.outputTokens,
@@ -492,6 +500,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       if (signal?.aborted) throw new ApiFailure(apierror(API_ERRORS.CANCELLED));
       return stream.usage;
     };
+    const firstStream = stream;
     const totals = [await consume(stream)];
     const usage = (): Usage => ({
       input_tokens: totals.reduce((sum, t) => sum + (t?.inputTokens ?? 0), 0),

@@ -11,7 +11,7 @@ import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import { finish, reasoning, readSse, scripted, testDeps, text, toolCall } from "./helpers";
 import { AUTH, filler, owner, thread } from "./helpers";
 import { maxMemories } from "../src/infrastructure/memory/memory";
-import { type HistoryMessage, MAX_EXCHANGES, maxTokens } from "../src/infrastructure/history/history";
+import { type HistoryMessage, MAX_EXCHANGES, maxTokens, RATIO_BOUNDS } from "../src/infrastructure/history/history";
 
 /** Every request here comes from the tenant's own plugin; test/access.test.ts covers the ones that don't. */
 const fetch = (url: string, init: RequestInit = {}): Promise<Response> => globalThis.fetch(url, { ...init, headers: { ...AUTH, ...(init.headers as Record<string, string> | undefined) } });
@@ -433,6 +433,18 @@ describe("POST /api/v2/chat", () => {
     // The summary came first, and the answer's prompt read it instead of the whole session.
     expect(JSON.stringify(prompts[1])).toContain("The player built a beacon.");
     expect(JSON.stringify(prompts[1])).not.toContain('"q0"');
+  });
+
+  test("the provider's count of the first step measures the session in the model's tokens", async () => {
+    const { model } = scripted([[...text("Ender pearls."), finish()], [...text("Twelve."), finish()]]);
+    const deps = testDeps(model);
+    const base = start(deps);
+    await readSse(await chat(base, { message: "what do I need for the end?" }));
+    // A first question has no session to measure yet.
+    expect((await deps.history.load(thread("player-1"))).ratio).toBeUndefined();
+    await readSse(await chat(base, { message: "how many?" }));
+    // The mock counts 12 tokens for a prompt o200k counts in thousands: an odd report, held to the lower bound.
+    expect((await deps.history.load(thread("player-1"))).ratio).toBe(RATIO_BOUNDS[0]);
   });
 
   test("history carries over between questions", async () => {

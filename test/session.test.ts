@@ -14,6 +14,7 @@ import {
   memoryHistory,
   mongoHistory,
   OutcomesModel,
+  ratioOf,
   SessionModel,
   sessionTtl,
   threadOf,
@@ -118,6 +119,26 @@ describe.each(stores)("the %s session store", (name, make) => {
     expect(estimateTokens(session.messages)).toBeLessThanOrEqual(keepTokens());
     expect(session.messages.length / 4 + seen!.older.length / 4).toBe(count);
     expect(session.messages.at(-1)).toEqual({ role: "assistant", content: `answer ${count - 1}` });
+  });
+
+  test("folds by the model's tokens once a provider measured them", async () => {
+    const history = make();
+    const per = 1_000;
+    // Below the fold in o200k tokens, past it at 1.4 times as many, as Claude counts Russian.
+    const count = Math.floor((foldTokens() / per) * 0.8);
+    for (let i = 0; i < count; i++) await history.append(thread("p1"), ...sized(i, per));
+    expect(await history.compact(thread("p1"), async () => "never")).toBe(false);
+    await history.calibrate(thread("p1"), 1.4);
+    expect((await history.load(thread("p1"))).ratio).toBe(1.4);
+    expect(await history.compact(thread("p1"), async () => "Folded by the model's count.")).toBe(true);
+    const session = await history.load(thread("p1"));
+    expect(estimateTokens(session.messages, session.ratio)).toBeLessThanOrEqual(keepTokens());
+  });
+
+  test("a measure never lands on a session that isn't there", async () => {
+    const history = make();
+    await history.calibrate(thread("p1"), 1.4);
+    expect((await history.load(thread("p1"))).ratio).toBeUndefined();
   });
 
   test("keeps the last exchanges even when each is huge", async () => {
@@ -299,6 +320,14 @@ describe.each(panelStores)("the %s panel sessions", (name, make) => {
 });
 
 describe("the chat session", () => {
+  test("a provider's count reads as tokens per o200k token, within bounds, or nothing without one", () => {
+    expect(ratioOf(14_000, 10_000)).toBe(1.4);
+    expect(ratioOf(undefined, 10_000)).toBeUndefined();
+    expect(ratioOf(0, 10_000)).toBeUndefined();
+    expect(ratioOf(12, 10_000)).toBe(0.5);
+    expect(ratioOf(90_000, 10_000)).toBe(3);
+  });
+
   test("public questions go to the server's thread, everything else to the asker's own, all within the tenant", () => {
     expect(threadOf(owner("p1"), "public", "srv-1")).toEqual({ key: "self:p:srv-1", kind: "public" });
     expect(threadOf(owner("p1"), "private", "srv-1")).toEqual({ key: "self:u:p1", kind: "private" });
