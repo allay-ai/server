@@ -7,6 +7,14 @@ const HOUR = 3_600_000;
 const DAY = 86_400_000;
 const DAYS: Record<Exclude<Range, "24h">, number> = { "7d": 7, "30d": 30, "1y": 365 };
 
+/** A tool's calls in a period; why counts the failed ones by cause. */
+export interface ToolStat {
+  name: string;
+  calls: number;
+  failed: number;
+  why: Record<string, number>;
+}
+
 export interface Point {
   t: string;
   questions: number;
@@ -45,7 +53,8 @@ export interface Stats {
   approximate: boolean;
   kinds: Record<string, number>;
   models: Array<{ name: string; runs: number; cost: number }>;
-  tools: Array<{ name: string; calls: number; failed: number }>;
+  /** why since 6.28: failed calls by cause, FAILURE_CODES. */
+  tools: Array<ToolStat>;
 }
 
 const round = (usd: number) => Math.round(usd * 1_000_000) / 1_000_000;
@@ -84,7 +93,7 @@ export const statsOfRuns = (runs: RunRecord[], now: Date): Stats => {
     times: [] as number[],
   }));
   const models = new Map<string, { name: string; runs: number; cost: number }>();
-  const tools = new Map<string, { name: string; calls: number; failed: number }>();
+  const tools = new Map<string, ToolStat>();
   const kinds: Record<string, number> = {};
   const players = new Set<string>();
   const servers = new Set<string>();
@@ -130,9 +139,10 @@ export const statsOfRuns = (runs: RunRecord[], now: Date): Stats => {
       bucket.cancelled++;
     }
     for (const call of run.tools) {
-      const tool = tools.get(call.name) ?? { name: call.name, calls: 0, failed: 0 };
+      const tool = tools.get(call.name) ?? { name: call.name, calls: 0, failed: 0, why: {} };
       tool.calls++;
       if (!call.ok) tool.failed++;
+      if (!call.ok && call.code) tool.why[call.code] = (tool.why[call.code] ?? 0) + 1;
       tools.set(call.name, tool);
     }
   }
@@ -172,7 +182,7 @@ export const statsOfDays = (range: Exclude<Range, "24h">, days: DayRollup[], now
   const keys = Array.from({ length: count }, (_, i) => dayKey(today - (count - 1 - i) * DAY));
   const byDay = new Map(days.map((d) => [d.day, d]));
   const models = new Map<string, { name: string; runs: number; cost: number }>();
-  const tools = new Map<string, { name: string; calls: number; failed: number }>();
+  const tools = new Map<string, ToolStat>();
   const kinds: Record<string, number> = {};
   const players = new Set<string>();
   const servers = new Set<string>();
@@ -196,9 +206,10 @@ export const statsOfDays = (range: Exclude<Range, "24h">, days: DayRollup[], now
       models.set(name, model);
     }
     for (const [name, t] of Object.entries(day.tools ?? {})) {
-      const tool = tools.get(name) ?? { name, calls: 0, failed: 0 };
+      const tool = tools.get(name) ?? { name, calls: 0, failed: 0, why: {} };
       tool.calls += t.calls ?? 0;
       tool.failed += t.failed ?? 0;
+      for (const [code, n] of Object.entries(t.why ?? {})) tool.why[code] = (tool.why[code] ?? 0) + (n ?? 0);
       tools.set(name, tool);
     }
     const own = DURATION_BUCKETS.map(() => 0);

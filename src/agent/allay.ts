@@ -36,6 +36,7 @@ import type { CommandsResult, RunContext, RunResult, Usage } from "./agent.types
 import { commandsFromText, commandsSchema, validateCommands } from "./commands";
 import { systemPrompt } from "./prompts";
 import { Exchange, aged } from "./exchange";
+import { type FailureCode, failureCode } from "./failures";
 import { localStamp } from "./time";
 import { summarizeWith } from "./summary";
 
@@ -289,7 +290,7 @@ const traceOf = (context: RunContext, deps: AllayDeps, options: Pick<RunOptions,
   });
 
 /** How an automation agent's wake ended, from the tools it called last. */
-const wakeEnd = (called: Map<string, { name: string; ok: boolean }>) => {
+const wakeEnd = (called: Map<string, { name: string; ok: boolean; code?: FailureCode }>) => {
   const names = [...called.values()].map((c) => c.name);
   return names.includes("finish") ? "finish" : names.includes("wait") ? "wait" : "steps";
 };
@@ -312,7 +313,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
   let cost = 0;
   let modelId = context.model ?? "unknown";
   let steps = 0;
-  const called = new Map<string, { name: string; ok: boolean }>();
+  const called = new Map<string, { name: string; ok: boolean; code?: FailureCode }>();
   // Taken before the run and put back if it fails, so a failed question doesn't lose them.
   let outcomes: string[] = [];
   const finishing = new Map<string, string>();
@@ -441,7 +442,10 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
             // Game tools answer a failure as { error }, server tools too; it counts as failed either way.
             const result = payload.result as { error?: unknown } | null | undefined;
             const call = called.get(String(payload.toolCallId));
-            if (call && result && typeof result === "object" && "error" in result) call.ok = false;
+            if (call && result && typeof result === "object" && "error" in result) {
+              call.ok = false;
+              call.code = failureCode(result);
+            }
             telemetry.toolEnded(String(payload.toolCallId), call?.ok ?? true, payload.result);
             // The plugin ended the task: its chat hears how with the player's next question.
             const summary = finishing.get(String(payload.toolCallId));
@@ -451,7 +455,10 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
           case "tool-error": {
             exchange.error(payload);
             const call = called.get(String(payload.toolCallId));
-            if (call) call.ok = false;
+            if (call) {
+              call.ok = false;
+              call.code = failureCode({ error: payload.error instanceof Error ? payload.error.message : String(payload.error) });
+            }
             telemetry.toolEnded(String(payload.toolCallId), false);
             break;
           }

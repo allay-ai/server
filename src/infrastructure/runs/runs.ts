@@ -1,5 +1,6 @@
 import { Schema, model } from "mongoose";
 import { ERASED } from "../privacy/pseudonyms";
+import type { FailureCode } from "../../agent/failures";
 
 export const RUN_KINDS = ["ask", "askall", "askx", "task", "summary", "telegram"] as const;
 export type RunKind = (typeof RUN_KINDS)[number];
@@ -27,7 +28,8 @@ export interface RunRecord {
   reasoning_tokens: number;
   cost: number;
   steps: number;
-  tools: Array<{ name: string; ok: boolean }>;
+  /** code since 6.28: why a failed call failed, one of FAILURE_CODES, never the tool's words. */
+  tools: Array<{ name: string; ok: boolean; code?: FailureCode }>;
   searches: number;
   duration_ms: number;
   result: "ok" | "cancelled" | "error";
@@ -47,7 +49,8 @@ export interface DayRollup {
   searches: number;
   kinds: Record<string, number>;
   models: Record<string, { runs: number; cost: number }>;
-  tools: Record<string, { calls: number; failed: number }>;
+  /** why since 6.28: failed calls by FAILURE_CODES. */
+  tools: Record<string, { calls: number; failed: number; why?: Partial<Record<FailureCode, number>> }>;
   /** Counts per DURATION_BUCKETS index, for percentiles. */
   durations: Record<string, number>;
   /** Pseudonyms of the day's players, while the day is younger than RUN_DAYS; [player_count] keeps their number after. */
@@ -179,6 +182,7 @@ export const rollupUpdate = (run: RunRecord) => {
   for (const tool of run.tools) {
     inc[`tools.${fieldKey(tool.name)}.calls`] = (inc[`tools.${fieldKey(tool.name)}.calls`] ?? 0) + 1;
     inc[`tools.${fieldKey(tool.name)}.failed`] = (inc[`tools.${fieldKey(tool.name)}.failed`] ?? 0) + (tool.ok ? 0 : 1);
+    if (!tool.ok && tool.code) inc[`tools.${fieldKey(tool.name)}.why.${tool.code}`] = (inc[`tools.${fieldKey(tool.name)}.why.${tool.code}`] ?? 0) + 1;
   }
   const add = run.kind === "summary" || run.user_id === ERASED ? {} : { players: run.user_id, servers: run.server_id ?? run.server };
   return { day: dayOf(run.at), inc, add };
@@ -200,7 +204,7 @@ const runSchema = new Schema<RunRecord>(
     reasoning_tokens: Number,
     cost: Number,
     steps: Number,
-    tools: [{ _id: false, name: String, ok: Boolean }],
+    tools: [{ _id: false, name: String, ok: Boolean, code: String }],
     searches: Number,
     duration_ms: Number,
     result: { type: String, required: true },

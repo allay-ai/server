@@ -148,6 +148,7 @@
     "calls": "Calls",
     "failed": "Failed",
     "failureRate": "Failure rate",
+    "why": "Why it failed",
     "noTools": "No tools ran in this period."
   },
   "players": {

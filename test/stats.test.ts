@@ -74,18 +74,18 @@ describe("runs", () => {
       result: "ok",
     };
     await runs.add(base);
-    await runs.add({ ...base, id: "b", user_id: "u-2", tools: [{ name: "inventory", ok: false }], result: "error", duration_ms: 9_000 });
+    await runs.add({ ...base, id: "b", user_id: "u-2", tools: [{ name: "inventory", ok: false, code: "changed" }], result: "error", duration_ms: 9_000 });
     await runs.add({ ...base, id: "c", kind: "summary", cost: 0.0005, tools: [] });
     await runs.add({ ...base, id: "d", at: new Date("2026-10-18T09:00:00Z") });
     const [day] = await runs.days("2026-10-17", "2026-10-17");
-    expect(day).toMatchObject({ runs: 3, questions: 2, errors: 1, players: ["u-1", "u-2"], models: { "openai/gpt-6-luna": { runs: 3 } }, tools: { inventory: { calls: 2, failed: 1 } } });
+    expect(day).toMatchObject({ runs: 3, questions: 2, errors: 1, players: ["u-1", "u-2"], models: { "openai/gpt-6-luna": { runs: 3 } }, tools: { inventory: { calls: 2, failed: 1, why: { changed: 1 } } } });
     expect(day.cost).toBeCloseTo(0.0025);
 
     const week = statsOfDays("7d", await runs.days("2026-10-12", "2026-10-18"), new Date("2026-10-18T12:00:00Z"));
     expect(week.series).toHaveLength(7);
     expect(week.totals).toMatchObject({ questions: 3, errors: 1, players: 2 });
     expect(week.totals.p50_ms).toBe(3_000);
-    expect(week.tools[0]).toEqual({ name: "inventory", calls: 3, failed: 1 });
+    expect(week.tools[0]).toEqual({ name: "inventory", calls: 3, failed: 1, why: { changed: 1 } });
 
     const today = statsOfRuns(runs.all, new Date("2026-10-18T12:00:00Z"));
     expect(today.series).toHaveLength(24);
@@ -154,5 +154,20 @@ describe("traces", () => {
     expect(found?.spans[1]).toMatchObject({ input_tokens: 900, output_tokens: 20, reasoning_tokens: 5, finish_reason: "tool-calls" });
     const raw = JSON.stringify(found);
     for (const text of ["diamonds", "secret", "system prompt", "chest at", "argument", "The asking player"]) expect(raw).not.toContain(text);
+  });
+});
+
+describe("why a tool failed", () => {
+  test("the plugin's and the schema's refusals map to a code, never keeping their words", async () => {
+    const { failureCode } = await import("../src/agent/failures");
+    expect(failureCode({ error: true, message: "Tool input validation failed for chests. Please fix…" })).toBe("invalid_args");
+    expect(failureCode({ error: "this is a crafting agent; chests needs its own, started with start_task" })).toBe("wrong_agent");
+    expect(failureCode({ error: "the chest at -99 120 979 changed since the plan; plan again" })).toBe("changed");
+    expect(failureCode({ error: "the block at -98 122 1008 is farther than 64 blocks from the player" })).toBe("too_far");
+    expect(failureCode({ error: "no item called eye_of_ender" })).toBe("unknown_name");
+    expect(failureCode({ error: "no crafting table near the player in plain sight; 3×3 recipes need a real one" })).toBe("no_station");
+    expect(failureCode({ error: "slot 13 of inventory is empty" })).toBe("empty_slot");
+    expect(failureCode({ error: "failed: IndexOutOfBoundsException" })).toBe("crashed");
+    expect(failureCode({ error: "something new" })).toBe("other");
   });
 });

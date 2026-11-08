@@ -192,6 +192,7 @@ export const DashboardPage = () => {
                           <TableHead className="text-right">{t("dashboard.calls")}</TableHead>
                           <TableHead className="text-right">{t("dashboard.failed")}</TableHead>
                           <TableHead className="text-right">{t("dashboard.failureRate")}</TableHead>
+                          <TableHead>{t("dashboard.why")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -201,6 +202,13 @@ export const DashboardPage = () => {
                             <TableCell className="tabular text-right">{number(tool.calls)}</TableCell>
                             <TableCell className="tabular text-right">{number(tool.failed)}</TableCell>
                             <TableCell className="tabular text-right">{percent(tool.calls ? tool.failed / tool.calls : 0)}</TableCell>
+                            <TableCell className="font-mono text-xs text-muted-foreground">
+                              {Object.entries(tool.why ?? {})
+                                .sort((a, b) => b[1] - a[1])
+                                .slice(0, 3)
+                                .map(([code, n]) => `${code} ${number(n)}`)
+                                .join(" · ")}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

@@ -89,7 +89,7 @@ export interface Stats {
   approximate: boolean;
   kinds: Record<string, number>;
   models: Array<{ name: string; runs: number; cost: number }>;
-  tools: Array<{ name: string; calls: number; failed: number }>;
+  tools: Array<{ name: string; calls: number; failed: number; why?: Record<string, number> }>;
   top_players: Array<{ user_id: string; player: Who; questions: number; cost: number }>;
 }
 
@@ -152,7 +152,7 @@ export interface Profile {
   activity: Array<{ t: string; questions: number; errors: number; cost: number }>;
   kinds: Record<string, number>;
   models: Array<{ name: string; runs: number; cost: number }>;
-  tools: Array<{ name: string; calls: number; failed: number }>;
+  tools: Array<{ name: string; calls: number; failed: number; why?: Record<string, number> }>;
   hours: number[];
 }
 
