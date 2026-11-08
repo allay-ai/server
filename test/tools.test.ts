@@ -458,11 +458,58 @@ describe("memories in askx", () => {
     const { memoryMemories } = await import("../src/infrastructure/memory/memory");
     const store = memoryMemories();
     const owner = { tenant: "self", userId: "p1" };
-    await store.add(owner, "my base", { x: 10, y: 64, z: -20, dimension: "overworld" });
+    await store.add(owner, { text: "my base", place: { x: 10, y: 64, z: -20, dimension: "overworld" } });
     const tools = memoryTools(store, { owner, emit: () => {}, readOnly: true });
     expect(await run(tools.memories, { action: "find", query: "base" })).toMatchObject({ matched: 1, memories: [{ text: "my base", x: 10, z: -20 }] });
     expect(await run(tools.memories, { action: "add", text: "a cave here", here: true })).toMatchObject({ error: expect.stringContaining("Only reading") });
     expect((await store.list(owner)).length).toBe(1);
+  });
+});
+
+describe("memories since 6.27", () => {
+  const setup = async () => {
+    const { memoryTools } = await import("../src/features/tools/memory.tools");
+    const { memoryMemories } = await import("../src/infrastructure/memory/memory");
+    const store = memoryMemories();
+    const owner = { tenant: "self", userId: "p1" };
+    const position = { x: 0, y: 64, z: 0, dimension: "overworld" as const };
+    return { store, owner, tools: memoryTools(store, { owner, emit: () => {}, position }) };
+  };
+
+  test("update changes a memory in place: text, title, tags, the pin, and the place's radius", async () => {
+    const { store, owner, tools } = await setup();
+    const added = (await run(tools.memories, { action: "add", text: "Iron farm, 2 layers", here: true, category: "farm", tags: ["#Ферма", "iron farm"] })) as any;
+    expect(added.saved).toMatchObject({ kind: "place", category: "farm", tags: ["ферма", "iron-farm"], distance: 0 });
+    const id = added.saved.id;
+    const updated = (await run(tools.memories, { action: "update", id, text: "Iron farm, 3 layers", title: "Железная ферма", add_tags: ["железо"], remove_tags: ["iron farm"], pinned: true, radius: 10 })) as any;
+    expect(updated.updated).toMatchObject({ id, title: "Железная ферма", text: "Iron farm, 3 layers", tags: ["ферма", "железо"], pinned: true, radius: 10, inside: true, x: 0 });
+    expect(await store.list(owner)).toHaveLength(1);
+    expect(await run(tools.memories, { action: "update", id, remove_place: true, title: "" })).toMatchObject({ updated: { kind: "fact", text: "Iron farm, 3 layers" } });
+    expect(((await store.list(owner))[0] as any).title).toBeUndefined();
+    expect(await run(tools.memories, { action: "update", id: "nope", text: "abc" })).toMatchObject({ error: "No memory with id nope" });
+  });
+
+  test("find filters by tag, kind, and pin, and with no word met gives an index to match by meaning", async () => {
+    const { tools } = await setup();
+    await run(tools.memories, { action: "add", text: "Likes ores at the bottom of a chest", kind: "preference", tags: ["сундуки"] });
+    await run(tools.memories, { action: "add", text: "A cleric sells ender pearls", title: "Клирик", x: 300, z: 0, category: "villager" });
+    await run(tools.memories, { action: "add", text: "Wants a full beacon", kind: "goal", pinned: true });
+    expect(await run(tools.memories, { action: "find", tag: "Сундуки" })).toMatchObject({ matched: 1, memories: [{ kind: "preference" }] });
+    expect(await run(tools.memories, { action: "find", kind: "goal" })).toMatchObject({ matched: 1, memories: [{ pinned: true }] });
+    expect(await run(tools.memories, { action: "find", pinned: true })).toMatchObject({ matched: 1 });
+    expect(await run(tools.memories, { action: "find", query: "клирик" })).toMatchObject({ matched: 1, memories: [{ title: "Клирик", distance: 300, direction: "east" }] });
+    const index = (await run(tools.memories, { action: "find", query: "жемчуг" })) as any;
+    expect(index.matched).toBe(0);
+    expect(index.index.map((m: any) => m.about)).toEqual(["Wants a full beacon", "Клирик", "Likes ores at the bottom of a chest"]);
+  });
+
+  test("no more than MAX_PINNED are pinned", async () => {
+    const { MAX_PINNED } = await import("../src/infrastructure/memory/memory");
+    const { tools } = await setup();
+    for (let i = 0; i < MAX_PINNED; i++) await run(tools.memories, { action: "add", text: `fact ${i}`, pinned: true });
+    expect(await run(tools.memories, { action: "add", text: "one more", pinned: true })).toMatchObject({ error: expect.stringContaining("pinned already") });
+    const loose = (await run(tools.memories, { action: "add", text: "one more" })) as any;
+    expect(await run(tools.memories, { action: "update", id: loose.saved.id, pinned: true })).toMatchObject({ error: expect.stringContaining("pinned already") });
   });
 });
 
