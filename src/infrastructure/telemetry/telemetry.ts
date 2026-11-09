@@ -1,5 +1,4 @@
-import { context, metrics, trace } from "@opentelemetry/api";
-import { logs } from "@opentelemetry/api-logs";
+import { context, logs, metrics, trace } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-proto";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
@@ -8,7 +7,7 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 import { detectResources, envDetector, resourceFromAttributes } from "@opentelemetry/resources";
 import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs";
 import { type MetricReader, MeterProvider, PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
-import { BasicTracerProvider, BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { BatchSpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
 import { logger } from "../../shared/logging/logger";
 import { useSignals } from "./signals";
 
@@ -61,10 +60,10 @@ export const startTelemetry = (options: TelemetryOptions): Telemetry => {
   context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
   const stops: Array<() => Promise<void>> = [];
 
-  let tracerProvider: BasicTracerProvider | undefined;
+  let tracerProvider: TracerProvider | undefined;
   if (traces === "otlp") {
     // The sampler comes from OTEL_TRACES_SAMPLER and its argument; parent-based, always on by default.
-    tracerProvider = new BasicTracerProvider({ resource, spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter())] });
+    tracerProvider = new TracerProvider({ resource, spanProcessors: [new BatchSpanProcessor({ exporter: new OTLPTraceExporter() })] });
     trace.setGlobalTracerProvider(tracerProvider);
     stops.push(() => tracerProvider!.shutdown());
   } else if (traces !== "none") logger.warn(`OTEL_TRACES_EXPORTER=${traces} isn't supported; traces stay off (otlp or none)`);

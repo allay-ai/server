@@ -1,5 +1,16 @@
-import { type Attributes, type Meter, type MeterProvider, type Tracer, type TracerProvider, metrics, trace } from "@opentelemetry/api";
-import { type Logger, type LoggerProvider, SeverityNumber, logs } from "@opentelemetry/api-logs";
+import {
+  type Attributes,
+  type Logger,
+  type LoggerProvider,
+  type Meter,
+  type MeterProvider,
+  SeverityNumber,
+  type Tracer,
+  type TracerProvider,
+  logs,
+  metrics,
+  trace,
+} from "@opentelemetry/api";
 
 const SCOPE = "allay-server";
 

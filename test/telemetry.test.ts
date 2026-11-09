@@ -4,7 +4,7 @@ import { context } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { InMemoryLogRecordExporter, LoggerProvider, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { AggregationTemporality, InMemoryMetricExporter, MeterProvider, PeriodicExportingMetricReader, type ResourceMetrics } from "@opentelemetry/sdk-metrics";
-import { BasicTracerProvider, InMemorySpanExporter, type ReadableSpan, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { InMemorySpanExporter, type ReadableSpan, SimpleSpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
 import { routes } from "../src/application/routes";
 import { handleAsk } from "../src/features/ask/ask.controller";
 import { handleAskX } from "../src/features/askx/askx.controller";
@@ -38,7 +38,7 @@ const telemetry = (content = false) => {
   reader = new PeriodicExportingMetricReader({ exporter: metrics, exportIntervalMillis: 3_600_000 });
   events = new InMemoryLogRecordExporter();
   useSignals({
-    tracerProvider: new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(spans)] }),
+    tracerProvider: new TracerProvider({ spanProcessors: [new SimpleSpanProcessor({ exporter: spans })] }),
     meterProvider: new MeterProvider({ readers: [reader] }),
     loggerProvider: new LoggerProvider({ processors: [new SimpleLogRecordProcessor({ exporter: events })] }),
     content,
