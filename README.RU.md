@@ -47,7 +47,7 @@
      mongo:
    ```
 
-2. Укажите в `config.yml` плагина `server.url` как `http://localhost:3000` и `server.token` — ваш `PLUGIN_TOKEN`, затем выполните `/allay reload`. После этого `/allay init` откроет панель администратора, где вы вставите ключ OpenRouter. Бэкенд слушает только эту машину; сервер Minecraft на другой машине достучится до него через обратный прокси с TLS.
+2. Укажите в `config.yml` плагина `server.url` как `http://localhost:3000` и `server.token` — ваш `PLUGIN_TOKEN`, затем выполните `/allay reload`. После этого `/allay init` откроет панель администратора, где вы вставите ключ OpenRouter. Бэкенд слушает только эту машину, а сервер Minecraft на другой машине достучится до него через обратный прокси с TLS.
 3. Дальше — [Self-hosting with Docker](https://github.com/allay-ai/server/wiki/Self-hosting-with-Docker) в вики: прокси, пароли и обновления.
 
 ## Документация

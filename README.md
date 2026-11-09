@@ -47,7 +47,7 @@
      mongo:
    ```
 
-2. Set `server.url` in the plugin’s `config.yml` to `http://localhost:3000` and `server.token` to your `PLUGIN_TOKEN`, then run `/allay reload`. Then `/allay init` opens the admin panel, where you paste your OpenRouter key. The backend listens on this machine only; a Minecraft server elsewhere reaches it through a reverse proxy with TLS.
+2. Set `server.url` in the plugin’s `config.yml` to `http://localhost:3000` and `server.token` to your `PLUGIN_TOKEN`, then run `/allay reload`. Then `/allay init` opens the admin panel, where you paste your OpenRouter key. The backend listens on this machine only: a Minecraft server elsewhere reaches it through a reverse proxy with TLS.
 3. [Self-hosting with Docker](https://github.com/allay-ai/server/wiki/Self-hosting-with-Docker) goes further: proxies, passwords, and upgrades.
 
 ## Documentation
