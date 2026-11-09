@@ -2,6 +2,10 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.29.1
+
+- 📦 **Dependencies updated.** Mastra 1.82.0 (`@mastra/mongodb` 1.26.0, `@mastra/observability` 1.23.1), the AI SDK 7.0.162, Mongoose 9.12.0, tslog 5.5.0; OpenTelemetry's SDK 3.1.0 with the API 1.10.0, where the Logs API now lives; the panel on i18next 27, react-i18next 18, Vite 8.3.7, and Tailwind CSS 4.3.5. Nothing changes in what the backend does or sends: the Prometheus scrape still listens on all interfaces at `OTEL_EXPORTER_PROMETHEUS_HOST` and `_PORT`.
+
 ## 6.29.0
 
 - 🧮 **Sessions measured in the model's own tokens.** Each run's first step tells how many tokens the provider counted for what the open tokenizer counts, and the session keeps that ratio for its next fold: Claude counts Russian about 1.4 times o200k, and the fold limits now mean that. Without a count from the provider the last ratio stays, or the open tokenizer alone.
