@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Download, FlaskConical, Lock, RotateCcw, Sparkles, TriangleAlert, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, type UseFormReturn, useForm } from "react-hook-form";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -27,7 +28,7 @@ type FormValues = Record<string, string | boolean>;
 const RECOMMENDED_MODEL = "~anthropic/claude-haiku-latest";
 
 /** An option of a choice in words, or the option itself where it needs none. */
-const optionLabel = (t: (key: string, options?: Record<string, unknown>) => string, key: string, option: string) => t(`settings.options.${key}.${option}`, { defaultValue: option });
+const optionLabel = (t: TFunction, key: string, option: string) => t(`settings.options.${key}.${option}`, { defaultValue: option });
 
 const GROUP_ORDER = ["model", "search", "limits", "sessions", "tracing", "billing", "telegram", "address", "access"];
 /** Which check each group offers, and the fields it reads from the form. */
