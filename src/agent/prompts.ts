@@ -17,13 +17,26 @@ const base = (context: RunContext): string => {
 /** Prompt sections that only teach one tool; without the tool they'd cost tokens for nothing. */
 const SECTION_TOOLS: Record<string, string> = { "# Builds": "build", "# Building": "construct", "# Redstone": "inspect_redstone" };
 
-/** The base prompt without the sections whose tool this run doesn't offer. */
+/**
+ * What stands in a section's place when its tool is missing, so a question about it still gets an answer. Builds are
+ * off in the plugin until the owner turns them on (plugin 6.37).
+ */
+const SECTION_OFF: Record<string, string> = {
+  "# Builds": [
+    "# Builds",
+    "Builds from Allay's catalog are off for this player here. Asked to find, show, or build a build, say so in a line: the server's owner turns them on with `building.enabled: true` in Allay's config.yml, and a player needs the permission allay.build. Never draw or invent a build instead.",
+  ].join("\n"),
+};
+
+/** The base prompt without the sections whose tool this run doesn't offer, or with their short note instead. */
 const trimmed = (prompt: string, tools: string[]): string =>
   prompt
     .split(/\n(?=# )/)
-    .filter((section) => {
-      const tool = SECTION_TOOLS[section.split("\n", 1)[0].trim()];
-      return !tool || tools.includes(tool);
+    .flatMap((section) => {
+      const head = section.split("\n", 1)[0].trim();
+      const tool = SECTION_TOOLS[head];
+      if (!tool || tools.includes(tool)) return [section];
+      return SECTION_OFF[head] ? [SECTION_OFF[head]] : [];
     })
     .join("\n");
 

@@ -287,9 +287,13 @@ describe("task prompts", () => {
     const withRedstone = systemPrompt({ ...context({}), mode: "ask", tools: ["inspect_redstone"] });
     expect(withRedstone).toContain("# Redstone");
     expect(withRedstone).not.toContain("show_draft");
-    expect(without).not.toContain("# Builds");
+    // Builds off: a short note in their place, which says where they're turned on.
+    expect(without).toContain("Builds from Allay's catalog are off");
+    expect(without).toContain("building.enabled: true");
+    expect(without).not.toContain("a build stays as its author made it");
     const building = systemPrompt({ ...context({}), mode: "ask", tools: ["build"] });
     expect(building).toContain("a build stays as its author made it");
+    expect(building).not.toContain("Builds from Allay's catalog are off");
   });
 });
 
