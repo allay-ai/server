@@ -98,6 +98,8 @@ export interface RunContext {
   timezone?: string;
   player?: PlayerInfo;
   server?: ServerInfo;
+  /** Since 6.33: what the player may build from the catalog here, and the server's game. */
+  building?: { max_blocks?: number; max_size?: number; data_version?: number };
   /** Client tools the plugin offers for this run; empty for v1 requests. */
   tools: string[];
   /** The server's own key and models (BYOK); without it the run uses the backend's. */

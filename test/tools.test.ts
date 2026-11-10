@@ -59,16 +59,17 @@ describe("offered game tools", () => {
       [
         "get_player_status", "inventory", "get_surroundings", "look_at", "get_world", "get_statistics", "get_advancements", "get_recipes", "search_items", "locate", "get_server", "search_commands",
         "get_nearby_players", "get_locations", "find_villagers", "scan_nearby_containers", "find_item", "inspect_item", "get_anvil_plan", "inspect_redstone",
-        "point_to", "show_marks", "ping_me", "sort_inventory", "reminders", "goals",
+        "point_to", "show_marks", "build", "ping_me", "sort_inventory", "reminders", "goals",
         "write_book", "get_allay_guide", "allay_settings",
       ].sort(),
     );
-    // search_items came with plugin 6.12 and search_commands with 6.16; an older plugin gets everything else.
-    expect(offeredTools(plugin, false)).toEqual(GAME_TOOLS.filter((name) => name !== "search_items" && name !== "search_commands"));
-    expect(offeredTools([...plugin, "search_items"], false)).toEqual(GAME_TOOLS.filter((name) => name !== "search_commands"));
-    expect(offeredTools([...plugin, "search_items", "search_commands"], false)).toEqual([...GAME_TOOLS]);
+    // search_items came with plugin 6.12, search_commands with 6.16, and build with 6.37; an older plugin gets everything else.
+    const newer = ["search_items", "search_commands", "build"];
+    expect(offeredTools(plugin, false)).toEqual(GAME_TOOLS.filter((name) => !newer.includes(name)));
+    expect(offeredTools([...plugin, "search_items"], false)).toEqual(GAME_TOOLS.filter((name) => name !== "search_commands" && name !== "build"));
+    expect(offeredTools([...plugin, ...newer], false)).toEqual([...GAME_TOOLS]);
     // The order is the backend's, so the provider's prompt cache holds whatever order a plugin sends.
-    expect(offeredTools(["search_items", "search_commands", ...plugin].reverse(), false)).toEqual([...GAME_TOOLS]);
+    expect(offeredTools([...newer, ...plugin].reverse(), false)).toEqual([...GAME_TOOLS]);
   });
 
   test("search_commands only reads, so askx and questions everyone sees get it too, but not an automation agent", () => {

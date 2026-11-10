@@ -373,6 +373,8 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       toolsets: {
         game: gameTools(offered, runId, deps.bridge, {
           offered: context.tools,
+          schematics: deps.schematics,
+          locale: context.locale,
           ...(remembers(context.userId)
             ? { deaths: { page: (page: number) => deps.deaths.page(ownerOf(context), page, DEATHS_PER_PAGE), timezone: context.timezone, position: context.player?.position } }
             : {}),
@@ -397,7 +399,16 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
         math: { exact_calculations: exactCalculationsTool({ emit }) },
         // The catalog of builds, for a plugin that can show and build one (its `build` tool, plugin 6.37+).
         ...(context.tools.includes("build") && deps.schematics
-          ? { schematics: { search_schematics: searchSchematicsTool(deps.schematics, { emit, locale: context.locale }) } }
+          ? {
+              schematics: {
+                search_schematics: searchSchematicsTool(deps.schematics, {
+                  emit,
+                  locale: context.locale,
+                  // What this player may build here and what this server's game has: never the model's to lift.
+                  filters: { maxBlocks: context.building?.max_blocks, maxSide: context.building?.max_size, dataVersion: context.building?.data_version },
+                }),
+              },
+            }
           : {}),
         // askx only reads them: a remembered place is where “take me to my base” goes.
         ...((context.mode === "ask" || context.mode === "askx") && remembers(context.userId)

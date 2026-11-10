@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { githubCatalog, words } from "../src/infrastructure/schematics/catalog";
 import type { ChatEvent } from "../src/features/chat/chat.events";
 import { searchSchematicsTool } from "../src/features/tools/schematics.tool";
+import { gameTools } from "../src/features/tools/game.tools";
+import type { ToolBridge } from "../src/features/chat/chat.bridge";
 
 const build = (id: string, extra: Record<string, unknown>) => ({
   id,
@@ -108,5 +110,22 @@ describe("the build catalog", () => {
     expect(events.map((e) => (e.data as any).state)).toEqual(["started", "finished"]);
     const down = searchSchematicsTool(github({ down: true }).catalog, { emit: () => {} });
     expect(((await down.execute!({ query: "x" } as never, {} as never)) as any).error).toContain("out of reach");
+  });
+
+  test("build names a build by id, and the plugin gets its pinned file and hash, never a link from the model", async () => {
+    const sent: Array<{ tool: string; args: any }> = [];
+    const bridge = { call: async (_run: string, tool: string, args: unknown) => (sent.push({ tool, args }), { ok: true, result: { shown: true } }) } as unknown as ToolBridge;
+    const tools = gameTools(["build"], "run", bridge, { offered: ["build"], schematics: github().catalog, locale: "ru_ru" });
+    const run = (input: object) => tools.build.execute!(input as never, {} as never);
+    await run({ action: "preview", schematic: "mills/medieval-windmill" });
+    expect(sent[0].args.schematic).toMatchObject({
+      id: "mills/medieval-windmill",
+      url: `https://raw.githubusercontent.com/allay-ai/schematics/${COMMIT}/catalog/mills/medieval-windmill/build.schem`,
+      sha256: "a".repeat(64),
+      title: "Средневековая мельница",
+    });
+    expect(((await run({ action: "preview", schematic: "made/up" })) as any).error).toContain("no build made/up");
+    await run({ action: "rotate", turns: 1, schematic: "https://evil.example/x.schem" });
+    expect(sent[1]).toEqual({ tool: "build", args: { action: "rotate", turns: 1 } });
   });
 });

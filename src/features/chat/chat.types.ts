@@ -86,6 +86,11 @@ export const chatRequestSchema = z.object({
   // Since 6.14, from plugin 6.12: other plugins' and mods' tools and prompt lines. A bad entry is dropped, not refused.
   expansion_tools: z.array(z.unknown()).max(64).optional().catch(undefined),
   expansions: z.array(z.unknown()).max(32).optional().catch(undefined),
+  // Since 6.33: what the player may build from the catalog on this server, and the server's game, for search_schematics.
+  building: z
+    .object({ max_blocks: z.number().int().positive().optional(), max_size: z.number().int().positive().optional(), data_version: z.number().int().positive().optional() })
+    .optional()
+    .catch(undefined),
   // Since 6.31: the run outlives a dropped connection and is read on through /api/v2/chat/{run}/events.
   request_id: z.string().regex(REQUEST_ID).optional(),
 });
@@ -152,6 +157,7 @@ export const parseChatRequest = (
       timezone: request.timezone,
       player: request.player,
       server: request.server,
+      ...(request.building ? { building: request.building } : {}),
       tools: [...new Set(request.tools)],
       ...(request.mode === "task" ? { task: request.task } : {}),
       ...(request.mode !== "askx" && request.tasks?.length ? { tasks: request.tasks } : {}),

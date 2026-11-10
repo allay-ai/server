@@ -1,4 +1,5 @@
 import { createTool } from "@mastra/core/tools";
+import type { SchematicCatalog } from "../../infrastructure/schematics/catalog";
 import { z } from "zod";
 import type { Mode, TaskKind, Visibility } from "../../agent/agent.types";
 import { toMinecraft } from "../../agent/chat-text";
@@ -259,6 +260,20 @@ const definitions = {
       clear: z.boolean().optional(),
     }),
   },
+  build: {
+    description:
+      "Shows a build from Allay's catalog as a preview only the player sees, and adjusts it before it's built. preview with schematic (an id from search_schematics) puts it in front of the player, facing them, on the ground where they look; it stays until they build it or clear it. move shifts it (right, up, forward, from where the player looks; negative goes the other way), rotate turns it clockwise by turns, mirror flips it left to right. swap builds it of another material: from and to are full blocks (cobblestone to stone_bricks, oak_planks to dark_oak_planks), and its stairs, slabs, walls, and fences follow; a shape the new one lacks comes back in missing. estimate counts what it needs against what the player has (inventory and chests around), with what nobody can get and what's free. clear removes it. Nothing else of a build can change: not its size, floors, or details. Plugin 6.37+.",
+    input: z.object({
+      action: z.enum(["preview", "move", "rotate", "mirror", "swap", "estimate", "clear"]),
+      schematic: z.string().max(120).optional().describe("preview: the id search_schematics gave"),
+      right: z.number().int().min(-64).max(64).optional(),
+      up: z.number().int().min(-32).max(32).optional(),
+      forward: z.number().int().min(-64).max(64).optional(),
+      turns: z.number().int().min(1).max(3).optional(),
+      from: z.string().max(64).optional().describe("swap: the material the build has, like cobblestone"),
+      to: z.string().max(64).optional().describe("swap: the one to build with instead, like stone_bricks"),
+    }),
+  },
   ping_me: {
     description: "A sound and particles over the asking player that everyone nearby sees and hears, so they can be spotted in a crowd or a cave. Only when asked.",
     input: z.object({}),
@@ -388,6 +403,27 @@ const results = (names: string[], answers: ToolAnswer[]): ToolAnswer => ({
 });
 
 const composites: Partial<Record<string, Composite>> = {
+  // The model names a build by its id; the plugin gets where to download it, pinned to the catalog's commit, and the
+  // hash it must have, so it never takes a link from the model.
+  build: {
+    uses: ["build"],
+    run: async (input, call, options) => {
+      if (input.action !== "preview") return call("build", without(input, "schematic"));
+      const id = typeof input.schematic === "string" ? input.schematic.trim() : "";
+      if (!id) return { ok: false, error: "preview needs schematic: an id from search_schematics" };
+      if (!options.schematics) return { ok: false, error: "the catalog of builds isn't available on this backend" };
+      const found = await options.schematics.find(id).catch(() => null);
+      if (!found) return { ok: false, error: `no build ${id} in the catalog; search_schematics gives the ids` };
+      const lang = (options.locale ?? "en").slice(0, 2);
+      return call("build", {
+        action: "preview",
+        schematic: {
+          id: found.id, url: found.url, sha256: found.sha256, bytes: found.bytes, title: found.title[lang] ?? found.title.en ?? found.id,
+          size: found.size, blocks: found.blocks, author: found.author, source: found.source, license: found.license, data_version: found.data_version,
+        },
+      });
+    },
+  },
   find_item: {
     uses: ["find_item"],
     run: async (input, call) => {
@@ -799,7 +835,7 @@ const isOperatorTool = (name: string) => name in operatorDefinitions;
 
 /** Tools that do something for the player rather than read the game; askx only writes commands, so it gets none of them. */
 const ACTION_TOOLS: ReadonlySet<string> = new Set([
-  "point_to", "show_marks", "ping_me", "sort_inventory", "reminders", "goals", "write_book", "allay_settings", ...AUTOMATION_TOOLS,
+  "point_to", "show_marks", "build", "ping_me", "sort_inventory", "reminders", "goals", "write_book", "allay_settings", ...AUTOMATION_TOOLS,
 ]);
 
 /**
@@ -807,7 +843,7 @@ const ACTION_TOOLS: ReadonlySet<string> = new Set([
  * The locator bar is the asker's own: read out in public, it would tell everyone where others are.
  * Tasks belong to the asker too, and a shared thread mustn't start or steer them.
  */
-const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players", "start_task", "message_task", "cancel_task"]);
+const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players", "start_task", "message_task", "cancel_task", "build"]);
 
 /** What only an automation agent gets: it talks to the player, waits, and does the work the chat hands it. */
 const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "wait_for_items", "sources", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil", "grindstone"]);
@@ -893,6 +929,9 @@ export interface GameToolsOptions {
   offered?: string[];
   /** Since 6.9: the asking player's deaths as the backend keeps them, for get_locations. */
   deaths?: DeathHistory;
+  /** Since 6.33: the catalog `build` names its builds from, and the player's language for their titles. */
+  schematics?: SchematicCatalog;
+  locale?: string;
 }
 
 /** Mastra tools for the client tools in this run; pass names through offeredTools first. */
