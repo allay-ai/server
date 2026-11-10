@@ -14,7 +14,7 @@ describe("offered game tools", () => {
   });
 
   test("unknown and retired names are dropped", () => {
-    expect(offeredTools(["get_world", "rm_rf", "get_target", "set_reminder", "get_container"], true)).toEqual(["get_world"]);
+    expect(offeredTools(["get_world", "rm_rf", "get_target", "set_reminder", "get_container", "show_draft"], true)).toEqual(["get_world"]);
   });
 
   test("askx gets only tools that read the game", () => {
@@ -59,7 +59,7 @@ describe("offered game tools", () => {
       [
         "get_player_status", "inventory", "get_surroundings", "look_at", "get_world", "get_statistics", "get_advancements", "get_recipes", "search_items", "locate", "get_server", "search_commands",
         "get_nearby_players", "get_locations", "find_villagers", "scan_nearby_containers", "find_item", "inspect_item", "get_anvil_plan", "inspect_redstone",
-        "point_to", "show_marks", "show_draft", "ping_me", "sort_inventory", "reminders", "goals",
+        "point_to", "show_marks", "ping_me", "sort_inventory", "reminders", "goals",
         "write_book", "get_allay_guide", "allay_settings",
       ].sort(),
     );
@@ -401,25 +401,6 @@ describe("mark arguments", () => {
     expect(valid({ clear: true })).toBe(true);
     expect(valid({ marks: [{ x: 1, z: 2 }] })).toBe(false);
     expect(valid({ marks: [{ x: 1, y: 64, z: 2, color: "pink" }] })).toBe(false);
-  });
-});
-
-describe("draft arguments", () => {
-  const tools = gameTools(["show_draft"], "run", {} as ToolBridge);
-  const valid = (input: unknown) => {
-    const result = tools.show_draft.inputSchema!["~standard"].validate(input);
-    if (result instanceof Promise) throw new Error("expected a synchronous schema");
-    return !result.issues;
-  };
-
-  test("a build as layers over a palette, within the size limit", () => {
-    const palette = [{ char: "p", block: "oak_planks" }, { char: "r", block: "repeater[facing=south,delay=2]", label: "2 тика" }, { char: "a", block: "air" }];
-    expect(valid({ title: "Дом", palette, layers: [["ppp", "p.p", "ppp"], ["rar"]] })).toBe(true);
-    expect(valid({ action: "layer", layer: "next" })).toBe(true);
-    expect(valid({ action: "move", offset: { right: -2 } })).toBe(true);
-    expect(valid({ title: "Дом", palette: [{ char: "pp", block: "oak_planks" }], layers: [["pp"]] })).toBe(false);
-    expect(valid({ title: "Башня", palette, layers: Array.from({ length: 16 }, () => ["p"]) })).toBe(false);
-    expect(valid({ title: "Стена", palette, layers: [["p".repeat(21)]] })).toBe(false);
   });
 });
 

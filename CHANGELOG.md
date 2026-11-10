@@ -2,6 +2,10 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.30.0
+
+- 🧱 **No more builds drawn by the model.** `show_draft` and its prompt section are gone: the model wrote builds block by block, and they came out wrong too often to be worth their tokens. A plugin before 6.34 that still offers it gets the tool dropped, like any other retired name.
+
 ## 6.29.1
 
 - 📦 **Dependencies updated.** Mastra 1.82.0 (`@mastra/mongodb` 1.26.0, `@mastra/observability` 1.23.1), the AI SDK 7.0.162, Mongoose 9.12.0, tslog 5.5.0; OpenTelemetry's SDK 3.1.0 with the API 1.10.0, where the Logs API now lives; the panel on i18next 27, react-i18next 18, Vite 8.3.7, and Tailwind CSS 4.3.5. Nothing changes in what the backend does or sends: the Prometheus scrape still listens on all interfaces at `OTEL_EXPORTER_PROMETHEUS_HOST` and `_PORT`.

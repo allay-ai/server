@@ -259,40 +259,6 @@ const definitions = {
       clear: z.boolean().optional(),
     }),
   },
-  show_draft: {
-    description:
-      "Draws a build as glowing ghosts only the asking player sees, one layer at a time from the bottom, and checks it against the world: placed blocks go out, a wrong one gets a red box naming what belongs there, and the next layer lights up when one is done, with a boss bar counting. Up to 20 wide × 15 high × 20 deep. action show (title, palette, layers) starts it two blocks in front of the player, centered where they look; add puts more layers or a wing at offset; layer switches the shown layer; move shifts it by offset; rotate turns it clockwise by turns; check counts what's in place and lists wrong blocks; clear removes it. Only where the player may build.",
-    input: z.object({
-      action: z.enum(["show", "add", "layer", "move", "rotate", "check", "clear"]).optional(),
-      title: z.string().max(32).optional().describe("show: a short name in the language you answer in"),
-      palette: z
-        .array(
-          z.object({
-            char: z.string().length(1).describe("Not . or a space"),
-            block: z.string().max(96).describe("An id with the states that matter, like repeater[facing=south,delay=2]; air for a cell that must stay empty"),
-            label: z.string().max(32).optional().describe("A few words in the language you answer in; shows for blocks used at most 6 times"),
-          }),
-        )
-        .max(40)
-        .optional()
-        .describe("show and add: one entry per character in layers"),
-      layers: z
-        .array(z.array(z.string().max(20)).max(20))
-        .max(15)
-        .optional()
-        .describe("Bottom up. Each layer is rows from the far one to the near one, each row left to right; . or a space leaves a cell as it is"),
-      offset: z
-        .object({ right: z.number().int().min(-40).max(40).optional(), up: z.number().int().min(-40).max(40).optional(), forward: z.number().int().min(-40).max(40).optional() })
-        .optional()
-        .describe("add: where the part starts inside the draft (not negative); move: how far to shift it"),
-      x: z.number().int().optional().describe("show: the near left bottom corner, instead of in front of the player"),
-      y: z.number().int().optional(),
-      z: z.number().int().optional(),
-      y_offset: z.number().int().min(-5).max(5).optional().describe("show: blocks below (−) or above the player's feet, like −1 for a foundation"),
-      layer: z.union([z.number().int().min(1).max(15), z.enum(["next", "prev", "all"])]).optional(),
-      turns: z.number().int().min(1).max(3).optional(),
-    }),
-  },
   ping_me: {
     description: "A sound and particles over the asking player that everyone nearby sees and hears, so they can be spotted in a crowd or a cave. Only when asked.",
     input: z.object({}),
@@ -817,7 +783,7 @@ const isOperatorTool = (name: string) => name in operatorDefinitions;
 
 /** Tools that do something for the player rather than read the game; askx only writes commands, so it gets none of them. */
 const ACTION_TOOLS: ReadonlySet<string> = new Set([
-  "point_to", "show_marks", "show_draft", "ping_me", "sort_inventory", "reminders", "goals", "write_book", "allay_settings", ...AUTOMATION_TOOLS,
+  "point_to", "show_marks", "ping_me", "sort_inventory", "reminders", "goals", "write_book", "allay_settings", ...AUTOMATION_TOOLS,
 ]);
 
 /**

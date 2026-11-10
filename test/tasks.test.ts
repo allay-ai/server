@@ -253,12 +253,11 @@ describe("task prompts", () => {
 
   test("a section about one tool goes only with that tool", () => {
     const without = systemPrompt({ ...context({}), mode: "ask", tools: ["get_world"] });
-    expect(without).not.toContain("# Drafts: how to build it");
     expect(without).not.toContain("# Redstone");
     expect(without).toContain("# Buttons in the answer");
-    const withDraft = systemPrompt({ ...context({}), mode: "ask", tools: ["show_draft"] });
-    expect(withDraft).toContain("# Drafts: how to build it");
-    expect(withDraft).not.toContain("# Redstone");
+    const withRedstone = systemPrompt({ ...context({}), mode: "ask", tools: ["inspect_redstone"] });
+    expect(withRedstone).toContain("# Redstone");
+    expect(withRedstone).not.toContain("show_draft");
   });
 });
 
