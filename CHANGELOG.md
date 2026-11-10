@@ -6,6 +6,7 @@ The “Release” workflow takes the notes for a version from its section here, 
 
 - 🏰 **A catalog of real builds.** `search_schematics` finds builds in [allay-ai/schematics](https://github.com/allay-ai/schematics), each with its author and license, by the player's words in English, with type and style, 5 a page, titled in the player's language. The backend reads the catalog at the newest commit of `master` (`SCHEMATICS_REPO`, every `SCHEMATICS_REFRESH_SECONDS`), so every link it hands out stays the file it was. It's offered only to a plugin that can show and build a schematic.
 - 🏗️ **`build` for a plugin that previews and builds.** The model names a build by its id, and the backend hands the plugin its file pinned to the catalog's commit with its SHA-256, so no link ever comes from the model. A request's `building` carries what the player may build and the server's game, and the search keeps to it. A chat prompt section says a build keeps its shape: the model offers another build or other blocks instead of a taller one.
+- 👷 **The builder.** `start_task` takes kind `building`: an agent that builds the build the player previews, with its own tool `construct` (status, start, pause, resume, swap, skip, retry). The plugin places the blocks and says itself what it waits for, so the agent wakes only when the player must decide: blocks nobody can get, spots in the way, the end.
 
 ## 6.32.0
 

@@ -15,7 +15,7 @@ const base = (context: RunContext): string => {
 };
 
 /** Prompt sections that only teach one tool; without the tool they'd cost tokens for nothing. */
-const SECTION_TOOLS: Record<string, string> = { "# Builds": "build", "# Redstone": "inspect_redstone" };
+const SECTION_TOOLS: Record<string, string> = { "# Builds": "build", "# Building": "construct", "# Redstone": "inspect_redstone" };
 
 /** The base prompt without the sections whose tool this run doesn't offer. */
 const trimmed = (prompt: string, tools: string[]): string =>

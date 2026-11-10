@@ -58,7 +58,7 @@ export type Loader = (typeof LOADERS)[number];
 export const SIDES = ["server", "integrated", "client"] as const;
 export type Side = (typeof SIDES)[number];
 
-export const TASK_KINDS = ["chests", "furnaces", "brewing", "crafting"] as const;
+export const TASK_KINDS = ["chests", "furnaces", "brewing", "crafting", "building"] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];
 
 /** The automation agent a task-mode run wakes; depth 1 is started from the chat, 2 by another agent. */

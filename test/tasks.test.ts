@@ -111,7 +111,7 @@ describe("task tools", () => {
   });
 
   test("an agent gets the automation tools, and starts and steers sub-agents only above the depth limit", () => {
-    const work = ["say", "wait", "finish", "wait_for_items", "sources", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil", "grindstone"] as const;
+    const work = ["say", "wait", "finish", "wait_for_items", "sources", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil", "grindstone", "construct"] as const;
     expect(offeredTools(every, true, "task", "private", 1)).toEqual(["inventory", "look_at", "show_marks", "start_task", "message_task", "cancel_task", ...work]);
     expect(offeredTools(every, true, "task", "private", 2)).toEqual(["inventory", "look_at", "show_marks", ...work]);
   });
@@ -121,6 +121,11 @@ describe("task tools", () => {
     expect(offeredTools(all, false, "task", "private", 1, "brewing")).toEqual(["inventory", "look_at", "get_recipes", "show_marks", "start_task", "message_task", "cancel_task", "say", "wait", "finish", "wait_for_items", "sources", "pick_blocks", "chests", "brew"]);
     expect(offeredTools(all, false, "task", "private", 2, "crafting")).toEqual(["inventory", "look_at", "get_recipes", "show_marks", "say", "wait", "finish", "wait_for_items", "sources", "pick_blocks", "chests", "craft", "anvil", "grindstone"]);
     expect(offeredTools(all, false, "task", "private", 2, "chests")).toEqual(["inventory", "look_at", "get_recipes", "show_marks", "say", "wait", "finish", "wait_for_items", "sources", "pick_blocks", "chests"]);
+    expect(offeredTools(all, false, "task", "private", 1, "building")).toEqual(["inventory", "look_at", "get_recipes", "show_marks", "start_task", "message_task", "cancel_task", "say", "wait", "finish", "wait_for_items", "sources", "pick_blocks", "chests", "construct"]);
+  });
+
+  test("the chat never gets the builder's own tool", () => {
+    expect(offeredTools(every, false, "ask", "private")).not.toContain("construct");
   });
 
   test("askx gets none of them", () => {
@@ -172,6 +177,9 @@ describe("task tools", () => {
     expect(valid("smelt", { action: "fuel", fuel: "coal", count: 18 })).toBe(true);
     expect(valid("smelt", { action: "fuel", need: true, types: ["blast_furnace"] })).toBe(true);
     expect(valid("smelt", { action: "fuel", each: 65 })).toBe(false);
+    expect(valid("construct", { action: "skip", block: "glass_pane" })).toBe(true);
+    expect(valid("construct", { action: "swap", from: "cobblestone", to: "stone_bricks" })).toBe(true);
+    expect(valid("construct", { action: "build_taller" })).toBe(false);
     expect(valid("anvil", { action: "plan", item: "diamond_sword", enchantments: ["mending"], rename: "Excalibur" })).toBe(true);
     expect(valid("grindstone", { action: "apply", item: "iron_pickaxe", combine: true })).toBe(true);
     expect(valid("grindstone", { action: "sharpen" })).toBe(false);

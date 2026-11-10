@@ -1,7 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import type { SchematicCatalog } from "../../infrastructure/schematics/catalog";
 import { z } from "zod";
-import type { Mode, TaskKind, Visibility } from "../../agent/agent.types";
+import { type Mode, TASK_KINDS, type TaskKind, type Visibility } from "../../agent/agent.types";
 import { toMinecraft } from "../../agent/chat-text";
 import type { ToolAnswer, ToolBridge } from "../chat/chat.bridge";
 import { forModel, type Repair } from "./schema";
@@ -580,9 +580,9 @@ const remember = z.boolean().optional().describe("Keep this output as the player
 const automationDefinitions = {
   start_task: {
     description:
-      "Starts an automation agent that works in the background while the player's chat stays free: kind chests (sort, group, or move items between chests), furnaces (smelting), brewing (brewing potions for the player), or crafting. The agent starts with no history and knows only brief, so write everything into it: what to do, step by step for chains, every detail and preference the player said (items, counts, chests, where the output goes), the coordinates tools gave you, and the language the player writes in. name is a few words in that language, shown to the player as “Automation agent: name”. Returns id and name, or an error: the player's task limit, no rights, or automation switched off; say that plainly.",
+      "Starts an automation agent that works in the background while the player's chat stays free: kind chests (sort, group, or move items between chests), furnaces (smelting), brewing (brewing potions for the player), crafting, or building (plugin 6.37+: builds the build the player previews with build, from their own blocks; start it only once they said to build it, and it takes the preview over; one per player, beside the others). The agent starts with no history and knows only brief, so write everything into it: what to do, step by step for chains, every detail and preference the player said (items, counts, chests, where the output goes), the coordinates tools gave you, and the language the player writes in. name is a few words in that language, shown to the player as “Automation agent: name”. Returns id and name, or an error: the player's task limit, no rights, or automation switched off; say that plainly.",
     input: z.object({
-      kind: z.enum(["chests", "furnaces", "brewing", "crafting"]),
+      kind: z.enum(TASK_KINDS),
       name: z.string().min(1).max(40).describe("A few words in the language you answer in, like «Сортировка сундуков»"),
       brief: z.string().min(1).max(2000).describe("The full task for an agent that knows nothing else"),
     }),
@@ -765,6 +765,16 @@ const automationDefinitions = {
       combine: z.boolean().optional().describe("true: join with a second piece of the same item"),
     }),
   },
+  construct: {
+    description:
+      "The builder's own tool (plugin 6.37+): the build you were started for, which the plugin places block by block from the player's inventory, the ender chest when allowed, and the chests around, at the server's speed. status: how far it got, its state (ready, building, waiting, paused, done), what's short of what's left (need against have), unobtainable blocks, skipped kinds, and spots something stood in the way of. start: begins, or refuses while unobtainable blocks are left: ask the player what to build them with (swap) or to leave them out (skip) first. After start it builds by itself: it tells the player itself what it waits for and goes on once it's there, so end the wake with wait and no seconds; you wake when it's done or the player writes. pause and resume: when the player asks. swap: from a block the build has to another for the rest of it (stairs, slabs, walls follow, as build's swap). skip: leaves every block of one kind out (block, like glass_pane). retry: builds the spots that were in the way again, once the player cleared them. Its shape never changes.",
+    input: z.object({
+      action: z.enum(["status", "start", "pause", "resume", "swap", "skip", "retry"]),
+      from: z.string().max(64).optional().describe("swap: the block in the build, like cobblestone"),
+      to: z.string().max(64).optional().describe("swap: the one to build with instead"),
+      block: z.string().max(64).optional().describe("skip: the kind to leave out, like glass_pane"),
+    }),
+  },
 } as const;
 
 /** Tools that change the game for the asker; only operators get them, and only when the admin enables them. */
@@ -846,7 +856,7 @@ const ACTION_TOOLS: ReadonlySet<string> = new Set([
 const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players", "start_task", "message_task", "cancel_task", "build"]);
 
 /** What only an automation agent gets: it talks to the player, waits, and does the work the chat hands it. */
-const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "wait_for_items", "sources", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil", "grindstone"]);
+const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "wait_for_items", "sources", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil", "grindstone", "construct"]);
 
 /** What an automation agent never gets: it talks through say. */
 const NOT_IN_TASKS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players"]);
@@ -869,6 +879,7 @@ const KIND_TOOLS: Readonly<Record<TaskKind, readonly string[]>> = {
   furnaces: ["smelt"],
   brewing: ["brew"],
   crafting: ["craft", "anvil", "grindstone"],
+  building: ["construct"],
 };
 const WORK_TOOLS: ReadonlySet<string> = new Set(Object.values(KIND_TOOLS).flat());
 
