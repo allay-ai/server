@@ -580,10 +580,10 @@ const remember = z.boolean().optional().describe("Keep this output as the player
 const automationDefinitions = {
   start_task: {
     description:
-      "Starts an automation agent that works in the background while the player's chat stays free: kind chests (sort, group, or move items between chests), furnaces (smelting), brewing (brewing potions for the player), crafting, or building (plugin 6.37+: builds the build the player previews with build, from their own blocks; start it only once they said to build it, and it takes the preview over; one per player, beside the others). The agent starts with no history and knows only brief, so write everything into it: what to do, step by step for chains, every detail and preference the player said (items, counts, chests, where the output goes), the coordinates tools gave you, and the language the player writes in. name is a few words in that language, shown to the player as “Automation agent: name”. Returns id and name, or an error: the player's task limit, no rights, or automation switched off; say that plainly.",
+      "Starts an automation agent that works in the background while the player's chat stays free: kind chests (sort, group, or move items between chests), furnaces (smelting), brewing (brewing potions for the player), crafting, or building (plugin 6.37+: builds the build the player previews with build, from their own blocks; start it only once they said to build it, and it takes the preview over; one per player, beside the others). The agent starts with no history and knows only brief, so write everything into it: what to do, step by step for chains, every detail and preference the player said (items, counts, chests, where the output goes), the coordinates tools gave you, and the language the player writes in, named in words (“Talk to the player in English”). name is a few words in that language, shown to the player as “Automation agent: name”. Returns id and name, or an error: the player's task limit, no rights, or automation switched off; say that plainly.",
     input: z.object({
       kind: z.enum(TASK_KINDS),
-      name: z.string().min(1).max(40).describe("A few words in the language you answer in, like «Сортировка сундуков»"),
+      name: z.string().min(1).max(40).describe("A few words in the language you answer in: “Sorting chests” for a player who writes in English, «Сортировка сундуков» in Russian"),
       brief: z.string().min(1).max(2000).describe("The full task for an agent that knows nothing else"),
     }),
   },
