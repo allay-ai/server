@@ -67,7 +67,15 @@ export const chatRequestSchema = z.object({
   provider: z.object({ base_url: text(512), model: text(200), search_model: text(200) }).optional(),
   // Since 5.5: the automation agent a task-mode run wakes; required in that mode.
   task: z
-    .object({ id: taskId, name: z.string().min(1).max(40), depth: z.union([z.literal(1), z.literal(2)]), kind: z.enum(TASK_KINDS) })
+    .object({
+      id: taskId,
+      name: z.string().min(1).max(40),
+      depth: z.union([z.literal(1), z.literal(2)]),
+      kind: z.enum(TASK_KINDS),
+      // Since 6.31: the agent's state as the plugin keeps it, and how long it may still need its thread (epoch ms).
+      card: z.string().max(3000).optional(),
+      keep_until: z.number().int().positive().optional().catch(undefined),
+    })
     .optional(),
   // Since 5.5, ask mode: the asker's running automations. Since 5.10.1, task mode: the waking agent's own sub-agents.
   // Up to 8 since 6.22, as many as the plugin's automation.max_tasks allows.

@@ -7,7 +7,7 @@ import { handleAskX } from "../src/features/askx/askx.controller";
 import { handleChat, handleToolResult } from "../src/features/chat/chat.controller";
 import { handleHealth } from "../src/features/health/health.controller";
 import {
-  handleConsent, handleDeaths, handleExport, handleExportDownload, handleMemories, handleMemory, handleSession, handleState, handleUser,
+  handleAgents, handleConsent, handleDeaths, handleExport, handleExportDownload, handleMemories, handleMemory, handleSession, handleState, handleUser,
 } from "../src/features/users/users.controller";
 import { handleLicense } from "../src/features/billing/license.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
@@ -17,6 +17,8 @@ import { StateModel } from "../src/entities/state/state.model";
 import { mongoMemories } from "../src/infrastructure/memory/memory";
 import { mongoDeaths } from "../src/infrastructure/playerdata/deaths";
 import { mongoStates } from "../src/infrastructure/playerdata/state";
+import { AgentsModel } from "../src/entities/agents/agents.model";
+import { mongoAgents } from "../src/infrastructure/playerdata/agents";
 import { POLICY_REVISION } from "../src/shared/policy";
 import { AUTH, finish, owner, readSse, scripted, testDeps, text, toolCall } from "./helpers";
 
@@ -24,7 +26,7 @@ const fetch = (url: string, init: RequestInit = {}): Promise<Response> => global
 
 const handlers = {
   handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handleLicense, handleTelegram,
-  handleDeaths, handleState, handleExport, handleExportDownload,
+  handleDeaths, handleState, handleAgents, handleExport, handleExportDownload,
 };
 let server: Server<undefined> | undefined;
 afterEach(() => server?.stop(true));
@@ -110,6 +112,36 @@ describe("player state", () => {
   });
 });
 
+describe("a player's agents", () => {
+  test("each server keeps its own, replaced whole; an empty list forgets them; too big or odd is refused", async () => {
+    const base = start(testDeps(scripted([[finish()]]).model));
+    const url = `${base}/api/v2/users/player-1/agents`;
+    const furnaces = [{ id: "k3f9ab", kind: "furnaces", brief: "smelt 64 iron", job: { furnaces: [[10, 64, -3]] } }];
+    expect(await (await fetch(`${url}?server_id=moonlands`)).json()).toEqual({ agents: [], updated_at: null });
+    expect(await (await fetch(url, { method: "PUT", body: JSON.stringify({ server_id: "moonlands", agents: furnaces }) })).json()).toEqual({ saved: 1 });
+    expect(((await (await fetch(`${url}?server_id=moonlands`)).json()) as any).agents).toEqual(furnaces);
+    // Another server of the same tenant sees none of them: its world has no such furnaces.
+    expect(((await (await fetch(`${url}?server_id=lobby`)).json()) as any).agents).toEqual([]);
+    expect(await (await fetch(url, { method: "PUT", body: JSON.stringify({ server_id: "moonlands", agents: [] }) })).json()).toEqual({ saved: 0 });
+    expect(((await (await fetch(`${url}?server_id=moonlands`)).json()) as any).agents).toEqual([]);
+    expect((await fetch(`${url}?server_id=no:colons`)).status).toBe(400);
+    expect((await fetch(url, { method: "PUT", body: JSON.stringify({ server_id: "moonlands", agents: [{ brief: "x".repeat(70_000) }] }) })).status).toBe(400);
+    expect((await fetch(url, { method: "PUT", body: JSON.stringify({ server_id: "moonlands", agents: Array.from({ length: 17 }, () => ({})) }) })).status).toBe(400);
+    expect((await fetch(url, { method: "PUT", body: JSON.stringify({ agents: furnaces }) })).status).toBe(400);
+  });
+
+  test("go into the player's copy and go with their erasure", async () => {
+    const deps = testDeps(scripted([[finish()]]).model);
+    const base = start(deps);
+    await deps.agents.put(owner("player-1"), "moonlands", [{ id: "k3f9ab", brief: "brew fire resistance" }]);
+    const link = (await (await fetch(`${base}/api/v2/users/player-1/export`, { method: "POST" })).json()) as any;
+    const copy = (await (await globalThis.fetch(`${base}${new URL(link.url).pathname}`)).json()) as any;
+    expect(copy.agents).toMatchObject([{ server_id: "moonlands", agents: [{ brief: "brew fire resistance" }] }]);
+    await fetch(`${base}/api/v2/users/player-1`, { method: "DELETE" });
+    expect(await deps.agents.list(owner("player-1"))).toEqual([]);
+  });
+});
+
 describe("a player's copy by link", () => {
   test("opens for a day without credentials, holds everything, and dies with an erasure", async () => {
     const deps = testDeps(scripted([[finish()]]).model);
@@ -192,24 +224,27 @@ if (MONGODB) {
   describe("in MongoDB", () => {
     beforeAll(async () => {
       await mongoose.connect(MONGODB);
-      await Promise.all([MemoryModel.syncIndexes(), DeathModel.syncIndexes(), StateModel.syncIndexes()]);
+      await Promise.all([MemoryModel.syncIndexes(), DeathModel.syncIndexes(), StateModel.syncIndexes(), AgentsModel.syncIndexes()]);
     });
     afterAll(async () => {
       await mongoose.connection.dropDatabase();
       await mongoose.disconnect();
     });
 
-    test("memories, deaths, and state are sealed: no word of them in the clear", async () => {
+    test("memories, deaths, state, and agents are sealed: no word of them in the clear", async () => {
       const me = owner("sealed-1");
       await mongoMemories.add(me, { text: "diamond stash behind the waterfall", place: { x: 4242, y: 12, z: -77, dimension: "overworld" }, title: "Waterfall stash", tags: ["secret-cave"] });
       await mongoDeaths.add(me, death(Date.now(), { killer_name: "Herobrine", x: 4242 }));
       await mongoStates.put(me, { timezone: "Pacific/Chatham" });
+      await mongoAgents.put(me, "moonlands", [{ brief: "smelt the ancient debris" }]);
       const raw = JSON.stringify([
+        await AgentsModel.collection.find({ user_id: "sealed-1" }).toArray(),
         await MemoryModel.collection.find({ user_id: "sealed-1" }).toArray(),
         await DeathModel.collection.find({ user_id: "sealed-1" }).toArray(),
         await StateModel.collection.find({ user_id: "sealed-1" }).toArray(),
       ]);
-      for (const word of ["diamond", "4242", "Waterfall", "secret-cave", "Herobrine", "Chatham"]) expect(raw).not.toContain(word);
+      for (const word of ["diamond", "4242", "Waterfall", "secret-cave", "Herobrine", "Chatham", "ancient"]) expect(raw).not.toContain(word);
+      expect((await mongoAgents.get(me, "moonlands"))?.agents).toEqual([{ brief: "smelt the ancient debris" }]);
       expect((await mongoMemories.list(me))[0]).toMatchObject({ text: "diamond stash behind the waterfall", place: { x: 4242 } });
       expect((await mongoDeaths.page(me, 1, 10)).deaths[0]).toMatchObject({ killer_name: "Herobrine" });
       expect((await mongoStates.get(me))?.state).toEqual({ timezone: "Pacific/Chatham" });

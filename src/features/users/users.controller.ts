@@ -74,6 +74,12 @@ const StateBody = z.object({
 });
 export const MAX_STATE_BYTES = 32 * 1024;
 
+/** A server's own id, as `server.id` names it in a question. */
+const SERVER_ID = /^[A-Za-z0-9_-]{1,64}$/;
+/** A player's agents on one server: at most as many as the plugin lets one player run, each a few kilobytes. */
+const AgentsBody = z.object({ server_id: z.string().regex(SERVER_ID), agents: z.array(z.record(z.string(), z.unknown())).max(16) });
+export const MAX_AGENTS_BYTES = 64 * 1024;
+
 const badUser = () => jsonError(apierror(API_ERRORS.BAD_REQUEST, "user_id must be 1–64 letters, digits, - or _"));
 
 const failed = (what: string, error: unknown) => {
@@ -277,6 +283,40 @@ export const handleState = (deps: AllayDeps) => async (req: Routed): Promise<Res
     return noStore({ state: stored.state, updated_at: stored.updated_at });
   } catch (error) {
     return failed("reach the player's state", error);
+  }
+};
+
+/**
+ * GET and PUT /api/v2/users/{user_id}/agents (since 6.31): the player's automation agents on one server, so they go on
+ * after a restart or a rejoin. GET takes `?server_id=`; PUT replaces the server's list whole, and an empty one forgets it.
+ */
+export const handleAgents = (deps: AllayDeps) => async (req: Routed): Promise<Response> => {
+  if (req.method !== "GET" && req.method !== "PUT") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
+  const owner = await ownerOf(deps, req);
+  if (owner instanceof Response) return owner;
+  try {
+    if (req.method === "GET") {
+      const serverId = new URL(req.url).searchParams.get("server_id") ?? "";
+      if (!SERVER_ID.test(serverId)) return jsonError(apierror(API_ERRORS.BAD_REQUEST, "server_id: 1–64 letters, digits, - or _"));
+      const stored = await deps.agents.get(owner, serverId);
+      return noStore({ agents: stored?.agents ?? [], updated_at: stored?.updated_at ?? null });
+    }
+    const raw = await req.text();
+    if (raw.length > MAX_AGENTS_BYTES) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `agents: at most ${MAX_AGENTS_BYTES} bytes`));
+    let json: unknown;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      return jsonError(apierror(API_ERRORS.BAD_REQUEST, "agents: not JSON"));
+    }
+    const body = AgentsBody.safeParse(json);
+    if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `${body.error.issues[0]?.path.join(".") || "agents"}: ${body.error.issues[0]?.message}`));
+    // Forgetting needs no agreement; keeping does.
+    if (body.data.agents.length > 0 && !(await mayKeep(deps, owner.tenant, owner.userId))) return jsonError(apierror(API_ERRORS.CONSENT_REQUIRED));
+    await deps.agents.put(owner, body.data.server_id, body.data.agents);
+    return noStore({ saved: body.data.agents.length });
+  } catch (error) {
+    return failed("reach the player's agents", error);
   }
 };
 

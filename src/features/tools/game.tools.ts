@@ -598,6 +598,22 @@ const automationDefinitions = {
       handoff: z.boolean().optional().describe("true: your running sub-agents do the rest of the brief and report to the player themselves; you leave them running"),
     }),
   },
+  wait_for_items: {
+    description:
+      "Parks you until the player brings what only they can get: something mined, found, farmed, or traded, when nothing in reach has it and nothing at hand crafts it. Ask first, and call it once the player agrees («подожди, сейчас добуду»). items is everything the job needs in all, each by its id; the plugin counts what's there already and tells the player what's missing, and reminds them now and then. Meanwhile you hold none of the player's agent slots and your time stands still, while they go far from the base. You wake with “[job] the items you waited for are here” once your sources hold it all, or with the player's words. End the wake after it. Plugin 6.35+.",
+    input: z.object({
+      items: z
+        .array(z.object({ item: z.string().min(1).max(64).describe("The id, like oak_log"), count: z.number().int().min(1).max(100_000).describe("How many the job needs in all, not how many are missing") }))
+        .min(1)
+        .max(16),
+      note: z.string().max(200).optional().describe("A few words on what it's for, in the player's language"),
+    }),
+  },
+  sources: {
+    description:
+      "Sets where you may take things from, as the player said. The inventory always counts. ender_chest: their own ender chest, off until they allow it: ask before you count on it, and set true only on their yes. chests: \"picked\" for only the chests the player picked with pick_blocks kind chests (pick first), \"all\" for every chest around that they may open, the default. Sub-agents you start take from the same. Plugin 6.35+.",
+    input: z.object({ ender_chest: z.boolean().optional(), chests: z.enum(["all", "picked"]).optional() }),
+  },
   pick_blocks: {
     description:
       "Lets the player pick blocks: left-clicks pick and unpick chests (a double chest counts once), furnaces, or brewing stands, which glow; unsuitable ones glow in another color with why. The player gets [Done] [All] [Cancel], and you wake with what they picked. looking: true takes the block under the crosshair at once and returns it, with no picking mode.",
@@ -794,7 +810,7 @@ const ACTION_TOOLS: ReadonlySet<string> = new Set([
 const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players", "start_task", "message_task", "cancel_task"]);
 
 /** What only an automation agent gets: it talks to the player, waits, and does the work the chat hands it. */
-const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil", "grindstone"]);
+const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "wait_for_items", "sources", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil", "grindstone"]);
 
 /** What an automation agent never gets: it talks through say. */
 const NOT_IN_TASKS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players"]);

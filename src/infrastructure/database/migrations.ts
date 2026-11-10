@@ -6,6 +6,7 @@ import { ExportModel } from "../../entities/export/export.model";
 import { PlayerModel } from "../../entities/player/player.model";
 import { ServerModel } from "../../entities/server/server.model";
 import { StateModel } from "../../entities/state/state.model";
+import { AgentsModel } from "../../entities/agents/agents.model";
 import { AuditModel } from "../admin/audit";
 import { AdminSessionModel } from "../admin/sessions";
 import { OutcomesModel, SessionModel } from "../history/history";
@@ -39,7 +40,7 @@ export const pseudonymiseRuns = async (pseudonyms: Pseudonyms): Promise<number> 
  */
 export const prepareDatabase = async () => {
   for (const model of [
-    MemoryModel, DeathModel, StateModel, ExportModel, ConsentModel, PlayerModel, ServerModel, RunModel, DayModel, AuditModel,
+    MemoryModel, DeathModel, StateModel, AgentsModel, ExportModel, ConsentModel, PlayerModel, ServerModel, RunModel, DayModel, AuditModel,
     SessionModel, OutcomesModel, AdminSessionModel,
   ] as Array<{ syncIndexes(): Promise<unknown> }>) {
     await model.syncIndexes();
@@ -50,6 +51,7 @@ export interface Retagged {
   memories: number;
   deaths: number;
   states: number;
+  agents: number;
   consents: number;
   runs: number;
   days: number;
@@ -86,7 +88,7 @@ const memoriesOf = (tenant: string) => (tenant === "self" ? { $or: [{ tenant: "s
 
 /**
  * Moves one tenant's data to another, for a self-hosted backend's dump imported into a hosted one: memories, deaths,
- * players' state, consents, and runs from `self` (memories without a tenant count as `self`) become `license:<id>`.
+ * players' state and agents, consents, and runs from `self` (memories without a tenant count as `self`) become `license:<id>`.
  * Settings, admin accounts, the audit log, and traces belong to the backend, not a tenant, and stay as they are.
  * Sealed data opens only with the key it was sealed with: both backends need the same SECRETS_KEY. Idempotent: a
  * second run finds nothing left to move.
@@ -101,6 +103,7 @@ export const retag = async (options: { from: string; to: string; pseudonyms: Pse
       memories: await memories.countDocuments(memoriesOf(from)),
       deaths: await DeathModel.collection.countDocuments({ tenant: from }),
       states: await StateModel.collection.countDocuments({ tenant: from }),
+      agents: await AgentsModel.collection.countDocuments({ tenant: from }),
       consents: await ConsentModel.collection.countDocuments({ tenant: from }),
       runs: await runs.countDocuments({ server: from }),
       days: await days.countDocuments({ servers: from }),
@@ -137,6 +140,18 @@ export const retag = async (options: { from: string; to: string; pseudonyms: Pse
       movedStates++;
     }
   }
+  // A player's agents on a server both tenants know: the newer ones stay.
+  const agents = AgentsModel.collection;
+  let movedAgents = 0;
+  for await (const kept of agents.find({ tenant: from })) {
+    const there = await agents.findOne({ tenant: to, user_id: kept.user_id, server_id: kept.server_id });
+    if (there && there.updated_at >= kept.updated_at) await agents.deleteOne({ _id: kept._id });
+    else {
+      if (there) await agents.deleteOne({ _id: there._id });
+      await agents.updateOne({ _id: kept._id }, { $set: { tenant: to } });
+      movedAgents++;
+    }
+  }
   // A player who agreed on both keeps the newer agreement.
   const consents = ConsentModel.collection;
   let movedConsents = 0;
@@ -152,7 +167,7 @@ export const retag = async (options: { from: string; to: string; pseudonyms: Pse
   const movedRuns = await runs.updateMany({ server: from }, { $set: { server: to } });
   const movedDays = await days.updateMany({ servers: from }, [{ $set: { servers: { $setUnion: [{ $setDifference: ["$servers", [from]] }, [to]] } } }]);
   const pseudonymised = await pseudonymiseRuns(options.pseudonyms);
-  return { memories: moved, deaths: movedDeaths.modifiedCount, states: movedStates, consents: movedConsents, runs: movedRuns.modifiedCount, days: movedDays.modifiedCount, pseudonymised, rekeyed };
+  return { memories: moved, deaths: movedDeaths.modifiedCount, states: movedStates, agents: movedAgents, consents: movedConsents, runs: movedRuns.modifiedCount, days: movedDays.modifiedCount, pseudonymised, rekeyed };
 };
 
 /** On a hosted backend: memories nobody can attribute to a tenant are deleted, since they reach nobody. */

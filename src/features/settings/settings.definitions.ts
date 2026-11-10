@@ -110,6 +110,7 @@ export const DEFINITIONS = {
   CHAT_TTL_SECONDS: { type: "int", group: "sessions", default: 30 * 86_400, min: 60, max: 30 * 86_400, description: "How long a chat session lives after the last question, in seconds" },
   PUBLIC_CHAT_TTL_SECONDS: { type: "int", group: "sessions", default: 7_200, min: 60, max: 30 * 86_400, description: "How long a server's thread of public questions lives after the last one, in seconds" },
   TASK_CHAT_TTL_SECONDS: { type: "int", group: "sessions", default: 7_200, min: 60, max: 30 * 86_400, description: "How long an automation agent's thread lives after its last wake, in seconds" },
+  TASK_CHAT_MAX_KEEP_SECONDS: { type: "int", group: "sessions", default: 7 * 86_400, min: 60, max: 30 * 86_400, description: "The longest an agent waiting for items may keep its thread after its last wake, in seconds" },
   CHAT_FOLD_TOKENS: { type: "int", group: "sessions", default: 32_000, min: 2_000, max: 1_000_000, description: "A session folds into its summary past this many tokens" },
   CHAT_KEEP_TOKENS: { type: "int", group: "sessions", default: 12_000, min: 1_000, max: 1_000_000, description: "About how many tokens of the newest exchanges stay verbatim after a fold" },
   CHAT_MAX_TOKENS: { type: "int", group: "sessions", default: 42_000, min: 2_000, max: 1_000_000, description: "Past this many tokens, a session folds before the answer" },

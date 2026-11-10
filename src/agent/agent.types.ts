@@ -67,6 +67,10 @@ export interface TaskInfo {
   name: string;
   depth: 1 | 2;
   kind: TaskKind;
+  /** Since 6.31: the agent's state as the plugin keeps it, which outlives the thread. */
+  card?: string;
+  /** Since 6.31: until when (epoch ms) the agent may still need its thread. */
+  keep_until?: number;
 }
 
 export const TASK_STATES = ["working", "waiting", "asking"] as const;

@@ -11,7 +11,7 @@ import type { handleLicense } from "../features/billing/license.controller";
 import type { handleHealth } from "../features/health/health.controller";
 import type { handleTelegram } from "../features/telegram/telegram.controller";
 import type {
-  handleConsent, handleDeaths, handleExport, handleExportDownload, handleMemories, handleMemory, handlePrivacy, handleSession, handleState, handleUser,
+  handleAgents, handleConsent, handleDeaths, handleExport, handleExportDownload, handleMemories, handleMemory, handlePrivacy, handleSession, handleState, handleUser,
 } from "../features/users/users.controller";
 
 interface Handlers {
@@ -38,6 +38,8 @@ interface Handlers {
   /** Since 6.9: what the plugin kept on disk before, and the player's copy by link. */
   handleDeaths?: typeof handleDeaths;
   handleState?: typeof handleState;
+  /** Since 6.31. */
+  handleAgents?: typeof handleAgents;
   handleExport?: typeof handleExport;
   handleExportDownload?: typeof handleExportDownload;
   handleAdmin?: typeof handleAdmin;
@@ -79,6 +81,7 @@ export const routes = (deps: AllayDeps, h: Handlers): Record<string, Route> => {
     ...(h.handlePrivacy ? { "/api/v2/users/:userId/privacy": h.handlePrivacy(deps) } : {}),
     ...(h.handleDeaths ? { "/api/v2/users/:userId/deaths": h.handleDeaths(deps) } : {}),
     ...(h.handleState ? { "/api/v2/users/:userId/state": h.handleState(deps) } : {}),
+    ...(h.handleAgents ? { "/api/v2/users/:userId/agents": h.handleAgents(deps) } : {}),
     ...(h.handleExport ? { "/api/v2/users/:userId/export": h.handleExport(deps) } : {}),
     ...(h.handleExportDownload ? { "/api/v2/exports/:token": h.handleExportDownload(deps) } : {}),
     "/api/v2/users/:userId/memories": h.handleMemories(deps),

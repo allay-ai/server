@@ -7,6 +7,8 @@ The “Release” workflow takes the notes for a version from its section here, 
 Allay for Minecraft 6.35 uses it; older plugins work as before.
 
 - 🔌 **A dropped connection no longer loses the answer.** A question with a `request_id` keeps running for up to 4 minutes (`RUN_DETACH_SECONDS`) when the plugin's connection drops. Every event has an id, and `GET /api/v2/chat/{run}/events` with `Last-Event-ID` streams the rest from there. The same `request_id` posted again reads the run it started, so a question never runs or pays twice. Tool calls wait while the plugin is away and get their whole timeout again when it's back. `DELETE /api/v2/chat/{run}` cancels at once. New settings: `RUN_DETACH_SECONDS`, `RUN_LINGER_SECONDS`, `RUN_JOURNAL_BYTES`.
+- 🤖 **Automation agents outlive a restart.** `GET` and `PUT /api/v2/users/{id}/agents` keep a player's agents on each server, sealed, so the plugin brings them back when the player joins again; they go 30 days after their last change, and with the player's copy, erasure, and withdrawal. Each wake may carry `task.card`, the agent's state as the plugin keeps it, which the prompt shows as “Your task as the plugin keeps it”, and `task.keep_until`, which keeps its thread that long, up to `TASK_CHAT_MAX_KEEP_SECONDS` (7 days).
+- ⏳ **Agents wait for items and ask before the ender chest.** `wait_for_items` parks an agent until the player brings what only they can get, and `sources` says where it may take from: the ender chest only once the player allows it, or only the chests they picked.
 
 ## 6.30.0
 

@@ -26,6 +26,8 @@ export type Summarize = (summary: string | undefined, older: HistoryMessage[]) =
 export interface Thread {
   key: string;
   kind: "private" | "public" | "task";
+  /** A task's: until when (epoch ms) its agent may still need it, waiting for items; since 6.31. */
+  keepUntil?: number;
 }
 
 /** Everything the sessions hold about one player, for their copy of it. */
@@ -81,8 +83,8 @@ export const taskTtl = () => settings.get("TASK_CHAT_TTL_SECONDS");
  * public questions, the asker's own otherwise. Every key starts with the tenant, and user ids, server ids, and task
  * ids hold no colon, so no two threads share a key and no tenant reaches another's.
  */
-export const threadOf = (owner: Owner, visibility?: string, serverId?: string, taskId?: string): Thread => {
-  if (taskId) return { key: `${owner.tenant}:t:${owner.userId}:${taskId}`, kind: "task" };
+export const threadOf = (owner: Owner, visibility?: string, serverId?: string, taskId?: string, keepUntil?: number): Thread => {
+  if (taskId) return { key: `${owner.tenant}:t:${owner.userId}:${taskId}`, kind: "task", ...(keepUntil ? { keepUntil } : {}) };
   if (visibility === "public" && serverId) return { key: `${owner.tenant}:p:${serverId}`, kind: "public" };
   return { key: `${owner.tenant}:u:${owner.userId}`, kind: "private" };
 };
@@ -90,7 +92,15 @@ export const threadOf = (owner: Owner, visibility?: string, serverId?: string, t
 const privateThread = (owner: Owner) => threadOf(owner);
 const taskPrefix = (owner: Owner) => `${owner.tenant}:t:${owner.userId}:`;
 
-export const ttlOf = (thread: Thread) => (thread.kind === "task" ? taskTtl() : thread.kind === "public" ? publicTtl() : sessionTtl());
+/**
+ * How long a thread lives after its last write, in seconds. A task's lives longer while its agent says it may still
+ * need it ([Thread.keepUntil]), up to TASK_CHAT_MAX_KEEP_SECONDS: an agent waiting a day for items keeps its words.
+ */
+export const ttlOf = (thread: Thread, now = Date.now()) => {
+  if (thread.kind !== "task") return thread.kind === "public" ? publicTtl() : sessionTtl();
+  const wanted = thread.keepUntil ? Math.ceil((thread.keepUntil - now) / 1000) : 0;
+  return Math.max(taskTtl(), Math.min(wanted, settings.get("TASK_CHAT_MAX_KEEP_SECONDS")));
+};
 // If folding keeps failing, the oldest exchanges simply fall off here.
 const CAP = MAX_EXCHANGES + 20;
 const MAX_CONTENT = 4000;

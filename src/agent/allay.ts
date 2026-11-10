@@ -25,6 +25,7 @@ import type { Owner } from "../shared/types/owner";
 import type { Memory, MemoryStore } from "../infrastructure/memory/memory";
 import type { DeathStore } from "../infrastructure/playerdata/deaths";
 import type { StateStore } from "../infrastructure/playerdata/state";
+import type { AgentStore } from "../infrastructure/playerdata/agents";
 import type { ExportStore } from "../infrastructure/playerdata/exports";
 import { type ByokProvider, type ModelFactory, costOf } from "../infrastructure/providers/openrouter/openrouter.client";
 import { RunTrace } from "../infrastructure/telemetry/run";
@@ -50,6 +51,8 @@ export interface AllayDeps {
   deaths: DeathStore;
   /** Since 6.9: each player's time zone, settings, and goals, for the plugin. */
   states: StateStore;
+  /** Players' automation agents per server, since 6.31. */
+  agents: AgentStore;
   /** Since 6.9: one-day links to a player's copy of their data. */
   exports: ExportStore;
   /** Which players agreed to have their data processed, as the plugin asked them. */
@@ -201,7 +204,7 @@ type Steps = { steps: Array<{ toolCalls?: Array<{ toolName?: string; payload?: {
 const stepsReach = (max: number) => ({ steps }: Steps) => steps.length >= max;
 const endsWake = ({ steps }: Steps) => (steps.at(-1)?.toolCalls ?? []).some((call) => ["wait", "finish"].includes(call.toolName ?? call.payload?.toolName ?? ""));
 
-const thread = (context: RunContext) => threadOf(ownerOf(context), context.visibility, context.server?.id, context.task?.id);
+const thread = (context: RunContext) => threadOf(ownerOf(context), context.visibility, context.server?.id, context.task?.id, context.task?.keep_until);
 
 /** Adds this exchange to the session; askx requests go in with a slash so later answers know what was run. */
 const record = (context: RunContext, deps: AllayDeps, asked: string, said: ModelMessage[]) =>
