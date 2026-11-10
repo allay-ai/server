@@ -78,6 +78,7 @@ describe("system prompt", () => {
     expect(systemPrompt({ ...context, player: { ...player, game_mode: "creative" } })).toContain("- Player: Steve (operator: no, in creative)");
     expect(systemPrompt({ ...context, player: { ...player, time: 8500, weather: "rain" } })).toContain("- In the game: 14:30, day, rain");
     expect(systemPrompt({ ...context, player: { ...player, time: 18000 } })).toContain("- In the game: 00:00, night, mobs spawn in the dark");
+    expect(systemPrompt({ ...context, player: { ...player, day: 37, time: 0, weather: "clear" } })).toContain("- In the game: day 37, 06:00, day, clear sky");
     expect(systemPrompt({ ...context, player })).not.toContain("- In the game:");
   });
 

@@ -44,6 +44,7 @@ export const chatRequestSchema = z.object({
       game_mode: z.enum(GAME_MODES).optional().catch(undefined),
       time: z.number().int().min(0).max(23_999).optional().catch(undefined),
       weather: z.enum(WEATHERS).optional().catch(undefined),
+      day: z.number().int().min(1).optional().catch(undefined),
     })
     .optional(),
   // address and port since 6.6: where players join, for the admin panel. A bad value is dropped, not refused.

@@ -48,10 +48,11 @@ const WHERE: Record<string, string | undefined> = {
 
 const yesNo = (value: boolean | undefined) => (value ? "yes" : "no");
 
-/** The game's time of day as a clock and a part of the day (0 ticks is 06:00), and the weather: “14:30, day, rain”. */
-export const sky = (time: number | undefined, weather: string | undefined): string | undefined => {
-  if (time === undefined && !weather) return undefined;
+/** The world's day, the time of day as a clock and a part of the day (0 ticks is 06:00), and the weather: “day 12, 14:30, day, rain”. */
+export const sky = (time: number | undefined, weather: string | undefined, day?: number): string | undefined => {
+  if (time === undefined && !weather && day === undefined) return undefined;
   const parts: string[] = [];
+  if (day !== undefined) parts.push(`day ${day}`);
   if (time !== undefined) {
     const minutes = Math.floor(((time + 6000) % 24000) * 0.06);
     const clock = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
@@ -156,7 +157,7 @@ export const systemPrompt = (context: RunContext, recall: Recall = {}): string =
     const where = context.player.dimension ? `, standing in ${context.player.dimension}` : "";
     const mode = context.player.game_mode ? `, in ${context.player.game_mode}` : "";
     lines.push(`- Player: ${context.player.name} (operator: ${yesNo(context.player.op)}${mode}${where})`);
-    const outside = sky(context.player.time, context.player.weather);
+    const outside = sky(context.player.time, context.player.weather, context.player.day);
     if (outside) lines.push(`- In the game: ${outside}`);
   }
   if (context.visibility === "public") {

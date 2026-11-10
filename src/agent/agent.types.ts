@@ -25,6 +25,8 @@ export interface PlayerInfo {
   /** Since 6.33: the time of day (0–23999, 0 is sunrise) and the weather, where the sky turns. */
   time?: number;
   weather?: Weather;
+  /** Since 6.33: the world's day, the first one 1. */
+  day?: number;
 }
 
 export const WEATHERS = ["clear", "rain", "thunder"] as const;
