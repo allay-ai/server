@@ -2,6 +2,10 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.33.0
+
+- 🏰 **A catalog of real builds.** `search_schematics` finds builds in [allay-ai/schematics](https://github.com/allay-ai/schematics), each with its author and license, by the player's words in English, with type and style, 5 a page, titled in the player's language. The backend reads the catalog at the newest commit of `master` (`SCHEMATICS_REPO`, every `SCHEMATICS_REFRESH_SECONDS`), so every link it hands out stays the file it was. It's offered only to a plugin that can show and build a schematic.
+
 ## 6.32.0
 
 - 🗂️ **Agents' work state under its own name.** What the plugin keeps so agents go on after a restart is the player's work state now: `GET` and `PUT /api/v2/users/{id}/workstate`, in the `work_states` collection, in the player's copy as `workstate`. `/agents` stays for plugin 6.35, and what 6.31.0 kept in `player_agents` still reads and moves over with its next change.

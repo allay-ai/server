@@ -93,6 +93,8 @@ export const DEFINITIONS = {
 
   PERPLEXITY_API_KEY: { type: "secret", group: "search", description: "Perplexity's Search API for web search on the backend's own key; without it SEARCH_MODEL searches" },
   SEARCH_MODEL: { type: "string", group: "search", default: "perplexity/sonar", max: 200, description: "Online model for web search without a Perplexity key, and for servers with their own key" },
+  SCHEMATICS_REPO: { type: "string", group: "search", default: "allay-ai/schematics", max: 100, description: "The GitHub repository whose index.json the build search reads, as owner/name. Since 6.33" },
+  SCHEMATICS_REFRESH_SECONDS: { type: "int", group: "search", default: 600, min: 60, max: 86_400, description: "How often the build search looks for a newer catalog, in seconds. Since 6.33" },
   OPENROUTER_API_CTX: { type: "enum", group: "search", options: ["low", "medium", "high"], default: "medium", description: "Search context size of the online model" },
 
   TOOL_TIMEOUT_MS: { type: "int", group: "limits", default: 15_000, min: 1_000, max: 120_000, description: "How long to wait for the plugin's tool result, in milliseconds" },

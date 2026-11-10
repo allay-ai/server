@@ -5,6 +5,8 @@ import type { AdminDeps } from "../features/admin/admin";
 import type { Billing } from "../features/billing/billing";
 import type { ToolBridge } from "../features/chat/chat.bridge";
 import type { LiveRuns } from "../features/chat/chat.live";
+import type { SchematicCatalog } from "../infrastructure/schematics/catalog";
+import { searchSchematicsTool } from "../features/tools/schematics.tool";
 import type { Emit } from "../features/chat/chat.events";
 import { settings } from "../features/settings/settings";
 import { exactCalculationsTool } from "../features/tools/exact-calculations.tool";
@@ -60,6 +62,8 @@ export interface AllayDeps {
   /** Players operators stopped from asking. */
   bans: BanStore;
   bridge: ToolBridge;
+  /** The catalog of real builds the model offers from, allay-ai/schematics (since 6.33); none in tests that don't need it. */
+  schematics?: SchematicCatalog;
   /** Runs a plugin may read again after its connection dropped (since 6.31). */
   live: LiveRuns;
   billing: Billing;
@@ -391,6 +395,10 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
               },
             }),
         math: { exact_calculations: exactCalculationsTool({ emit }) },
+        // The catalog of builds, for a plugin that can show and build one (its `build` tool, plugin 6.37+).
+        ...(context.tools.includes("build") && deps.schematics
+          ? { schematics: { search_schematics: searchSchematicsTool(deps.schematics, { emit, locale: context.locale }) } }
+          : {}),
         // askx only reads them: a remembered place is where “take me to my base” goes.
         ...((context.mode === "ask" || context.mode === "askx") && remembers(context.userId)
           ? { memory: memoryTools(deps.memories, { owner: ownerOf(context), emit, position: context.player?.position, readOnly: context.mode === "askx" }) }

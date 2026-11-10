@@ -3,6 +3,7 @@ import type { AllayDeps } from "../agent/allay";
 import { newLimits, selfHosted } from "../features/billing/billing";
 import { bridge } from "../features/chat/chat.bridge";
 import { LiveRuns } from "../features/chat/chat.live";
+import { githubCatalog } from "../infrastructure/schematics/catalog";
 import { mongoLicenses } from "../infrastructure/billing/licenses";
 import { MONGODB_DATABASE, MONGODB_URI } from "../infrastructure/database/mongodb.env";
 import { mongoHistory } from "../infrastructure/history/history";
@@ -50,6 +51,7 @@ export const productionDeps = (pseudonyms: Pseudonyms): AllayDeps => {
     bans: mongoBans,
     bridge,
     live: new LiveRuns(),
+    schematics: githubCatalog(),
     runs: mongoRuns,
     pseudonyms,
     players: mongoPlayers,
