@@ -76,6 +76,9 @@ describe("system prompt", () => {
     expect(systemPrompt({ ...context, player: { ...player, dimension: "the_nether" } })).toContain("- Player: Steve (operator: no, standing in the_nether)");
     expect(systemPrompt({ ...context, player })).toContain("- Player: Steve (operator: no)");
     expect(systemPrompt({ ...context, player: { ...player, game_mode: "creative" } })).toContain("- Player: Steve (operator: no, in creative)");
+    expect(systemPrompt({ ...context, player: { ...player, time: 8500, weather: "rain" } })).toContain("- In the game: 14:30, day, rain");
+    expect(systemPrompt({ ...context, player: { ...player, time: 18000 } })).toContain("- In the game: 00:00, night, mobs spawn in the dark");
+    expect(systemPrompt({ ...context, player })).not.toContain("- In the game:");
   });
 
   test("the model learns where a mod runs: the player's own world or their game on someone else's server", () => {

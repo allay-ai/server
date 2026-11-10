@@ -10,6 +10,7 @@ The “Release” workflow takes the notes for a version from its section here, 
 - 🔕 **Builds switched off.** Without `build` in a run's tools (plugin 6.37 keeps it off until the owner sets `building.enabled: true`), the prompt's builds section gives way to two lines: builds are off here, and where the owner turns them on.
 - 🎮 **The player's game mode.** `player.game_mode` (survival, creative, adventure, spectator) goes into the Player line of the prompt, so a player in creative is never told to bring blocks for a build. The model no longer goes back over its earlier messages unasked.
 - 🔎 **A type or style no longer hides untagged builds.** `search_schematics` ruled out every build the describer hadn't tagged yet as soon as the model named a type or a style, so “a medieval house” could find nothing. Now only tags that say otherwise rule a build out, and the type and style rank as words.
+- 🌦️ **Time of day and weather.** `player.time` (0–23999) and `player.weather` (clear, rain, thunder) go into the prompt as “In the game: 14:30, day, rain”, so “when's night?” or “why no mobs?” needs no tool.
 
 ## 6.32.0
 

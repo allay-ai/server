@@ -22,7 +22,13 @@ export interface PlayerInfo {
   position?: Position;
   /** Since 6.33: survival, creative, adventure, or spectator; a player in creative takes nothing for a build. */
   game_mode?: GameMode;
+  /** Since 6.33: the time of day (0–23999, 0 is sunrise) and the weather, where the sky turns. */
+  time?: number;
+  weather?: Weather;
 }
+
+export const WEATHERS = ["clear", "rain", "thunder"] as const;
+export type Weather = (typeof WEATHERS)[number];
 
 export const GAME_MODES = ["survival", "creative", "adventure", "spectator"] as const;
 export type GameMode = (typeof GAME_MODES)[number];
