@@ -9,6 +9,7 @@ The “Release” workflow takes the notes for a version from its section here, 
 - 👷 **The builder.** `start_task` takes kind `building`: an agent that builds the build the player previews, with its own tool `construct` (status, start, pause, resume, swap, skip, retry). The plugin places the blocks and says itself what it waits for, so the agent wakes only when the player must decide: blocks nobody can get, spots in the way, the end.
 - 🔕 **Builds switched off.** Without `build` in a run's tools (plugin 6.37 keeps it off until the owner sets `building.enabled: true`), the prompt's builds section gives way to two lines: builds are off here, and where the owner turns them on.
 - 🎮 **The player's game mode.** `player.game_mode` (survival, creative, adventure, spectator) goes into the Player line of the prompt, so a player in creative is never told to bring blocks for a build. The model no longer goes back over its earlier messages unasked.
+- 🔎 **A type or style no longer hides untagged builds.** `search_schematics` ruled out every build the describer hadn't tagged yet as soon as the model named a type or a style, so “a medieval house” could find nothing. Now only tags that say otherwise rule a build out, and the type and style rank as words.
 
 ## 6.32.0
 

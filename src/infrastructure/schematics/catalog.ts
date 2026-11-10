@@ -108,8 +108,9 @@ const fits = (s: Schematic, filters: Filters) =>
   (filters.maxBlocks === undefined || s.blocks <= filters.maxBlocks) &&
   (filters.maxSide === undefined || Math.max(s.size.x, s.size.y, s.size.z) <= filters.maxSide) &&
   (filters.dataVersion === undefined || s.data_version <= filters.dataVersion) &&
-  (!filters.type || (s.tags.type ?? []).includes(filters.type)) &&
-  (!filters.style || (s.tags.style ?? []).includes(filters.style));
+  // A type or style rules out only a build whose tags say otherwise: one the describer hasn't tagged yet stays in.
+  (!filters.type || !s.tags.type?.length || s.tags.type.includes(filters.type)) &&
+  (!filters.style || !s.tags.style?.length || s.tags.style.includes(filters.style));
 
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -160,7 +161,8 @@ export const githubCatalog = (fetcher: Fetch = (url, init) => fetch(url, { ...in
   return {
     async search(query, filters, offset, limit) {
       const { ranking } = await ready();
-      const asked = words(query);
+      // The type and style count as words too, so an untagged build still ranks by its title and description.
+      const asked = words([query, filters.type, filters.style].filter(Boolean).join(" "));
       const scored = ranking.schematics
         .map((s, index) => ({ s, score: asked.length ? ranking.score(index, asked) : 1 }))
         .filter(({ s, score }) => score > 0 && fits(s, filters))

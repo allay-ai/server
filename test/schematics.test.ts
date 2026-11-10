@@ -86,6 +86,17 @@ describe("the build catalog", () => {
     expect((await catalog.search("medieval", { type: "castle" }, 0, 5)).schematics.map((s) => s.id)).toEqual(["castles/stone-keep"]);
   });
 
+  test("a build the describer hasn't tagged yet still turns up by its title under a type and a style", async () => {
+    const untagged = { ...INDEX, schematics: [...INDEX.schematics, build("houses/medieval-house-i", { title: { en: "Medieval House I" }, description: "" })] };
+    const fetcher = async (url: string) =>
+      url.includes("/commits/master") ? new Response(COMMIT) : url.endsWith(`/${COMMIT}/index.json`) ? Response.json(untagged) : new Response("missing", { status: 404 });
+    const catalog = githubCatalog(fetcher);
+    const found = await catalog.search("medieval house tower", { type: "house", style: "medieval" }, 0, 5);
+    expect(found.schematics.map((s) => s.id)[0]).toBe("houses/medieval-house-i");
+    // Tags that say otherwise still rule a build out: the Japanese house isn't medieval.
+    expect(found.schematics.map((s) => s.id)).not.toContain("houses/japanese-house");
+  });
+
   test("the catalog is read once per refresh, and a build's link is pinned to its commit", async () => {
     const { catalog, asked } = github();
     await catalog.search("windmill", {}, 0, 5);
