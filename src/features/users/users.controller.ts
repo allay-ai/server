@@ -287,10 +287,11 @@ export const handleState = (deps: AllayDeps) => async (req: Routed): Promise<Res
 };
 
 /**
- * GET and PUT /api/v2/users/{user_id}/agents (since 6.31): the player's automation agents on one server, so they go on
+ * GET and PUT /api/v2/users/{user_id}/workstate (since 6.31; `/agents` is the same for plugin 6.35): the work state of
+ * the player's automation agents on one server, so they go on
  * after a restart or a rejoin. GET takes `?server_id=`; PUT replaces the server's list whole, and an empty one forgets it.
  */
-export const handleAgents = (deps: AllayDeps) => async (req: Routed): Promise<Response> => {
+export const handleWorkState = (deps: AllayDeps) => async (req: Routed): Promise<Response> => {
   if (req.method !== "GET" && req.method !== "PUT") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
   const owner = await ownerOf(deps, req);
   if (owner instanceof Response) return owner;
@@ -298,7 +299,7 @@ export const handleAgents = (deps: AllayDeps) => async (req: Routed): Promise<Re
     if (req.method === "GET") {
       const serverId = new URL(req.url).searchParams.get("server_id") ?? "";
       if (!SERVER_ID.test(serverId)) return jsonError(apierror(API_ERRORS.BAD_REQUEST, "server_id: 1–64 letters, digits, - or _"));
-      const stored = await deps.agents.get(owner, serverId);
+      const stored = await deps.workstates.get(owner, serverId);
       return noStore({ agents: stored?.agents ?? [], updated_at: stored?.updated_at ?? null });
     }
     const raw = await req.text();
@@ -313,10 +314,10 @@ export const handleAgents = (deps: AllayDeps) => async (req: Routed): Promise<Re
     if (!body.success) return jsonError(apierror(API_ERRORS.BAD_REQUEST, `${body.error.issues[0]?.path.join(".") || "agents"}: ${body.error.issues[0]?.message}`));
     // Forgetting needs no agreement; keeping does.
     if (body.data.agents.length > 0 && !(await mayKeep(deps, owner.tenant, owner.userId))) return jsonError(apierror(API_ERRORS.CONSENT_REQUIRED));
-    await deps.agents.put(owner, body.data.server_id, body.data.agents);
+    await deps.workstates.put(owner, body.data.server_id, body.data.agents);
     return noStore({ saved: body.data.agents.length });
   } catch (error) {
-    return failed("reach the player's agents", error);
+    return failed("reach the player's work state", error);
   }
 };
 

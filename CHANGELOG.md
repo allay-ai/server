@@ -2,6 +2,10 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.32.0
+
+- 🗂️ **Agents' work state under its own name.** What the plugin keeps so agents go on after a restart is the player's work state now: `GET` and `PUT /api/v2/users/{id}/workstate`, in the `work_states` collection, in the player's copy as `workstate`. `/agents` stays for plugin 6.35, and what 6.31.0 kept in `player_agents` still reads and moves over with its next change.
+
 ## 6.31.0
 
 Allay for Minecraft 6.35 uses it; older plugins work as before.

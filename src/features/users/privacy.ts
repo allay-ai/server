@@ -1,4 +1,4 @@
-import type { StoredAgents } from "../../infrastructure/playerdata/agents";
+import type { StoredWorkState } from "../../infrastructure/playerdata/workstate";
 import type { AllayDeps } from "../../agent/allay";
 import type { Owner } from "../../shared/types/owner";
 import type { Memory } from "../../infrastructure/memory/memory";
@@ -21,8 +21,8 @@ export interface PlayerExport extends SessionExport {
   deaths: Death[];
   /** Since 6.9: their time zone, settings, and goals, as the plugin keeps them. */
   state: StoredState | null;
-  /** Since 6.31: their automation agents on each server, as the plugin keeps them to go on after a restart. */
-  agents: StoredAgents[];
+  /** Since 6.31: the work state of their automation agents on each server, so they go on after a restart. */
+  workstate: StoredWorkState[];
   /** The notice the player agreed to and when, or null. */
   consent: Consent | null;
   /** The pseudonym the statistics know the player by. */
@@ -38,11 +38,11 @@ export interface PlayerExport extends SessionExport {
 export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<PlayerExport> => {
   privacyRequest("export", owner.tenant);
   const pseudonym = deps.pseudonyms.of(owner.tenant, owner.userId);
-  const [memories, deaths, state, agents, consent, sessions, runs, bans, known] = await Promise.all([
+  const [memories, deaths, state, workstate, consent, sessions, runs, bans, known] = await Promise.all([
     deps.memories.list(owner),
     deps.deaths.list(owner),
     deps.states.get(owner),
-    deps.agents.list(owner),
+    deps.workstates.list(owner),
     deps.consents.record(owner),
     deps.history.export(owner),
     deps.runs?.of(pseudonym, owner.tenant, EXPORT_RUNS) ?? [],
@@ -58,7 +58,7 @@ export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<Playe
     memories,
     deaths,
     state,
-    agents,
+    workstate,
     consent,
     ...sessions,
     runs: runs.map((r) => ({
@@ -75,7 +75,7 @@ export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<Playe
       memories: "until the player deletes them, or 365 days after their last question",
       deaths: "the newest DEATHS_MAX (100 by default), and 365 days after the player's last question",
       state: "365 days after the player's last question",
-      agents: "30 days after their last change, or when they end",
+      workstate: "30 days after its last change, or when the agents end",
       consent: "the agreement, and after a withdrawal its record, until the data is erased or 730 days after their last question",
       session: "CHAT_TTL_SECONDS after the last question (30 days by default)",
       runs: "730 days, by pseudonym",
@@ -107,7 +107,7 @@ export interface Erased {
 }
 
 /**
- * Forgets a player of one tenant (GDPR art. 17): memories, deaths, their state and agents, open export links, their consent, their
+ * Forgets a player of one tenant (GDPR art. 17): memories, deaths, their state and agents' work state, open export links, their consent, their
  * name in the directory, their session, pending task outcomes, and their agents' threads go; their runs keep only numbers under `erased`; their traces go whole. The server's shared public thread
  * isn't theirs alone and expires within PUBLIC_CHAT_TTL_SECONDS by itself.
  */
@@ -115,7 +115,7 @@ export const erasePlayer = async (deps: AllayDeps, owner: Owner): Promise<Erased
   const memories = await deps.memories.clear(owner);
   const deaths = await deps.deaths.clear(owner);
   await deps.states.clear(owner);
-  await deps.agents.clear(owner);
+  await deps.workstates.clear(owner);
   await deps.exports.revoke(owner);
   await deps.players?.forget(owner.tenant, deps.pseudonyms.of(owner.tenant, owner.userId));
   await deps.consents.erase(owner);
@@ -135,7 +135,7 @@ export interface Withdrawn {
 
 /**
  * A player takes their agreement back (GDPR art. 7(3), 17(1)(b)): what it covered goes, memories and places, deaths,
- * their state and agents, open export links, their session, pending task outcomes, and their agents' threads. The record of the
+ * their state and agents' work state, open export links, their session, pending task outcomes, and their agents' threads. The record of the
  * agreement stays, marked withdrawn, as proof of what the data rested on; the runs keep their numbers under the
  * pseudonym, which rest on the backend's legitimate interest, and the name stays in the directory until it ages out.
  */
@@ -145,7 +145,7 @@ export const withdrawPlayer = async (deps: AllayDeps, owner: Owner): Promise<Wit
   const memories = await deps.memories.clear(owner);
   const deaths = await deps.deaths.clear(owner);
   await deps.states.clear(owner);
-  await deps.agents.clear(owner);
+  await deps.workstates.clear(owner);
   await deps.exports.revoke(owner);
   await deps.history.erase(owner);
   return { withdrawn, memories, deaths };

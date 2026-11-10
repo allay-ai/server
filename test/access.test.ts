@@ -12,14 +12,14 @@ import { handleChat, handleRun, handleRunEvents, handleToolResult } from "../src
 import { handleHealth } from "../src/features/health/health.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import {
-  handleAgents, handleConsent, handleDeaths, handleExport, handleExportDownload, handleMemories, handleMemory, handlePrivacy, handleSession, handleState, handleUser,
+  handleWorkState, handleConsent, handleDeaths, handleExport, handleExportDownload, handleMemories, handleMemory, handlePrivacy, handleSession, handleState, handleUser,
 } from "../src/features/users/users.controller";
 import { handleServer } from "../src/features/servers/server.controller";
 import { AUTH, finish, owner, readSse, scripted, testAdmin, testBilling, testDeps, text, thread, toolCall } from "./helpers";
 
 const handlers = {
   handleAsk, handleAskX, handleChat, handleToolResult, handleRun, handleRunEvents, handleHealth, handleUser, handleSession, handleConsent, handlePrivacy, handleServer, handleMemories, handleMemory, handleLicense, handleTelegram,
-  handleAdminInit, handleAdmin, handleDeaths, handleState, handleAgents, handleExport, handleExportDownload,
+  handleAdminInit, handleAdmin, handleDeaths, handleState, handleWorkState, handleExport, handleExportDownload,
 };
 let servers: Array<Server<undefined>> = [];
 
@@ -114,11 +114,11 @@ describe("tenants never meet", () => {
 
   test("B can't read or wipe A's agents, even with A's player and server ids", async () => {
     const t = await twoServers();
-    await t.deps.agents.put(owner("player-1", t.tenantA), "moonlands", [{ brief: "A's furnaces at 120 64 -300" }]);
-    const url = `${t.base}/api/v2/users/player-1/agents`;
+    await t.deps.workstates.put(owner("player-1", t.tenantA), "moonlands", [{ brief: "A's furnaces at 120 64 -300" }]);
+    const url = `${t.base}/api/v2/users/player-1/workstate`;
     expect(((await (await fetch(`${url}?server_id=moonlands`, { headers: t.B })).json()) as any).agents).toEqual([]);
     await fetch(url, { method: "PUT", headers: { ...t.B, "Content-Type": "application/json" }, body: JSON.stringify({ server_id: "moonlands", agents: [] }) });
-    expect((await t.deps.agents.get(owner("player-1", t.tenantA), "moonlands"))?.agents).toEqual([{ brief: "A's furnaces at 120 64 -300" }]);
+    expect((await t.deps.workstates.get(owner("player-1", t.tenantA), "moonlands"))?.agents).toEqual([{ brief: "A's furnaces at 120 64 -300" }]);
   });
 
   test("B can't read, add to, or wipe A's memories through /users, even with A's player id", async () => {

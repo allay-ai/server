@@ -10,7 +10,7 @@ import { tracing } from "../infrastructure/observability/tracing";
 import { mongoMemories } from "../infrastructure/memory/memory";
 import { mongoDeaths } from "../infrastructure/playerdata/deaths";
 import { mongoStates } from "../infrastructure/playerdata/state";
-import { mongoAgents } from "../infrastructure/playerdata/agents";
+import { mongoWorkStates } from "../infrastructure/playerdata/workstate";
 import { mongoExports } from "../infrastructure/playerdata/exports";
 import { mongoConsents } from "../infrastructure/privacy/consents";
 import { mongoBans } from "../infrastructure/privacy/bans";
@@ -44,7 +44,7 @@ export const productionDeps = (pseudonyms: Pseudonyms): AllayDeps => {
     memories: mongoMemories,
     deaths: mongoDeaths,
     states: mongoStates,
-    agents: mongoAgents,
+    workstates: mongoWorkStates,
     exports: mongoExports(),
     consents: mongoConsents,
     bans: mongoBans,

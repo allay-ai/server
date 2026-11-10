@@ -11,7 +11,7 @@ import { handleLicense } from "../features/billing/license.controller";
 import { handleHealth } from "../features/health/health.controller";
 import { handleTelegram, startTelegram, watchTelegram } from "../features/telegram/telegram.controller";
 import {
-  handleAgents, handleConsent, handleDeaths, handleExport, handleExportDownload, handleMemories, handleMemory, handlePrivacy, handleSession, handleState, handleUser,
+  handleWorkState, handleConsent, handleDeaths, handleExport, handleExportDownload, handleMemories, handleMemory, handlePrivacy, handleSession, handleState, handleUser,
 } from "../features/users/users.controller";
 import { logger } from "../shared/logging/logger";
 import { connect as mongoConnect, disconnect as mongoDisconnect } from "../infrastructure/database/mongodb.client";
@@ -66,7 +66,7 @@ const server = serve({
   maxRequestBodySize: 2 * 1024 * 1024,
   routes: routes(deps, {
     handleAsk, handleAskX, handleChat, handleToolResult, handleRun, handleRunEvents, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handlePrivacy, handleServer,
-    handleDeaths, handleState, handleAgents, handleExport, handleExportDownload,
+    handleDeaths, handleState, handleWorkState, handleExport, handleExportDownload,
     handleLicense, handleTelegram, handleAdminInit, handleAdmin, adminPages: adminPages(),
   }),
   error: (error: Error) => {

@@ -9,7 +9,7 @@ import type { Owner } from "../src/shared/types/owner";
 import { memoryMemories } from "../src/infrastructure/memory/memory";
 import { memoryDeaths } from "../src/infrastructure/playerdata/deaths";
 import { memoryStates } from "../src/infrastructure/playerdata/state";
-import { memoryAgents } from "../src/infrastructure/playerdata/agents";
+import { memoryWorkStates } from "../src/infrastructure/playerdata/workstate";
 import { memoryExports } from "../src/infrastructure/playerdata/exports";
 import { type ConsentStore, memoryConsents } from "../src/infrastructure/privacy/consents";
 import { memoryBans } from "../src/infrastructure/privacy/bans";
@@ -162,7 +162,7 @@ export const testDeps = (
     memories: memoryMemories(),
     deaths: memoryDeaths(),
     states: memoryStates(),
-    agents: memoryAgents(),
+    workstates: memoryWorkStates(),
     exports: memoryExports(),
     consents: options.consents ?? (options.billing?.enabled ? agreedConsents() : memoryConsents()),
     bans: memoryBans(),

@@ -11,7 +11,7 @@ import type { handleLicense } from "../features/billing/license.controller";
 import type { handleHealth } from "../features/health/health.controller";
 import type { handleTelegram } from "../features/telegram/telegram.controller";
 import type {
-  handleAgents, handleConsent, handleDeaths, handleExport, handleExportDownload, handleMemories, handleMemory, handlePrivacy, handleSession, handleState, handleUser,
+  handleWorkState, handleConsent, handleDeaths, handleExport, handleExportDownload, handleMemories, handleMemory, handlePrivacy, handleSession, handleState, handleUser,
 } from "../features/users/users.controller";
 
 interface Handlers {
@@ -39,7 +39,7 @@ interface Handlers {
   handleDeaths?: typeof handleDeaths;
   handleState?: typeof handleState;
   /** Since 6.31. */
-  handleAgents?: typeof handleAgents;
+  handleWorkState?: typeof handleWorkState;
   handleExport?: typeof handleExport;
   handleExportDownload?: typeof handleExportDownload;
   handleAdmin?: typeof handleAdmin;
@@ -81,7 +81,8 @@ export const routes = (deps: AllayDeps, h: Handlers): Record<string, Route> => {
     ...(h.handlePrivacy ? { "/api/v2/users/:userId/privacy": h.handlePrivacy(deps) } : {}),
     ...(h.handleDeaths ? { "/api/v2/users/:userId/deaths": h.handleDeaths(deps) } : {}),
     ...(h.handleState ? { "/api/v2/users/:userId/state": h.handleState(deps) } : {}),
-    ...(h.handleAgents ? { "/api/v2/users/:userId/agents": h.handleAgents(deps) } : {}),
+    // /agents is what plugin 6.35 calls the same thing.
+    ...(h.handleWorkState ? { "/api/v2/users/:userId/workstate": h.handleWorkState(deps), "/api/v2/users/:userId/agents": h.handleWorkState(deps) } : {}),
     ...(h.handleExport ? { "/api/v2/users/:userId/export": h.handleExport(deps) } : {}),
     ...(h.handleExportDownload ? { "/api/v2/exports/:token": h.handleExportDownload(deps) } : {}),
     "/api/v2/users/:userId/memories": h.handleMemories(deps),
