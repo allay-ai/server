@@ -20,7 +20,12 @@ export interface PlayerInfo {
   private?: boolean;
   /** Since 6.9: where the player stands, for distances to places and deaths and for “here”. */
   position?: Position;
+  /** Since 6.33: survival, creative, adventure, or spectator; a player in creative takes nothing for a build. */
+  game_mode?: GameMode;
 }
+
+export const GAME_MODES = ["survival", "creative", "adventure", "spectator"] as const;
+export type GameMode = (typeof GAME_MODES)[number];
 
 export interface Position {
   x: number;

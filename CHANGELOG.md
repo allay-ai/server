@@ -8,6 +8,7 @@ The “Release” workflow takes the notes for a version from its section here, 
 - 🏗️ **`build` for a plugin that previews and builds.** The model names a build by its id, and the backend hands the plugin its file pinned to the catalog's commit with its SHA-256, so no link ever comes from the model. A request's `building` carries what the player may build and the server's game, and the search keeps to it. A chat prompt section says a build keeps its shape: the model offers another build or other blocks instead of a taller one.
 - 👷 **The builder.** `start_task` takes kind `building`: an agent that builds the build the player previews, with its own tool `construct` (status, start, pause, resume, swap, skip, retry). The plugin places the blocks and says itself what it waits for, so the agent wakes only when the player must decide: blocks nobody can get, spots in the way, the end.
 - 🔕 **Builds switched off.** Without `build` in a run's tools (plugin 6.37 keeps it off until the owner sets `building.enabled: true`), the prompt's builds section gives way to two lines: builds are off here, and where the owner turns them on.
+- 🎮 **The player's game mode.** `player.game_mode` (survival, creative, adventure, spectator) goes into the Player line of the prompt, so a player in creative is never told to bring blocks for a build. The model no longer goes back over its earlier messages unasked.
 
 ## 6.32.0
 

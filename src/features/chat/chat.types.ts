@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DIMENSIONS, LOADERS, type RunContext, SIDES, TASK_KINDS, TASK_STATES } from "../../agent/agent.types";
+import { DIMENSIONS, GAME_MODES, LOADERS, type RunContext, SIDES, TASK_KINDS, TASK_STATES } from "../../agent/agent.types";
 import type { ProviderBlock } from "../billing/gate";
 import { API_ERRORS, type ApiError, apierror } from "../../shared/types/errors";
 import { USER_ID } from "../../shared/types/owner";
@@ -40,6 +40,8 @@ export const chatRequestSchema = z.object({
         .object({ x: z.number().int(), y: z.number().int(), z: z.number().int(), dimension: z.enum(DIMENSIONS), world: z.string().min(1).max(64).optional() })
         .optional()
         .catch(undefined),
+      // Since 6.33; one this backend doesn't know is dropped, not refused.
+      game_mode: z.enum(GAME_MODES).optional().catch(undefined),
     })
     .optional(),
   // address and port since 6.6: where players join, for the admin panel. A bad value is dropped, not refused.

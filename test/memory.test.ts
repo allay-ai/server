@@ -75,6 +75,7 @@ describe("system prompt", () => {
     const player = { name: "Steve", op: false };
     expect(systemPrompt({ ...context, player: { ...player, dimension: "the_nether" } })).toContain("- Player: Steve (operator: no, standing in the_nether)");
     expect(systemPrompt({ ...context, player })).toContain("- Player: Steve (operator: no)");
+    expect(systemPrompt({ ...context, player: { ...player, game_mode: "creative" } })).toContain("- Player: Steve (operator: no, in creative)");
   });
 
   test("the model learns where a mod runs: the player's own world or their game on someone else's server", () => {

@@ -140,7 +140,8 @@ export const systemPrompt = (context: RunContext, recall: Recall = {}): string =
   }
   if (context.player) {
     const where = context.player.dimension ? `, standing in ${context.player.dimension}` : "";
-    lines.push(`- Player: ${context.player.name} (operator: ${yesNo(context.player.op)}${where})`);
+    const mode = context.player.game_mode ? `, in ${context.player.game_mode}` : "";
+    lines.push(`- Player: ${context.player.name} (operator: ${yesNo(context.player.op)}${mode}${where})`);
   }
   if (context.visibility === "public") {
     lines.push("- Visibility: public. Every player online sees this question and your answer; follow \"Questions everyone sees\"");
