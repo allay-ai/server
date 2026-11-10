@@ -13,6 +13,7 @@ The “Release” workflow takes the notes for a version from its section here, 
 - 🌦️ **Time of day and weather.** `player.time` (0–23999) and `player.weather` (clear, rain, thunder) with `player.day`, the world's day, go into the prompt as “In the game: day 12, 14:30, day, rain”, so “when's night?” or “why no mobs?” needs no tool.
 - 🌐 **Buttons and agents in the player's language.** The prompt's examples of buttons and of an agent's name were Russian, and the model copied their words into English answers. The examples now lead in English and say to label in the answer's language.
 - 🗺️ The language rule says the time zone in a message's stamp tells nothing about the player's language: a Moscow stamp made the model answer an English question in Russian.
+- 🧩 `get_world`'s description names its chunk block (plugin 6.37) and the seed for operators.
 
 ## 6.32.0
 

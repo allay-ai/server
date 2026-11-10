@@ -70,7 +70,7 @@ const definitions = {
   },
   get_world: {
     description:
-      "The asking player's world: time of day and phase, day number, moon phase, weather, difficulty, dimension, world border, and game rules that matter for advice (keep_inventory, mob_griefing, players_sleeping_percentage, do_insomnia…). From the Nether or the End, overworld has the overworld's time, phase, and weather, the ones sleeping and “is it raining up there” are about.",
+      "The asking player's world: time of day and phase, day number, moon phase, weather, difficulty, dimension, world border, and game rules that matter for advice (keep_inventory, mob_griefing, players_sleeping_percentage, do_insomnia…), and the chunk the player stands in: its x and z, region file, the block's place in it, section, whether slimes spawn there (overworld), and inhabited_minutes (players' time there, which raises local difficulty). For operators also seed, as /seed shows it. From the Nether or the End, overworld has the overworld's time, phase, and weather, the ones sleeping and “is it raining up there” are about.",
     input: z.object({}),
   },
   get_statistics: {
