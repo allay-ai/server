@@ -6,7 +6,7 @@ import { handleAdminInit, panelUrl } from "../features/admin/init.controller";
 import { handleServer } from "../features/servers/server.controller";
 import { handleAsk } from "../features/ask/ask.controller";
 import { handleAskX } from "../features/askx/askx.controller";
-import { handleChat, handleToolResult } from "../features/chat/chat.controller";
+import { handleChat, handleRun, handleRunEvents, handleToolResult } from "../features/chat/chat.controller";
 import { handleLicense } from "../features/billing/license.controller";
 import { handleHealth } from "../features/health/health.controller";
 import { handleTelegram, startTelegram, watchTelegram } from "../features/telegram/telegram.controller";
@@ -65,7 +65,7 @@ const server = serve({
   // Questions are 2000 characters, tool results a few dozen kilobytes; nothing needs Bun's 128 MB default.
   maxRequestBodySize: 2 * 1024 * 1024,
   routes: routes(deps, {
-    handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handlePrivacy, handleServer,
+    handleAsk, handleAskX, handleChat, handleToolResult, handleRun, handleRunEvents, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handlePrivacy, handleServer,
     handleDeaths, handleState, handleExport, handleExportDownload,
     handleLicense, handleTelegram, handleAdminInit, handleAdmin, adminPages: adminPages(),
   }),

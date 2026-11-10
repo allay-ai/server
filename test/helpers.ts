@@ -2,6 +2,7 @@ import type { LanguageModelV4, LanguageModelV4StreamPart } from "@ai-sdk/provide
 import { MockLanguageModelV4, convertArrayToReadableStream } from "ai/test";
 import type { AllayDeps } from "../src/agent/allay";
 import { ToolBridge } from "../src/features/chat/chat.bridge";
+import { LiveRuns } from "../src/features/chat/chat.live";
 import { memoryHistory, threadOf } from "../src/infrastructure/history/history";
 import { pseudonymsWith } from "../src/infrastructure/privacy/pseudonyms";
 import type { Owner } from "../src/shared/types/owner";
@@ -164,6 +165,7 @@ export const testDeps = (
     consents: options.consents ?? (options.billing?.enabled ? agreedConsents() : memoryConsents()),
     bans: memoryBans(),
     bridge: new ToolBridge(options.toolTimeoutMs ?? 2_000),
+    live: new LiveRuns(),
     billing: options.billing ?? testBilling(),
     pseudonyms: pseudonymsWith("test"),
     players: memoryPlayers(),

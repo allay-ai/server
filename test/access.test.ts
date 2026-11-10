@@ -8,7 +8,7 @@ import { handleAsk } from "../src/features/ask/ask.controller";
 import { handleAskX } from "../src/features/askx/askx.controller";
 import { createLicense } from "../src/features/billing/billing";
 import { handleLicense } from "../src/features/billing/license.controller";
-import { handleChat, handleToolResult } from "../src/features/chat/chat.controller";
+import { handleChat, handleRun, handleRunEvents, handleToolResult } from "../src/features/chat/chat.controller";
 import { handleHealth } from "../src/features/health/health.controller";
 import { handleTelegram } from "../src/features/telegram/telegram.controller";
 import {
@@ -18,7 +18,7 @@ import { handleServer } from "../src/features/servers/server.controller";
 import { AUTH, finish, owner, readSse, scripted, testAdmin, testBilling, testDeps, text, thread, toolCall } from "./helpers";
 
 const handlers = {
-  handleAsk, handleAskX, handleChat, handleToolResult, handleHealth, handleUser, handleSession, handleConsent, handlePrivacy, handleServer, handleMemories, handleMemory, handleLicense, handleTelegram,
+  handleAsk, handleAskX, handleChat, handleToolResult, handleRun, handleRunEvents, handleHealth, handleUser, handleSession, handleConsent, handlePrivacy, handleServer, handleMemories, handleMemory, handleLicense, handleTelegram,
   handleAdminInit, handleAdmin, handleDeaths, handleState, handleExport, handleExportDownload,
 };
 let servers: Array<Server<undefined>> = [];

@@ -3,6 +3,14 @@ import type { ChatEvent, Emit } from "./chat.events";
 
 const encoder = new TextEncoder();
 
+export const SSE_HEADERS = {
+  "Content-Type": "text/event-stream; charset=utf-8",
+  "Cache-Control": "no-cache, no-transform",
+  Connection: "keep-alive",
+  // nginx would otherwise buffer the stream and the player would see nothing until the end.
+  "X-Accel-Buffering": "no",
+};
+
 export const frame = (event: ChatEvent): string => `event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`;
 
 /**
@@ -49,13 +57,5 @@ export const sseResponse = (run: (emit: Emit, signal: AbortSignal) => Promise<un
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      // nginx would otherwise buffer the stream and the player would see nothing until the end.
-      "X-Accel-Buffering": "no",
-    },
-  });
+  return new Response(stream, { headers: SSE_HEADERS });
 };

@@ -10,6 +10,8 @@ const text = (max: number) => z.string().max(max).optional();
 /** The longest `server.about` the model reads; the plugin warns past 2,000, since every question pays for it. */
 export const MAX_ABOUT = 10_000;
 const taskId = z.string().regex(/^[a-z0-9]{1,16}$/);
+/** The plugin's own name for one question, the same on every try; since 6.31. */
+export const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/;
 /** Running automations one request lists: the most the plugin lets a player run at once. */
 export const MAX_TASKS = 8;
 
@@ -76,6 +78,8 @@ export const chatRequestSchema = z.object({
   // Since 6.14, from plugin 6.12: other plugins' and mods' tools and prompt lines. A bad entry is dropped, not refused.
   expansion_tools: z.array(z.unknown()).max(64).optional().catch(undefined),
   expansions: z.array(z.unknown()).max(32).optional().catch(undefined),
+  // Since 6.31: the run outlives a dropped connection and is read on through /api/v2/chat/{run}/events.
+  request_id: z.string().regex(REQUEST_ID).optional(),
 });
 
 /** Since 6.24: the plugin's own time for a tool, for the run's trace; anything odd is dropped, never refused. */
@@ -108,7 +112,7 @@ const expansionsOf = (request: z.infer<typeof chatRequestSchema>) => {
 export const parseChatRequest = (
   body: unknown,
   tenant: string,
-): { ok: true; context: RunContext; provider?: ProviderBlock } | { ok: false; error: ApiError } => {
+): { ok: true; context: RunContext; provider?: ProviderBlock; requestId?: string } | { ok: false; error: ApiError } => {
   const parsed = chatRequestSchema.safeParse(body);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
@@ -146,5 +150,6 @@ export const parseChatRequest = (
       ...expansionsOf(request),
     },
     provider: request.provider,
+    requestId: request.request_id,
   };
 };

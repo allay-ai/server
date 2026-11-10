@@ -4,6 +4,7 @@ import { APICallError, type ModelMessage } from "ai";
 import type { AdminDeps } from "../features/admin/admin";
 import type { Billing } from "../features/billing/billing";
 import type { ToolBridge } from "../features/chat/chat.bridge";
+import type { LiveRuns } from "../features/chat/chat.live";
 import type { Emit } from "../features/chat/chat.events";
 import { settings } from "../features/settings/settings";
 import { exactCalculationsTool } from "../features/tools/exact-calculations.tool";
@@ -56,6 +57,8 @@ export interface AllayDeps {
   /** Players operators stopped from asking. */
   bans: BanStore;
   bridge: ToolBridge;
+  /** Runs a plugin may read again after its connection dropped (since 6.31). */
+  live: LiveRuns;
   billing: Billing;
   /** Perplexity's Search API for runs on the backend's own key; without it they use the search model. */
   perplexity?: PerplexitySearch;

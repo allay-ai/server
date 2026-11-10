@@ -13,12 +13,21 @@ import { trustOf } from "../settings/trust";
 import { clientAddress } from "../../shared/lib/address";
 import { parseChatRequest, toolAnswerSchema } from "./chat.types";
 import { sseResponse } from "./chat.sse";
+import { type LiveRun, lastEventId, liveResponse } from "./chat.live";
 
 /** Answers a question refused before it ran, and counts it by code for the server that asked. */
 const refusing = (tenant: string, serverId: string | undefined, player: string) => (error: ApiError) => {
   signals().instruments.refusals.add(1, { code: error.code, tenant, server_id: serverId ?? "" });
   event("allay.gate.refused", { code: error.code, "allay.tenant": tenant, "allay.player": player, ...(serverId ? { "allay.server.id": serverId } : {}) });
   return jsonError(error);
+};
+
+/** Streams [run] on from the plugin's `Last-Event-ID`, or says it went on too far for that. */
+const readOn = (run: LiveRun, req: Request, server?: Server<undefined>): Response => {
+  const after = lastEventId(req);
+  if (!run.resumable(after)) return jsonError(apierror(API_ERRORS.RUN_GONE));
+  server?.timeout(req, 0);
+  return liveResponse(run, after, req.signal);
 };
 
 /** POST /api/v2/chat: one question, streamed back as events while the agent works. */
@@ -30,6 +39,9 @@ export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Ser
   if (!json.ok) return jsonError(json.error);
   const parsed = parseChatRequest(json.body, caller.tenant);
   if (!parsed.ok) return jsonError(parsed.error);
+  // The same question again after a dropped connection: it reads on in the run it started, which never runs or pays twice.
+  const running = parsed.requestId ? deps.live.byRequest(caller.tenant, parsed.requestId) : undefined;
+  if (running) return readOn(running, req, server);
   const refuse = refusing(caller.tenant, parsed.context.server?.id, deps.pseudonyms.of(caller.tenant, parsed.context.userId));
   // A blocked player is refused before anything is paid for or kept.
   if (await deps.bans.has(caller.tenant, deps.pseudonyms.of(caller.tenant, parsed.context.userId))) return refuse(apierror(API_ERRORS.PLAYER_BLOCKED));
@@ -71,6 +83,25 @@ export const handleChat = (deps: AllayDeps) => async (req: Request, server?: Ser
   // Who asked stays out of the log: the run id ties it to the statistics, which know the player only by pseudonym.
   logger.info(`Run ${runId}: ${context.mode}${context.task ? ` ${context.task.id}` : ""} on ${caller.tenant}, tools: ${context.tools.length}, on ${payer(admission)}`);
 
+  if (parsed.requestId) {
+    const requestId = parsed.requestId;
+    const live = deps.live.start(runId, caller.tenant, requestId, { detached: () => deps.bridge.hold(runId), attached: () => deps.bridge.release(runId) });
+    deps.bridge.open(runId, live.emit, caller.tenant);
+    signals().instruments.streams.add(1);
+    runAllay(context, deps, { runId, emit: live.emit, signal: live.abort.signal, spend: admission.spend, payer: admission.payer })
+      .catch(() => {
+        // The run already sent its error event.
+      })
+      .finally(() => {
+        signals().instruments.streams.add(-1);
+        deps.bridge.close(runId);
+        admission.release();
+        deps.live.finish(live, requestId);
+      });
+    return liveResponse(live, 0, req.signal);
+  }
+
+  // A plugin before 6.35 sends no request_id: its run stops with its connection, as it always did.
   return sseResponse(async (emit, signal) => {
     deps.bridge.open(runId, emit, caller.tenant);
     signals().instruments.streams.add(1);
@@ -101,4 +132,27 @@ export const handleToolResult = (deps: AllayDeps) => async (req: Request & { par
   if (status === 404) return jsonError(apierror(API_ERRORS.RUN_NOT_FOUND));
   if (status === 409) return jsonError(apierror(API_ERRORS.ALREADY_ANSWERED));
   return Response.json({ accepted: true });
+};
+
+type RunParams = { runId: string };
+
+/** GET /api/v2/chat/{run_id}/events: a run read on after the plugin's connection dropped, from after its `Last-Event-ID`. */
+export const handleRunEvents = (deps: AllayDeps) => async (req: Request & { params?: RunParams }, server?: Server<undefined>): Promise<Response> => {
+  if (req.method !== "GET") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
+  const caller = await identify(deps.billing, req);
+  if (caller instanceof ApiFailure) return jsonError(caller.toApiError());
+  const run = deps.live.get(req.params?.runId ?? "", caller.tenant);
+  if (!run) return jsonError(apierror(API_ERRORS.RUN_NOT_FOUND));
+  return readOn(run, req, server);
+};
+
+/** DELETE /api/v2/chat/{run_id}: the player cancelled, so the run stops now instead of waiting for a plugin that won't read on. */
+export const handleRun = (deps: AllayDeps) => async (req: Request & { params?: RunParams }): Promise<Response> => {
+  if (req.method !== "DELETE") return jsonError(apierror(API_ERRORS.METHOD_NOT_SUPPORTED));
+  const caller = await identify(deps.billing, req);
+  if (caller instanceof ApiFailure) return jsonError(caller.toApiError());
+  const run = deps.live.get(req.params?.runId ?? "", caller.tenant);
+  if (!run) return jsonError(apierror(API_ERRORS.RUN_NOT_FOUND));
+  run.abort.abort();
+  return Response.json({ cancelled: true });
 };

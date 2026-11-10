@@ -6,7 +6,7 @@ import type { handleAdminInit } from "../features/admin/init.controller";
 import type { handleServer } from "../features/servers/server.controller";
 import type { handleAsk } from "../features/ask/ask.controller";
 import type { handleAskX } from "../features/askx/askx.controller";
-import type { handleChat, handleToolResult } from "../features/chat/chat.controller";
+import type { handleChat, handleRun, handleRunEvents, handleToolResult } from "../features/chat/chat.controller";
 import type { handleLicense } from "../features/billing/license.controller";
 import type { handleHealth } from "../features/health/health.controller";
 import type { handleTelegram } from "../features/telegram/telegram.controller";
@@ -19,6 +19,9 @@ interface Handlers {
   handleAskX: typeof handleAskX;
   handleChat: typeof handleChat;
   handleToolResult: typeof handleToolResult;
+  /** Since 6.31: reading a run on after a dropped connection, and cancelling it. */
+  handleRun?: typeof handleRun;
+  handleRunEvents?: typeof handleRunEvents;
   handleHealth: typeof handleHealth;
   handleUser: typeof handleUser;
   handleSession: typeof handleSession;
@@ -67,6 +70,8 @@ export const routes = (deps: AllayDeps, h: Handlers): Record<string, Route> => {
     "/api/askx": h.handleAskX(deps),
     "/api/v2/chat": h.handleChat(deps),
     "/api/v2/chat/:runId/tools/:callId": h.handleToolResult(deps),
+    ...(h.handleRun ? { "/api/v2/chat/:runId": h.handleRun(deps) } : {}),
+    ...(h.handleRunEvents ? { "/api/v2/chat/:runId/events": h.handleRunEvents(deps) } : {}),
     "/api/v2/users/:userId": h.handleUser(deps),
     "/api/v2/users/:userId/session": h.handleSession(deps),
     "/api/v2/users/:userId/consent": h.handleConsent(deps),

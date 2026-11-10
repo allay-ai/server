@@ -10,6 +10,8 @@ interface PendingCall {
   settle: (answer: ToolAnswer) => void;
   answered: boolean;
   timer?: ReturnType<typeof setTimeout>;
+  /** Starts the call's clock, again in full after the plugin came back. */
+  arm: () => void;
 }
 
 interface Run {
@@ -17,6 +19,8 @@ interface Run {
   /** Whose run it is: only that tenant may answer its tool calls. */
   tenant: string;
   calls: Map<string, PendingCall>;
+  /** The plugin's connection dropped: calls wait for it to come back instead of timing out meanwhile. */
+  held: boolean;
 }
 
 /**
@@ -33,7 +37,23 @@ export class ToolBridge {
   constructor(private readonly fixedTimeoutMs?: number) {}
 
   open(runId: string, emit: Emit, tenant: string): void {
-    this.runs.set(runId, { emit, tenant, calls: new Map() });
+    this.runs.set(runId, { emit, tenant, calls: new Map(), held: false });
+  }
+
+  /** The plugin went away mid-run: its calls' clocks stop until [release]. */
+  hold(runId: string): void {
+    const run = this.runs.get(runId);
+    if (!run) return;
+    run.held = true;
+    for (const call of run.calls.values()) clearTimeout(call.timer);
+  }
+
+  /** The plugin is back: every call still unanswered gets its whole timeout again, since it may have missed the call. */
+  release(runId: string): void {
+    const run = this.runs.get(runId);
+    if (!run) return;
+    run.held = false;
+    for (const call of run.calls.values()) if (!call.answered) call.arm();
   }
 
   /** Ends a run: pending calls resolve as failed and later results get 404. */
@@ -63,6 +83,14 @@ export class ToolBridge {
     return new Promise<ToolAnswer>((resolve) => {
       const call: PendingCall = {
         answered: false,
+        arm: () => {
+          clearTimeout(call.timer);
+          call.timer = setTimeout(() => {
+            logger.warn(`Tool ${name} timed out in run ${runId}`);
+            trip?.timedOut();
+            call.settle({ ok: false, error: `TOOL_TIMEOUT: the game didn't answer within ${timeoutMs / 1000} s` });
+          }, timeoutMs);
+        },
         settle: (answer) => {
           if (call.answered) return;
           call.answered = true;
@@ -81,11 +109,7 @@ export class ToolBridge {
           resolve(answer);
         },
       };
-      call.timer = setTimeout(() => {
-        logger.warn(`Tool ${name} timed out in run ${runId}`);
-        trip?.timedOut();
-        call.settle({ ok: false, error: `TOOL_TIMEOUT: the game didn't answer within ${timeoutMs / 1000} s` });
-      }, timeoutMs);
+      if (!run.held) call.arm();
       signal?.addEventListener("abort", () => call.settle({ ok: false, error: "Cancelled" }), { once: true });
       run.calls.set(callId, call);
       run.emit({ event: "tool_status", data: { call_id: callId, name, kind: "client", state: "started", args } });

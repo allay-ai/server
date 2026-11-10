@@ -26,6 +26,7 @@ export const API_ERRORS = {
   METHOD_NOT_SUPPORTED: { code: 'METHOD_NOT_SUPPORTED', message: 'Method not supported', statusCode: 405 },
   PLATFORM_NOT_SUPPORTED: { code: 'PLATFORM_NOT_SUPPORTED', message: 'Platform not supported', statusCode: 400 },
   RUN_NOT_FOUND: { code: 'RUN_NOT_FOUND', message: 'No such run or tool call', statusCode: 404 },
+  RUN_GONE: { code: 'RUN_GONE', message: 'The run went on too far to read on from there; ask again', statusCode: 410 },
   ALREADY_ANSWERED: { code: 'ALREADY_ANSWERED', message: 'This tool call already has a result', statusCode: 409 },
   CANCELLED: { code: 'CANCELLED', message: 'The request was cancelled', statusCode: 499 },
   MEMORY_NOT_FOUND: { code: 'MEMORY_NOT_FOUND', message: 'No such memory', statusCode: 404 },

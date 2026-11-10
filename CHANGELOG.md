@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.31.0
+
+Allay for Minecraft 6.35 uses it; older plugins work as before.
+
+- 🔌 **A dropped connection no longer loses the answer.** A question with a `request_id` keeps running for up to 4 minutes (`RUN_DETACH_SECONDS`) when the plugin's connection drops. Every event has an id, and `GET /api/v2/chat/{run}/events` with `Last-Event-ID` streams the rest from there. The same `request_id` posted again reads the run it started, so a question never runs or pays twice. Tool calls wait while the plugin is away and get their whole timeout again when it's back. `DELETE /api/v2/chat/{run}` cancels at once. New settings: `RUN_DETACH_SECONDS`, `RUN_LINGER_SECONDS`, `RUN_JOURNAL_BYTES`.
+
 ## 6.30.0
 
 - 🧱 **No more builds drawn by the model.** `show_draft` and its prompt section are gone: the model wrote builds block by block, and they came out wrong too often to be worth their tokens. A plugin before 6.34 that still offers it gets the tool dropped, like any other retired name.
