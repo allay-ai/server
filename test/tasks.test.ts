@@ -279,6 +279,9 @@ describe("task prompts", () => {
     const withRedstone = systemPrompt({ ...context({}), mode: "ask", tools: ["inspect_redstone"] });
     expect(withRedstone).toContain("# Redstone");
     expect(withRedstone).not.toContain("show_draft");
+    expect(without).not.toContain("# Builds");
+    const building = systemPrompt({ ...context({}), mode: "ask", tools: ["build"] });
+    expect(building).toContain("a build stays as its author made it");
   });
 });
 
