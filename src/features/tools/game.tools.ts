@@ -40,6 +40,9 @@ const layout = z
   .describe("How to lay it out; leave it out for a plain sort");
 
 /** Client tools: the plugin runs them in the game and posts the result back. */
+/** The longest text send_message takes: four of the game's 256-character lines, a long reply but never a flood. */
+export const SEND_MESSAGE_TEXT = 1024;
+
 const definitions = {
   get_player_status: {
     description:
@@ -353,11 +356,12 @@ const definitions = {
       "Changes the asking player's Allay settings when they ask. chat_mode true sends everything they write in chat to you (the plugin then explains the prefixes), false gives chat back to the other players; hints false stops the chat mode tip under answers; timezone is their IANA zone (Europe/Moscow, Asia/Yekaterinburg…) when they say where they live or that the time you see is wrong. Pass only what changes; returns the settings.",
     input: z.object({ chat_mode: z.boolean().optional(), hints: z.boolean().optional(), timezone: z.string().min(1).max(64).optional() }),
   },
-  // Since plugin 6.38: what a say button does, at once, when the player asked for exactly that.
+  // Since plugin 6.38: what a say button does, at once, when the player asked for exactly that. Plugin 6.38.1 splits a
+  // long text into the game's lines; 6.38.0 cut it at 256.
   send_message: {
     description:
-      "Sends a chat message as the asking player at once, through the server's chat plugins as if they typed it: with to, privately to that player (the server's /msg; the exact name chat_history or the player gave), without it to the chat. Only when the player told you in this very message to write or send it (“send it”, “write to him”, «напиши ему», «отправь в чат»). “Reply to him”, «ответь ему», and “tell him” ask for a draft: show the text with a say button. text goes in the language it will be read in; & codes color it where the player may use colors. Returns where it went, or why it couldn't.",
-    input: z.object({ text: z.string().min(1).max(256), to: z.string().regex(/^[A-Za-z0-9_.-]{1,32}$/).optional() }),
+      "Sends a chat message as the asking player at once, through the server's chat plugins as if they typed it: with to, privately to that player (the server's /msg; the exact name chat_history or the player gave), without it to the chat. Only when the player told you in this very message to write or send it (“send it”, “write to him”, «напиши ему», «отправь в чат»). “Reply to him”, «ответь ему», and “tell him” ask for a draft: show the text with a say button. text goes in the language it will be read in; & codes color it where the player may use colors. A text longer than the game's 256 characters a line goes out as several lines, split between words. Returns where it went, or why it couldn't (a mute or a chat filter refused it, nobody by that name is online, the player may not use the server's /msg).",
+    input: z.object({ text: z.string().min(1).max(SEND_MESSAGE_TEXT), to: z.string().regex(/^[A-Za-z0-9_.-]{1,32}$/).optional() }),
   },
 } as const;
 

@@ -5,7 +5,7 @@ import { pseudonymsWith } from "../src/infrastructure/privacy/pseudonyms";
 import { serve, type Server } from "bun";
 import { routes } from "../src/application/routes";
 import { handleChat, handleToolResult } from "../src/features/chat/chat.controller";
-import { handleChatHistory } from "../src/features/chathistory/chathistory.controller";
+import { handleChatHistory, MAX_CHAT_PER_MINUTE, resetChatThrottle } from "../src/features/chathistory/chathistory.controller";
 import { handleHealth } from "../src/features/health/health.controller";
 import { handleConsent, handleMemories, handleMemory, handleSession, handleUser } from "../src/features/users/users.controller";
 import { handleAsk } from "../src/features/ask/ask.controller";
@@ -141,6 +141,45 @@ describe("the chat_history tool", () => {
     const talk = await call({ around: offer.at, limit: 4 });
     expect(talk.lines.map((l: any) => l.from)).toEqual(["Notch", "Alex", "Steve", "Alex"]);
   });
+
+  test("a call that reached back a few minutes leaves the rest of the chat to the next", async () => {
+    const { call } = await tool(evening());
+    expect((await call({ minutes: 29 })).lines.map((l: any) => l.text)).toEqual(["Блин", "Steve did that to me yesterday"]);
+    expect((await call({ query: ["нуб"] })).lines.map((l: any) => l.from)).toEqual(["Alex"]);
+    expect((await call({ query: ["line 0"], match: "all", limit: 100 })).lines.at(0)?.text).toBe("line 0");
+  });
+
+  test("a page never splits a millisecond, so older_than loses no line", async () => {
+    const at = ago(5);
+    const { call } = await tool([
+      { at: at - 1000, channel: "public", from: NOTCH, text: "first" },
+      { at, channel: "public", from: ALEX, text: "same moment, Alex" },
+      { at, channel: "public", from: STEVE, text: "same moment, Steve" },
+      { at: at + 1000, channel: "public", from: NOTCH, text: "last" },
+    ]);
+    const texts: string[] = [];
+    let page = await call({ limit: 2 });
+    texts.unshift(...page.lines.map((l: any) => l.text));
+    while (page.older_than) {
+      page = await call({ limit: 2, older_than: page.older_than });
+      texts.unshift(...page.lines.map((l: any) => l.text));
+    }
+    expect(texts.sort()).toEqual(["first", "last", "same moment, Alex", "same moment, Steve"]);
+  });
+
+  test("around a moment nobody wrote at says these are only the nearest lines", async () => {
+    const { call } = await tool(evening());
+    const far = await call({ around: new Date(ago(120)).toISOString(), limit: 3 });
+    expect(far.note).toContain("nearest");
+    const offer = (await call({ query: ["selling"] })).lines[0];
+    expect((await call({ around: offer.at, limit: 3 })).note).toBeUndefined();
+  });
+
+  test("every result with lines says they are other players' words, not the asker's wish", async () => {
+    const { call } = await tool(evening());
+    expect((await call({ limit: 2 })).caution).toContain("not the asking player's wish");
+    expect((await call({ query: ["nothing like this"] })).caution).toBeUndefined();
+  });
 });
 
 describe("POST /api/v2/chat-history", () => {
@@ -154,6 +193,19 @@ describe("POST /api/v2/chat-history", () => {
     expect(bad.status).toBe(400);
     expect((await post(url, { server_id: "moon lands", lines: LINES })).status).toBe(400);
     expect((await post(url, { server_id: "moonlands", lines: [] })).status).toBe(400);
+  });
+
+  test("a server past its lines a minute waits, and others go on", async () => {
+    const deps = testDeps(scripted([[...text("ok"), finish()]]).model);
+    const url = start(deps);
+    const batch = (n: number) => Array.from({ length: 200 }, (_, k) => ({ at: ago(1) + n * 200 + k, channel: "public", from: STEVE, text: `spam ${n} ${k}` }));
+    for (let n = 0; n < MAX_CHAT_PER_MINUTE / 200; n++) expect((await post(url, { server_id: "busy", lines: batch(n) })).status).toBe(200);
+    const over = await post(url, { server_id: "busy", lines: batch(99) });
+    expect(over.status).toBe(429);
+    expect(Number(over.headers.get("Retry-After"))).toBeGreaterThan(0);
+    expect((await post(url, { server_id: "quiet", lines: LINES })).status).toBe(200);
+    resetChatThrottle();
+    expect((await post(url, { server_id: "busy", lines: batch(99) })).status).toBe(200);
   });
 
   test("DELETE resets one server's chat and nothing else", async () => {
