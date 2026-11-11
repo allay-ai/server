@@ -4,6 +4,7 @@ import { handleAdmin } from "../features/admin/admin.controller";
 import { adminPages } from "../features/admin/admin.pages";
 import { handleAdminInit, panelUrl } from "../features/admin/init.controller";
 import { handleServer } from "../features/servers/server.controller";
+import { handleChatHistory } from "../features/chathistory/chathistory.controller";
 import { handleAsk } from "../features/ask/ask.controller";
 import { handleAskX } from "../features/askx/askx.controller";
 import { handleChat, handleRun, handleRunEvents, handleToolResult } from "../features/chat/chat.controller";
@@ -65,7 +66,7 @@ const server = serve({
   // Questions are 2000 characters, tool results a few dozen kilobytes; nothing needs Bun's 128 MB default.
   maxRequestBodySize: 2 * 1024 * 1024,
   routes: routes(deps, {
-    handleAsk, handleAskX, handleChat, handleToolResult, handleRun, handleRunEvents, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handlePrivacy, handleServer,
+    handleAsk, handleAskX, handleChat, handleToolResult, handleRun, handleRunEvents, handleHealth, handleUser, handleSession, handleConsent, handleMemories, handleMemory, handlePrivacy, handleServer, handleChatHistory,
     handleDeaths, handleState, handleWorkState, handleExport, handleExportDownload,
     handleLicense, handleTelegram, handleAdminInit, handleAdmin, adminPages: adminPages(),
   }),

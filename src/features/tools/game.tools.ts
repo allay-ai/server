@@ -353,6 +353,12 @@ const definitions = {
       "Changes the asking player's Allay settings when they ask. chat_mode true sends everything they write in chat to you (the plugin then explains the prefixes), false gives chat back to the other players; hints false stops the chat mode tip under answers; timezone is their IANA zone (Europe/Moscow, Asia/Yekaterinburg…) when they say where they live or that the time you see is wrong. Pass only what changes; returns the settings.",
     input: z.object({ chat_mode: z.boolean().optional(), hints: z.boolean().optional(), timezone: z.string().min(1).max(64).optional() }),
   },
+  // Since plugin 6.38: what a say button does, at once, when the player asked for exactly that.
+  send_message: {
+    description:
+      "Sends a chat message as the asking player at once, through the server's chat plugins as if they typed it: with to, privately to that player (the server's /msg; the exact name chat_history or the player gave), without it to the chat. Only when the player told you in this very message to write or send it (“send it”, “write to him”, «напиши ему», «отправь в чат»). “Reply to him”, «ответь ему», and “tell him” ask for a draft: show the text with a say button. text goes in the language it will be read in; & codes color it where the player may use colors. Returns where it went, or why it couldn't.",
+    input: z.object({ text: z.string().min(1).max(256), to: z.string().regex(/^[A-Za-z0-9_.-]{1,32}$/).optional() }),
+  },
 } as const;
 
 type Call = (tool: string, args: object) => Promise<ToolAnswer>;
@@ -845,7 +851,7 @@ const isOperatorTool = (name: string) => name in operatorDefinitions;
 
 /** Tools that do something for the player rather than read the game; askx only writes commands, so it gets none of them. */
 const ACTION_TOOLS: ReadonlySet<string> = new Set([
-  "point_to", "show_marks", "build", "ping_me", "sort_inventory", "reminders", "goals", "write_book", "allay_settings", ...AUTOMATION_TOOLS,
+  "point_to", "show_marks", "build", "ping_me", "sort_inventory", "reminders", "goals", "write_book", "allay_settings", "send_message", ...AUTOMATION_TOOLS,
 ]);
 
 /**
@@ -853,13 +859,13 @@ const ACTION_TOOLS: ReadonlySet<string> = new Set([
  * The locator bar is the asker's own: read out in public, it would tell everyone where others are.
  * Tasks belong to the asker too, and a shared thread mustn't start or steer them.
  */
-const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players", "start_task", "message_task", "cancel_task", "build"]);
+const PRIVATE_TOOLS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players", "start_task", "message_task", "cancel_task", "build", "send_message"]);
 
 /** What only an automation agent gets: it talks to the player, waits, and does the work the chat hands it. */
 const TASK_ONLY_TOOLS: ReadonlySet<string> = new Set(["say", "wait", "finish", "wait_for_items", "sources", "pick_blocks", "chests", "smelt", "brew", "craft", "anvil", "grindstone", "construct"]);
 
 /** What an automation agent never gets: it talks through say. */
-const NOT_IN_TASKS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players"]);
+const NOT_IN_TASKS: ReadonlySet<string> = new Set(["write_book", "get_nearby_players", "send_message"]);
 
 /** What starts and steers sub-agents: an agent gets these only while it may start one, and steers only its own. */
 const SUB_AGENT_TOOLS: ReadonlySet<string> = new Set(["start_task", "message_task", "cancel_task"]);
@@ -947,7 +953,7 @@ export interface GameToolsOptions {
 
 /** Mastra tools for the client tools in this run; pass names through offeredTools first. */
 /** The words of these tools reach the player's chat as they are, so Markdown in them goes to & codes like an answer's. */
-const SPOKEN: Partial<Record<GameToolName, string>> = { say: "text", finish: "summary" };
+const SPOKEN: Partial<Record<GameToolName, string>> = { say: "text", finish: "summary", send_message: "text" };
 
 const spoken = (args: Record<string, unknown>, field?: string) =>
   field && typeof args[field] === "string" ? { ...args, [field]: toMinecraft(args[field]) } : args;

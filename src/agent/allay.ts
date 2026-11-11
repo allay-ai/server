@@ -7,6 +7,7 @@ import type { ToolBridge } from "../features/chat/chat.bridge";
 import type { LiveRuns } from "../features/chat/chat.live";
 import type { SchematicCatalog } from "../infrastructure/schematics/catalog";
 import { searchSchematicsTool } from "../features/tools/schematics.tool";
+import { chatHistoryTool } from "../features/tools/chat-history.tool";
 import type { Emit } from "../features/chat/chat.events";
 import { settings } from "../features/settings/settings";
 import { exactCalculationsTool } from "../features/tools/exact-calculations.tool";
@@ -28,6 +29,7 @@ import type { Memory, MemoryStore } from "../infrastructure/memory/memory";
 import type { DeathStore } from "../infrastructure/playerdata/deaths";
 import type { StateStore } from "../infrastructure/playerdata/state";
 import type { WorkStateStore } from "../infrastructure/playerdata/workstate";
+import type { ChatHistoryStore } from "../infrastructure/chathistory/chathistory";
 import type { ExportStore } from "../infrastructure/playerdata/exports";
 import { type ByokProvider, type ModelFactory, costOf } from "../infrastructure/providers/openrouter/openrouter.client";
 import { RunTrace } from "../infrastructure/telemetry/run";
@@ -55,6 +57,8 @@ export interface AllayDeps {
   states: StateStore;
   /** The work state of players' automation agents per server, since 6.31. */
   workstates: WorkStateStore;
+  /** Since 6.34: each server's chat for three days, for chat_history; none where nothing keeps it. */
+  chats?: ChatHistoryStore;
   /** Since 6.9: one-day links to a player's copy of their data. */
   exports: ExportStore;
   /** Which players agreed to have their data processed, as the plugin asked them. */
@@ -342,6 +346,8 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
     telemetry.model(modelId);
     const offered = offeredTools(context.tools, context.player?.op === true, context.mode, context.visibility, context.task?.depth ?? 0, context.task?.kind);
     const expansions = offeredExpansionTools(context.expansionTools ?? [], context.player?.op === true, context.mode);
+    // The server's chat, for a plugin that keeps it (its tools say chat_history, plugin 6.38+): a chat's tool, never an agent's.
+    const chats = context.mode === "ask" && context.tools.includes("chat_history") && context.server?.id && remembers(context.userId) ? deps.chats : undefined;
     const memories = await telemetry.phase("allay.memories.load", () => loadMemories(deps, context));
     // askx turns one request into commands; earlier chat would only confuse it, as in v1. A task reads its own thread.
     let session = context.mode === "askx" ? { messages: [] } : await telemetry.phase("allay.session.load", () => deps.history.load(thread(context)));
@@ -352,7 +358,7 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
       await telemetry.phase("allay.session.compact", () => compact(context, deps, spend, maxTokens(), options));
       session = await deps.history.load(thread(context));
     }
-    const instructions = systemPrompt({ ...context, tools: offered, expansionTools: expansions }, { memories, summary: session.summary });
+    const instructions = systemPrompt({ ...context, tools: chats ? [...offered, "chat_history"] : offered, expansionTools: expansions }, { memories, summary: session.summary });
     const agent = new Agent({ id: "allay", name: "Allay", instructions, model });
     if (deps.mastra) agent.__registerMastra(deps.mastra);
     if (hearsOutcomes(context)) outcomes = await deps.history.takeOutcomes(ownerOf(context));
@@ -406,6 +412,20 @@ export const runAllay = async (context: RunContext, deps: AllayDeps, options: Ru
                   locale: context.locale,
                   // What this player may build here and what this server's game has: never the model's to lift.
                   filters: { maxBlocks: context.building?.max_blocks, maxSide: context.building?.max_size, dataVersion: context.building?.data_version },
+                }),
+              },
+            }
+          : {}),
+        ...(chats && context.server?.id
+          ? {
+              chat: {
+                chat_history: chatHistoryTool(chats, {
+                  emit,
+                  tenant: context.tenant,
+                  serverId: context.server.id,
+                  viewer: context.userId,
+                  timezone: context.timezone,
+                  publicOnly: context.visibility === "public",
                 }),
               },
             }

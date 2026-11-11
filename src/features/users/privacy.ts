@@ -1,4 +1,5 @@
 import type { StoredWorkState } from "../../infrastructure/playerdata/workstate";
+import type { ChatLine } from "../../infrastructure/chathistory/chathistory";
 import type { AllayDeps } from "../../agent/allay";
 import type { Owner } from "../../shared/types/owner";
 import type { Memory } from "../../infrastructure/memory/memory";
@@ -23,6 +24,8 @@ export interface PlayerExport extends SessionExport {
   state: StoredState | null;
   /** Since 6.31: the work state of their automation agents on each server, so they go on after a restart. */
   workstate: StoredWorkState[];
+  /** Since 6.34: what they wrote in the chat of the tenant's servers over the last three days, newest first. */
+  chat: ChatLine[];
   /** The notice the player agreed to and when, or null. */
   consent: Consent | null;
   /** The pseudonym the statistics know the player by. */
@@ -38,11 +41,12 @@ export interface PlayerExport extends SessionExport {
 export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<PlayerExport> => {
   privacyRequest("export", owner.tenant);
   const pseudonym = deps.pseudonyms.of(owner.tenant, owner.userId);
-  const [memories, deaths, state, workstate, consent, sessions, runs, bans, known] = await Promise.all([
+  const [memories, deaths, state, workstate, chat, consent, sessions, runs, bans, known] = await Promise.all([
     deps.memories.list(owner),
     deps.deaths.list(owner),
     deps.states.get(owner),
     deps.workstates.list(owner),
+    deps.chats?.list(owner) ?? [],
     deps.consents.record(owner),
     deps.history.export(owner),
     deps.runs?.of(pseudonym, owner.tenant, EXPORT_RUNS) ?? [],
@@ -59,6 +63,7 @@ export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<Playe
     deaths,
     state,
     workstate,
+    chat,
     consent,
     ...sessions,
     runs: runs.map((r) => ({
@@ -76,6 +81,7 @@ export const exportPlayer = async (deps: AllayDeps, owner: Owner): Promise<Playe
       deaths: "the newest DEATHS_MAX (100 by default), and 365 days after the player's last question",
       state: "365 days after the player's last question",
       workstate: "30 days after its last change, or when the agents end",
+      chat: "72 hours after each line",
       consent: "the agreement, and after a withdrawal its record, until the data is erased or 730 days after their last question",
       session: "CHAT_TTL_SECONDS after the last question (30 days by default)",
       runs: "730 days, by pseudonym",
@@ -107,7 +113,7 @@ export interface Erased {
 }
 
 /**
- * Forgets a player of one tenant (GDPR art. 17): memories, deaths, their state and agents' work state, open export links, their consent, their
+ * Forgets a player of one tenant (GDPR art. 17): memories, deaths, their state and agents' work state, their chat lines, open export links, their consent, their
  * name in the directory, their session, pending task outcomes, and their agents' threads go; their runs keep only numbers under `erased`; their traces go whole. The server's shared public thread
  * isn't theirs alone and expires within PUBLIC_CHAT_TTL_SECONDS by itself.
  */
@@ -116,6 +122,7 @@ export const erasePlayer = async (deps: AllayDeps, owner: Owner): Promise<Erased
   const deaths = await deps.deaths.clear(owner);
   await deps.states.clear(owner);
   await deps.workstates.clear(owner);
+  await deps.chats?.clear(owner);
   await deps.exports.revoke(owner);
   await deps.players?.forget(owner.tenant, deps.pseudonyms.of(owner.tenant, owner.userId));
   await deps.consents.erase(owner);

@@ -10,6 +10,7 @@ import { memoryMemories } from "../src/infrastructure/memory/memory";
 import { memoryDeaths } from "../src/infrastructure/playerdata/deaths";
 import { memoryStates } from "../src/infrastructure/playerdata/state";
 import { memoryWorkStates } from "../src/infrastructure/playerdata/workstate";
+import { memoryChatHistory } from "../src/infrastructure/chathistory/chathistory";
 import { memoryExports } from "../src/infrastructure/playerdata/exports";
 import { type ConsentStore, memoryConsents } from "../src/infrastructure/privacy/consents";
 import { memoryBans } from "../src/infrastructure/privacy/bans";
@@ -163,6 +164,7 @@ export const testDeps = (
     deaths: memoryDeaths(),
     states: memoryStates(),
     workstates: memoryWorkStates(),
+    chats: memoryChatHistory(),
     exports: memoryExports(),
     consents: options.consents ?? (options.billing?.enabled ? agreedConsents() : memoryConsents()),
     bans: memoryBans(),

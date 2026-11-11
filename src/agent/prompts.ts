@@ -15,7 +15,7 @@ const base = (context: RunContext): string => {
 };
 
 /** Prompt sections that only teach one tool; without the tool they'd cost tokens for nothing. */
-const SECTION_TOOLS: Record<string, string> = { "# Builds": "build", "# Building": "construct", "# Redstone": "inspect_redstone" };
+const SECTION_TOOLS: Record<string, string> = { "# Builds": "build", "# Building": "construct", "# Redstone": "inspect_redstone", "# The server's chat": "chat_history" };
 
 /**
  * What stands in a section's place when its tool is missing, so a question about it still gets an answer. Builds are
@@ -25,6 +25,11 @@ const SECTION_OFF: Record<string, string> = {
   "# Builds": [
     "# Builds",
     "Builds from Allay's catalog are off for this player here. Asked to find, show, or build a build, say so in a line: the server's owner turns them on with `building.enabled: true` in Allay's config.yml, and a player needs the permission allay.build. Never draw or invent a build instead.",
+  ].join("\n"),
+  // Chat history is on by default since plugin 6.38; an owner may switch it off, and older plugins don't keep it.
+  "# The server's chat": [
+    "# The server's chat",
+    "You don't see this server's chat. Asked what someone wrote, say so in a line and ask the player to paste the words; you can still translate them or write a reply with a say button. The server's owner turns chat history on with `chat_history: true` under `tools.enabled` in Allay's config.yml.",
   ].join("\n"),
 };
 

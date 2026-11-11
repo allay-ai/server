@@ -7,6 +7,7 @@ import { PlayerModel } from "../../entities/player/player.model";
 import { ServerModel } from "../../entities/server/server.model";
 import { StateModel } from "../../entities/state/state.model";
 import { WorkStateModel } from "../../entities/workstate/workstate.model";
+import { ChatLineModel } from "../../entities/chatline/chatline.model";
 import { AuditModel } from "../admin/audit";
 import { AdminSessionModel } from "../admin/sessions";
 import { OutcomesModel, SessionModel } from "../history/history";
@@ -40,7 +41,7 @@ export const pseudonymiseRuns = async (pseudonyms: Pseudonyms): Promise<number> 
  */
 export const prepareDatabase = async () => {
   for (const model of [
-    MemoryModel, DeathModel, StateModel, WorkStateModel, ExportModel, ConsentModel, PlayerModel, ServerModel, RunModel, DayModel, AuditModel,
+    MemoryModel, DeathModel, StateModel, WorkStateModel, ChatLineModel, ExportModel, ConsentModel, PlayerModel, ServerModel, RunModel, DayModel, AuditModel,
     SessionModel, OutcomesModel, AdminSessionModel,
   ] as Array<{ syncIndexes(): Promise<unknown> }>) {
     await model.syncIndexes();

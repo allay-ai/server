@@ -15,11 +15,12 @@ import {
   handleWorkState, handleConsent, handleDeaths, handleExport, handleExportDownload, handleMemories, handleMemory, handlePrivacy, handleSession, handleState, handleUser,
 } from "../src/features/users/users.controller";
 import { handleServer } from "../src/features/servers/server.controller";
+import { handleChatHistory } from "../src/features/chathistory/chathistory.controller";
 import { AUTH, finish, owner, readSse, scripted, testAdmin, testBilling, testDeps, text, thread, toolCall } from "./helpers";
 
 const handlers = {
   handleAsk, handleAskX, handleChat, handleToolResult, handleRun, handleRunEvents, handleHealth, handleUser, handleSession, handleConsent, handlePrivacy, handleServer, handleMemories, handleMemory, handleLicense, handleTelegram,
-  handleAdminInit, handleAdmin, handleDeaths, handleState, handleWorkState, handleExport, handleExportDownload,
+  handleAdminInit, handleAdmin, handleChatHistory, handleDeaths, handleState, handleWorkState, handleExport, handleExportDownload,
 };
 let servers: Array<Server<undefined>> = [];
 

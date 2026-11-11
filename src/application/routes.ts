@@ -4,6 +4,7 @@ import type { AllayDeps } from "../agent/allay";
 import type { handleAdmin } from "../features/admin/admin.controller";
 import type { handleAdminInit } from "../features/admin/init.controller";
 import type { handleServer } from "../features/servers/server.controller";
+import type { handleChatHistory } from "../features/chathistory/chathistory.controller";
 import type { handleAsk } from "../features/ask/ask.controller";
 import type { handleAskX } from "../features/askx/askx.controller";
 import type { handleChat, handleRun, handleRunEvents, handleToolResult } from "../features/chat/chat.controller";
@@ -35,6 +36,8 @@ interface Handlers {
   handlePrivacy?: typeof handlePrivacy;
   /** Since 6.7. */
   handleServer?: typeof handleServer;
+  /** Since 6.34. */
+  handleChatHistory?: typeof handleChatHistory;
   /** Since 6.9: what the plugin kept on disk before, and the player's copy by link. */
   handleDeaths?: typeof handleDeaths;
   handleState?: typeof handleState;
@@ -78,6 +81,7 @@ export const routes = (deps: AllayDeps, h: Handlers): Record<string, Route> => {
     "/api/v2/users/:userId/session": h.handleSession(deps),
     "/api/v2/users/:userId/consent": h.handleConsent(deps),
     ...(h.handleServer ? { "/api/v2/server": h.handleServer(deps) } : {}),
+    ...(h.handleChatHistory ? { "/api/v2/chat-history": h.handleChatHistory(deps) } : {}),
     ...(h.handlePrivacy ? { "/api/v2/users/:userId/privacy": h.handlePrivacy(deps) } : {}),
     ...(h.handleDeaths ? { "/api/v2/users/:userId/deaths": h.handleDeaths(deps) } : {}),
     ...(h.handleState ? { "/api/v2/users/:userId/state": h.handleState(deps) } : {}),

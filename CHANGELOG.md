@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.34.0
+
+- 💬 **The server's chat.** `chat_history` reads what players wrote over the last 72 hours, for “what did he write?”, “translate that”, or “did anyone answer me?”. The plugin sends its chat to `POST /api/v2/chat-history` (plugin 6.38, `tools.enabled.chat_history`), and the backend keeps it in `chat_history`, names and texts sealed, the sender and readers as pseudonyms. A reader gets the public chat, local lines they saw, and their own private messages, never anyone else's, and a public question gets the public chat only. The tool pages back as far as the chat goes, matches words inside words in any case and language, counts matching lines and words per player (“who swore the most?”), and shows the talk around a line (“is his offer a scam?”). It reads the chat in chunks of 5000 lines as a call needs them and keeps them for the rest of the answer: on 20 000 lines a count took 160 ms, and the next calls a few. `DELETE /api/v2/chat-history?server_id=…` forgets a server's whole chat, for the plugin's `/allay chathistory reset`. Nobody's consent is needed, since everyone on the server reads the chat. A player's copy carries the lines they wrote, and an erasure deletes them.
+- ✉️ **Answers that go back the right way.** `send_message` (plugin 6.38) sends a line as the player once they ask for it in so many words: to the chat, or with `to` as a private message. A say button takes `to` too. The prompt teaches the model to answer a private message privately, a chat line in the chat, and to offer a button unless the player said to send.
+- 🌍 **Examples in more than one language.** The prompts' examples of what players say led in Russian, so English players saw few phrasings like theirs. They lead in English now, with Russian, German, and Spanish beside them.
+
 ## 6.33.0
 
 - 🏰 **A catalog of real builds.** `search_schematics` finds builds in [allay-ai/schematics](https://github.com/allay-ai/schematics), each with its author and license, by the player's words in English, with type and style, 5 a page, titled in the player's language. The backend reads the catalog at the newest commit of `master` (`SCHEMATICS_REPO`, every `SCHEMATICS_REFRESH_SECONDS`), so every link it hands out stays the file it was. It's offered only to a plugin that can show and build a schematic.
