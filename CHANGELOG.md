@@ -2,6 +2,12 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.34.2
+
+- 🧱 The builder's agent offers stone or deepslate for bedrock and no longer glass for barriers: the catalog has no barriers now, and plugin 6.38.2 reads them as air.
+- 🌐 An ask button's question is in the answer's language too: after a Russian build preview the buttons asked in English, though their labels were Russian.
+- ⏭️ “Next” while a build stands in preview shows the next one of the search at once, instead of listing a page of them, and a search with more pages ends with a “More options” button.
+
 ## 6.34.1
 
 - 🔎 **A search no longer stops at the last call's window.** Once `chat_history` had read the last few minutes for one call, a later search over the whole chat in the same answer saw only those minutes and said nothing about the rest. The tool now remembers how far back it read everything and reads on from there.
