@@ -2,6 +2,11 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.34.3
+
+- ⬆️ Mastra 1.83.0, OpenTelemetry 3.1.1 (exporters 0.301.2), Mongoose 9.12.1, and the panel's libraries move to their newest releases.
+- 🍃 The compose files run MongoDB 8.0.38: 8.0.34 refuses to start on Linux 6.19 and newer.
+
 ## 6.34.2
 
 - 🧱 The builder's agent offers stone or deepslate for bedrock and no longer glass for barriers: the catalog has no barriers now, and plugin 6.38.2 reads them as air.
