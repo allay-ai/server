@@ -2,6 +2,10 @@
 
 The “Release” workflow takes the notes for a version from its section here, unless you type them into its `changelog` field.
 
+## 6.34.4
+
+- ⬆️ Mastra 1.85.0, AI SDK 7.0.173, Mongoose 9.12.3, and the panel's libraries move to their newest releases.
+
 ## 6.34.3
 
 - ⬆️ Mastra 1.83.0, OpenTelemetry 3.1.1 (exporters 0.301.2), Mongoose 9.12.1, and the panel's libraries move to their newest releases.
